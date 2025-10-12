@@ -1,1 +1,0 @@
-C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\Derafsh.Client.csproj;x64

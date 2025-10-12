@@ -14,10 +14,10 @@
                 SemanticProperties.Description="dot net bot in a race car number eight" />
 
             <Label
-                Text="Derafsh is Loading..."
+                Text="پرچم برافراشته شد"
                 Style="{StaticResource Headline}"
                 SemanticProperties.HeadingLevel="Level1" />
-
+            <Label Text="فرمانده: مهران" FontSize="20" HorizontalOptions="Center" />
             <Label
                 Text="Welcome to &#10;.NET Multi-platform App UI"
                 Style="{StaticResource SubHeadline}"

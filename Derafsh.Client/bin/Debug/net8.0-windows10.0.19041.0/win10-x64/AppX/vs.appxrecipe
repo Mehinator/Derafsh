@@ -30,7 +30,7 @@
     <AppXManifest Include="C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\bin\Debug\net8.0-windows10.0.19041.0\win10-x64\AppxManifest.xml">
       <PackagePath>AppxManifest.xml</PackagePath>
       <ReRegisterAppIfChanged>true</ReRegisterAppIfChanged>
-      <Modified>2025-10-12T17:18:28.352</Modified>
+      <Modified>2025-10-12T17:38:01.000</Modified>
     </AppXManifest>
   </ItemGroup>
   <ItemGroup>
@@ -44,11 +44,11 @@
     </AppxPackagedFile>
     <AppxPackagedFile Include="C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\bin\Debug\net8.0-windows10.0.19041.0\win10-x64\Derafsh.Client.dll">
       <PackagePath>Derafsh.Client.dll</PackagePath>
-      <Modified>2025-10-12T17:18:15.949</Modified>
+      <Modified>2025-10-12T17:37:58.406</Modified>
     </AppxPackagedFile>
     <AppxPackagedFile Include="C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\obj\Debug\net8.0-windows10.0.19041.0\win10-x64\apphost.exe">
       <PackagePath>Derafsh.Client.exe</PackagePath>
-      <Modified>2025-10-12T17:18:16.082</Modified>
+      <Modified>2025-10-12T17:37:58.656</Modified>
     </AppxPackagedFile>
     <AppxPackagedFile Include="C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\Resources\Raw\AboutAssets.txt">
       <PackagePath>AboutAssets.txt</PackagePath>

@@ -18,7 +18,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Derafsh.Client")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+c867dd07c10a6bf465ec5fd5de8a2d48f6e583d8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0+a48a20e52520a0a667890b2225b07de8eabe744f")]
 [assembly: System.Reflection.AssemblyProductAttribute("Derafsh.Client")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Derafsh.Client")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

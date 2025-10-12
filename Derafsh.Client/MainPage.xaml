@@ -14,7 +14,7 @@
                 SemanticProperties.Description="dot net bot in a race car number eight" />
 
             <Label
-                Text="Hello, World!"
+                Text="Derafsh is Loading..."
                 Style="{StaticResource Headline}"
                 SemanticProperties.HeadingLevel="Level1" />
 

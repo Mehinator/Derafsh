@@ -3,38 +3,40 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="Derafsh.Client.MainPage">
 
-    <ScrollView><VerticalStackLayout Padding="20" Spacing="15">
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="15">
 
-        <Label
-        x:Name="StatusLabel"
-        Text="وضعیت: قطع"
-        FontSize="Large"
-        FontAttributes="Bold"
-        HorizontalOptions="Center" />
+            <Label
+                x:Name="StatusLabel"
+                Text="وضعیت: قطع"
+                FontSize="Large"
+                FontAttributes="Bold"
+                HorizontalOptions="Center" />
 
-        <ListView ItemsSource="{Binding Servers}" ItemSelected="OnServerSelected" HeightRequest="400">
-            <ListView.ItemTemplate>
-                <DataTemplate>
-                    <ViewCell>
-                        <StackLayout Orientation="Horizontal" Padding="10">
-                            <Image Source="{Binding FlagUrl}" WidthRequest="40" HeightRequest="30" />
-                            <Label Text="{Binding Country}" FontSize="Medium" VerticalOptions="Center" />
-                            <Label Text="-" FontSize="Medium" VerticalOptions="Center" Margin="5,0"/>
-                            <Label Text="{Binding City}" FontSize="Small" VerticalOptions="Center" />
-                        </StackLayout>
-                    </ViewCell>
-                </DataTemplate>
-            </ListView.ItemTemplate>
-        </ListView>
+            <ListView ItemsSource="{Binding Servers}" HeightRequest="450">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <ViewCell>
+                            <Grid Padding="10" ColumnDefinitions="Auto,*,Auto">
+                                <Image Grid.Column="0" Source="{Binding FlagUrl}" WidthRequest="40" HeightRequest="30" VerticalOptions="Center"/>
+                                <StackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
+                                    <Label Text="{Binding Country}" FontSize="Medium" FontAttributes="Bold" />
+                                    <Label Text="{Binding City}" FontSize="Small" />
+                                </StackLayout>
+                                <Label Grid.Column="2" Text="{Binding Ping, StringFormat='{0} ms'}" TextColor="Green" VerticalOptions="Center" />
+                            </Grid>
+                        </ViewCell>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
 
-        <Button
-        x:Name="ConnectButton"
-        Text="اتصال"
-        FontSize="Large"
-        Clicked="OnConnectButtonClicked"
-        HorizontalOptions="Fill" />
+            <Button
+                x:Name="ConnectButton"
+                Text="یافتن سریع‌ترین سرور و اتصال"
+                FontSize="Large"
+                Clicked="OnConnectButtonClicked"
+                HorizontalOptions="Fill" />
 
         </VerticalStackLayout>
     </ScrollView>
-
 </ContentPage>

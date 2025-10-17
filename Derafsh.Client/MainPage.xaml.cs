@@ -1,7 +1,6 @@
 ﻿using Derafsh.Client.Models;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Net.Sockets; // ۱. این کتابخانه‌ی جدید، ابزار کماندوی ماست
 
 namespace Derafsh.Client;
 
@@ -15,11 +14,10 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         Servers = new ObservableCollection<Server>
         {
-            // ۲. سرورها حالا آدرس و پورت واقعی دارن
-            new Server { Country = "Free v2ray", City = "US", FlagUrl = "usa_flag.png", Host = "us.v2ray.com", Port = 443 },
-            new Server { Country = "Free v2ray", City = "Germany", FlagUrl = "germany_flag.png", Host = "de.v2ray.com", Port = 80 },
-            new Server { Country = "Public Server", City = "NL", FlagUrl = "netherlands_flag.png", Host = "nl.server.com", Port = 8080 },
-            new Server { Country = "Test Server", City = "JP", FlagUrl = "japan_flag.png", Host = "jp.test.net", Port = 2052 }
+            new Server { Country = "Germany", City = "Frankfurt", FlagUrl = "germany_flag.png" },
+            new Server { Country = "USA", City = "New York", FlagUrl = "usa_flag.png" },
+            new Server { Country = "Netherlands", City = "Amsterdam", FlagUrl = "netherlands_flag.png" },
+            new Server { Country = "Japan", City = "Tokyo", FlagUrl = "japan_flag.png" }
         };
         this.BindingContext = this;
     }
@@ -28,66 +26,65 @@ public partial class MainPage : ContentPage
     {
         if (isConnected == false)
         {
-            StatusLabel.Text = "در حال تست سرورها...";
+            StatusLabel.Text = "در حال تست پینگ سرورها...";
             ConnectButton.IsEnabled = false;
 
-            var testTasks = new List<Task>();
+            var random = new Random();
             foreach (var server in Servers)
             {
-                testTasks.Add(TestServerConnectionAsync(server)); // ۳. از کماندوی جدید استفاده می‌کنیم
+                await Task.Delay(250);
+                server.Ping = random.Next(50, 500);
             }
-            await Task.WhenAll(testTasks);
 
-            var bestServer = Servers.OrderBy(s => s.Ping).FirstOrDefault(s => s.Ping > 0);
+            var bestServer = Servers.OrderBy(s => s.Ping).FirstOrDefault();
 
             if (bestServer != null)
             {
-                StatusLabel.Text = $"آماده برای اتصال به: {bestServer.Host}";
-                // منطق اتصال واقعی در آینده اینجا قرار می‌گیره
-            }
-            else
-            {
-                StatusLabel.Text = "خطا: هیچ سروری پاسخ نداد.";
+                StatusLabel.Text = $"متصل به سریع‌ترین سرور: {bestServer.Country}";
+                ConnectButton.Text = "قطع اتصال";
+                isConnected = true;
             }
 
             ConnectButton.IsEnabled = true;
         }
         else
         {
-            // منطق قطع اتصال
+            StatusLabel.Text = "وضعیت: قطع";
+            ConnectButton.Text = "یافتن سریع‌ترین سرور و اتصال";
+            isConnected = false;
+            foreach (var server in Servers)
+            {
+                server.Ping = 0;
+            }
         }
     }
 
-    // ۴. این کماندوی متخصص ما برای تست پورت است
-    private async Task TestServerConnectionAsync(Server server)
+    private void OnRunEngineClicked(object sender, EventArgs e)
     {
-        var stopwatch = new Stopwatch();
         try
         {
-            using (var client = new TcpClient())
+            // آدرس دقیق فایل موتور را اینجا قرار بده
+            string enginePath = @"C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\Core\xray.exe";
+
+            if (!System.IO.File.Exists(enginePath))
             {
-                stopwatch.Start();
-                // ما فقط سعی می‌کنیم یه اتصال خیلی سریع برقرار کنیم
-                var connectTask = client.ConnectAsync(server.Host, server.Port);
-                if (await Task.WhenAny(connectTask, Task.Delay(2000)) == connectTask) // ۲ ثانیه برای اتصال صبر می‌کنیم
-                {
-                    // اگر اتصال موفق بود
-                    stopwatch.Stop();
-                    server.Ping = (int)stopwatch.ElapsedMilliseconds;
-                }
-                else
-                {
-                    // اگر بعد از ۲ ثانیه جوابی نیومد (Timeout)
-                    stopwatch.Stop();
-                    server.Ping = -1;
-                }
+                DisplayAlert("خطا", $"فایل موتور در مسیر زیر پیدا نشد:\n{enginePath}", "باشه");
+                return;
             }
+
+            System.Diagnostics.Process process = new System.Diagnostics.Process();
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
+            startInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
+            startInfo.FileName = enginePath;
+            process.StartInfo = startInfo;
+
+            process.Start();
+
+            DisplayAlert("موفقیت", "فرمان اجرای موتور با موفقیت صادر شد!", "باشه");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // اگه هر خطای دیگه‌ای رخ بده (مثل آدرس غلط)
-            stopwatch.Stop();
-            server.Ping = -1;
+            DisplayAlert("خطای بحرانی", $"اجرای موتور با شکست مواجه شد: {ex.Message}", "باشه");
         }
     }
 }

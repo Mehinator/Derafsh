@@ -7,6 +7,7 @@ namespace Derafsh.Client;
 public partial class MainPage : ContentPage
 {
     public ObservableCollection<Server> Servers { get; set; }
+    private Process xrayProcess;
     private bool isConnected = false;
 
     public MainPage()
@@ -14,77 +15,88 @@ public partial class MainPage : ContentPage
         InitializeComponent();
         Servers = new ObservableCollection<Server>
         {
-            new Server { Country = "Germany", City = "Frankfurt", FlagUrl = "germany_flag.png" },
-            new Server { Country = "USA", City = "New York", FlagUrl = "usa_flag.png" },
-            new Server { Country = "Netherlands", City = "Amsterdam", FlagUrl = "netherlands_flag.png" },
-            new Server { Country = "Japan", City = "Tokyo", FlagUrl = "japan_flag.png" }
+            // لیست سرورهای ما اینجا قرار می‌گیرد
         };
         this.BindingContext = this;
     }
 
+    // این مهندسِ دکمه‌ی اصلی اتصال است که گمشده بود
     private async void OnConnectButtonClicked(object sender, EventArgs e)
     {
         if (isConnected == false)
         {
-            StatusLabel.Text = "در حال تست پینگ سرورها...";
-            ConnectButton.IsEnabled = false;
-
-            var random = new Random();
-            foreach (var server in Servers)
+            try
             {
-                await Task.Delay(250);
-                server.Ping = random.Next(50, 500);
-            }
+                // کد مربوط به اتصال را اینجا اضافه خواهیم کرد
+                await DisplayAlert("فرمان", "منطق اتصال در اینجا پیاده‌سازی خواهد شد.", "باشه");
 
-            var bestServer = Servers.OrderBy(s => s.Ping).FirstOrDefault();
-
-            if (bestServer != null)
-            {
-                StatusLabel.Text = $"متصل به سریع‌ترین سرور: {bestServer.Country}";
+                StatusLabel.Text = "وضعیت: متصل";
                 ConnectButton.Text = "قطع اتصال";
                 isConnected = true;
             }
-
-            ConnectButton.IsEnabled = true;
+            catch (Exception ex)
+            {
+                await DisplayAlert("خطا", ex.Message, "باشه");
+            }
         }
         else
         {
+            // کد مربوط به قطع اتصال
             StatusLabel.Text = "وضعیت: قطع";
-            ConnectButton.Text = "یافتن سریع‌ترین سرور و اتصال";
+            ConnectButton.Text = "اتصال";
             isConnected = false;
-            foreach (var server in Servers)
-            {
-                server.Ping = 0;
-            }
         }
     }
 
+    // این مهندسِ دکمه‌ی آزمایشی ماست
     private void OnRunEngineClicked(object sender, EventArgs e)
     {
+        // ۲. قبل از اعزام سرباز جدید، سرباز قدیمی را می‌کشیم
+        if (xrayProcess != null && !xrayProcess.HasExited)
+        {
+            xrayProcess.Kill();
+            xrayProcess.Dispose();
+        }
+
         try
         {
-            // آدرس دقیق فایل موتور را اینجا قرار بده
-            string enginePath = @"C:\Users\BiBiLi\source\repos\Derafsh\Derafsh.Client\Core\xray.exe";
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string coreDirectory = Path.Combine(baseDirectory, "Core");
+            string enginePath = Path.Combine(coreDirectory, "xray.exe");
+            string configPath = Path.Combine(coreDirectory, "config.json");
 
-            if (!System.IO.File.Exists(enginePath))
+            if (!File.Exists(enginePath))
             {
-                DisplayAlert("خطا", $"فایل موتور در مسیر زیر پیدا نشد:\n{enginePath}", "باشه");
+                DisplayAlert("خطا", $"فایل موتور پیدا نشد:\n{enginePath}", "باشه");
+                return;
+            }
+            if (!File.Exists(configPath))
+            {
+                DisplayAlert("خطا", $"فایل نقشه پیدا نشد:\n{configPath}", "باشه");
                 return;
             }
 
-            System.Diagnostics.Process process = new System.Diagnostics.Process();
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo();
-            startInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden;
-            startInfo.FileName = enginePath;
-            process.StartInfo = startInfo;
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = enginePath,
+                Arguments = $"-c \"{configPath}\"", // حالا نقشه را با آدرس کامل می‌دهیم
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = coreDirectory
+            };
 
-            process.Start();
+            // ۳. سرباز جدید را به خاطر می‌سپاریم
+            xrayProcess = new Process { StartInfo = startInfo };
+            xrayProcess.Start();
 
-            DisplayAlert("موفقیت", "فرمان اجرای موتور با موفقیت صادر شد!", "باشه");
+            // ما دیگر منتظر نمی‌مانیم. فقط گزارش می‌دهیم.
+            DisplayAlert("فرمان صادر شد", "موتور در پس‌زمینه اجرا شد. برای بررسی وضعیت به Task Manager بروید.", "باشه");
         }
         catch (Exception ex)
         {
-            DisplayAlert("خطای بحرانی", $"اجرای موتور با شکست مواجه شد: {ex.Message}", "باشه");
+            DisplayAlert("خطای بحرانی", ex.Message, "باشه");
         }
     }
 }

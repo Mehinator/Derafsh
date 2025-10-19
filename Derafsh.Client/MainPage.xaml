@@ -23,7 +23,6 @@
                                     <Label Text="{Binding Country}" FontSize="Medium" FontAttributes="Bold" />
                                     <Label Text="{Binding City}" FontSize="Small" />
                                 </StackLayout>
-                                <Label Grid.Column="2" Text="{Binding Ping, StringFormat='{0} ms'}" TextColor="Green" VerticalOptions="Center" />
                             </Grid>
                         </ViewCell>
                     </DataTemplate>
@@ -37,7 +36,7 @@
 
             <Button
                 x:Name="ConnectButton"
-                Text="یافتن سریع‌ترین سرور و اتصال"
+                Text="اتصال"
                 FontSize="Large"
                 Clicked="OnConnectButtonClicked"
                 HorizontalOptions="Fill" />

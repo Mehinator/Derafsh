@@ -13,6 +13,11 @@
                 FontAttributes="Bold"
                 HorizontalOptions="Center" />
 
+            <!-- فیلد و دکمه اضافه کردن کانفیگ — فقط یک بار -->
+            <Entry x:Name="ConfigInput" Placeholder="لینک کانفیگ را وارد کنید (vless:// یا ss://)" />
+            <Button Text="افزودن کانفیگ" Clicked="OnAddConfigClicked" />
+
+            <!-- لیست سرورها -->
             <ListView ItemsSource="{Binding Servers}" 
                       ItemSelected="OnServerSelected"
                       HeightRequest="450">

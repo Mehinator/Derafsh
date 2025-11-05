@@ -2,7 +2,10 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices; // ۱. کتابخانه‌ی پیام‌رسان سلطنتی
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Web;
 
 #if WINDOWS
 using Microsoft.Win32;
@@ -12,32 +15,20 @@ namespace Derafsh.Client;
 
 public partial class MainPage : ContentPage
 {
-    // ۲. استخدام پیام‌رسان سلطنتی
     [DllImport("wininet.dll")]
     public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
     public const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
     public const int INTERNET_OPTION_REFRESH = 37;
 
     public ObservableCollection<Server> Servers { get; set; }
-    private Server selectedServer;
-    private Process xrayProcess;
+    private Server? selectedServer;
+    private Process? xrayProcess;
     private bool isConnected = false;
 
     public MainPage()
     {
         InitializeComponent();
-
-        Servers = new ObservableCollection<Server>
-        {
-            new Server
-            {
-                Country = "@Daily_Configs",
-                City = "WebSocket",
-                FlagUrl = "usa_flag.png",
-                Config = "vless://c2e177d4-e610-4abd-85cd-1a869d158751@188.114.97.202:8443?encryption=none&security=tls&sni=teslakit1.pages.dev&type=ws&host=teslakit1.pages.dev&path=%2F%3FTELEGRAM-MARAMBASHI_MARAMBASHI_MARAMBASHI_MARAMBASHI%3Fed%3D512#%40Daily_Configs"
-            }
-        };
-
+        Servers = new ObservableCollection<Server>();
         this.BindingContext = this;
     }
 
@@ -49,85 +40,423 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private void OnAddConfigClicked(object sender, EventArgs e)
+    {
+        string link = ConfigInput.Text?.Trim();
+        if (string.IsNullOrEmpty(link))
+        {
+            DisplayAlert("خطا", "لینک خالی است.", "باشه");
+            return;
+        }
+
+        if (!link.StartsWith("vless://") && !link.StartsWith("vmess://") && !link.StartsWith("ss://"))
+        {
+            DisplayAlert("خطا", "لینک باید با vless://، vmess:// یا ss:// شروع شود.", "باشه");
+            return;
+        }
+
+        string displayName = "ناشناخته";
+        try
+        {
+            var uri = new Uri(link);
+            displayName = $"{uri.Host} ({uri.Port})";
+        }
+        catch { }
+
+        var newServer = new Server
+        {
+            Config = link,
+            Country = "آماده اتصال",
+            City = displayName,
+            FlagUrl = "flag_unknown.png"
+        };
+
+        Servers.Add(newServer);
+        ConfigInput.Text = string.Empty;
+    }
+
     private async void OnConnectButtonClicked(object sender, EventArgs e)
     {
-        if (isConnected == false)
+        if (!isConnected)
         {
             if (selectedServer == null)
             {
-                await DisplayAlert("خطا", "لطفاً ابتدا یک سرور را از لیست انتخاب کنید.", "باشه");
+                await DisplayAlert("خطا", "لطفاً یک سرور انتخاب کنید.", "باشه");
                 return;
             }
 
             try
             {
-                // حالا ژنرال، استاد کدشکن را صدا می‌زند
-                string newConfigJson = GenerateConfigFromVless(selectedServer);
+                string configJson = ParseConfigToXrayJson(selectedServer.Config);
+                string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
+                Directory.CreateDirectory(coreDir);
 
-                string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string coreDirectory = Path.Combine(baseDirectory, "Core");
-                string enginePath = Path.Combine(coreDirectory, "xray.exe");
-                string configPath = Path.Combine(coreDirectory, "config.json");
+                string configPath = Path.Combine(coreDir, "config.json");
+                string enginePath = Path.Combine(coreDir, "xray.exe");
 
-                await File.WriteAllTextAsync(configPath, newConfigJson);
+#if WINDOWS
+                if (xrayProcess?.HasExited == false)
+                {
+                    xrayProcess.Kill();
+                    xrayProcess.WaitForExit(2000);
+                }
+
+                await File.WriteAllTextAsync(configPath, configJson);
 
                 if (!File.Exists(enginePath))
                 {
-                    await DisplayAlert("خطا", "فایل موتور (xray.exe) پیدا نشد!", "باشه");
+                    await DisplayAlert("خطا", "xray.exe پیدا نشد!", "باشه");
                     return;
                 }
 
-                xrayProcess = new Process();
-                xrayProcess.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                xrayProcess.StartInfo.FileName = enginePath;
-                xrayProcess.StartInfo.Arguments = $"-c \"{configPath}\"";
-                xrayProcess.StartInfo.WorkingDirectory = coreDirectory;
-                xrayProcess.Start();
+                xrayProcess = new Process
+                {
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = enginePath,
+                        Arguments = $"-c \"{configPath}\"",
+                        WorkingDirectory = coreDir,
+                        CreateNoWindow = true,
+                        UseShellExecute = false
+                    }
+                };
 
-                await Task.Delay(1500);
+                xrayProcess.Start();
+                await Task.Delay(2000);
 
                 if (xrayProcess.HasExited)
                 {
-                    await DisplayAlert("خطا", "موتور نتوانست با کانفیگ واقعی اجرا شود. کانفیگ یا ساعت سیستم را چک کنید.", "باشه");
+                    await DisplayAlert("خطا", "Xray اجرا نشد. سرور ممکنه مرده باشه.", "باشه");
                     return;
                 }
 
                 EnableProxy();
+                await Task.Delay(1000);
+
+                // تشخیص کشور و شهر واقعی از روی IP
+                using var client = new HttpClient();
+                var json = await client.GetStringAsync("https://ipapi.co/json/");
+                using var doc = JsonDocument.Parse(json);
+
+                var ip = doc.RootElement.GetProperty("ip").GetString() ?? "نامشخص";
+                var country = doc.RootElement.GetProperty("country_name").GetString() ?? "ناشناخته";
+                var city = doc.RootElement.GetProperty("city").GetString() ?? "ناشناخته";
+
+                selectedServer.Country = country;
+                selectedServer.City = $"{city} ({ip})";
+
                 StatusLabel.Text = "وضعیت: متصل";
                 ConnectButton.Text = "قطع اتصال";
                 isConnected = true;
+#endif
             }
             catch (Exception ex)
             {
-                await DisplayAlert("خطای بحرانی", ex.Message, "باشه");
+                await DisplayAlert("خطا", ex.Message, "باشه");
             }
         }
         else
         {
+#if WINDOWS
             DisableProxy();
-            if (xrayProcess != null && !xrayProcess.HasExited)
-            {
-                xrayProcess.Kill();
-            }
+            xrayProcess?.Kill();
+#endif
             StatusLabel.Text = "وضعیت: قطع";
             ConnectButton.Text = "اتصال";
             isConnected = false;
         }
     }
 
-    // ۳. این همان استاد کدشکن است که فراموش شده بود!
-    private string GenerateConfigFromVless(Server server)
+    // === پارسر کامل کانفیگ‌ها ===
+    private string ParseConfigToXrayJson(string configLink)
     {
-        // در آینده اینجا یک کدشکن واقعی می‌سازیم که اطلاعات را از server.Config استخراج کند
-        var uuid = "c2e177d4-e610-4abd-85cd-1a869d158751";
-        var address = "188.114.97.202";
-        var port = 8443;
-        var sni = "teslakit1.pages.dev";
-        var hostHeader = "teslakit1.pages.dev";
-        var path = "/";
+        if (configLink.StartsWith("ss://"))
+            return ParseShadowsocks(configLink);
+        if (configLink.StartsWith("vmess://"))
+            return ParseVmess(configLink);
+        if (configLink.StartsWith("vless://"))
+            return ParseVless(configLink);
+        throw new NotSupportedException("فرمت کانفیگ پشتیبانی نمی‌شود.");
+    }
 
-        var configJson = $@"{{""log"":{{""loglevel"":""warning""}},""inbounds"":[{{""port"":10808,""listen"":""127.0.0.1"",""protocol"":""socks"",""settings"":{{""auth"":""noauth"",""udp"":true}}}},{{""port"":10809,""listen"":""127.0.0.1"",""protocol"":""http"",""settings"":{{""auth"":""noauth"",""udp"":true}}}}],""outbounds"":[{{""protocol"":""vless"",""settings"":{{""vnext"":[{{""address"":""{address}"",""port"":{port},""users"":[{{""id"":""{uuid}"",""encryption"":""none""}}]}}]}},""streamSettings"":{{""network"":""ws"",""security"":""tls"",""tlsSettings"":{{""serverName"":""{sni}""}},""wsSettings"":{{""path"":""{path}"",""headers"":{{""Host"":""{hostHeader}""}}}}}},""tag"":""proxy""}},{{""protocol"":""freedom"",""tag"":""direct""}},{{""protocol"":""blackhole"",""tag"":""block""}}],""routing"":{{""rules"":[{{""type"":""field"",""ip"":[""geoip:private""],""outboundTag"":""direct""}},{{""type"":""field"",""domain"":[""geosite:cn""],""outboundTag"":""direct""}},{{""type"":""field"",""protocol"":[""bittorrent""],""outboundTag"":""block""}},{{""type"":""field"",""network"":""tcp,udp"",""outboundTag"":""proxy""}}]}}}}";
-        return configJson;
+    private string ParseShadowsocks(string link)
+    {
+        // URL Decoding کامل
+        link = HttpUtility.UrlDecode(link);
+
+        var uri = new Uri(link);
+        // استخراج بخش Base64 از UserInfo یا Path
+        string base64Part;
+
+        if (!string.IsNullOrEmpty(uri.UserInfo))
+        {
+            base64Part = uri.UserInfo;
+        }
+        else
+        {
+            // پردازش دستی اگر UserInfo خالی باشد
+            var path = uri.GetComponents(UriComponents.Path, UriFormat.Unescaped);
+            var atIndex = path.IndexOf('@');
+            if (atIndex < 0)
+                throw new FormatException("فرمت Shadowsocks نامعتبر است.");
+            base64Part = path.Substring(0, atIndex);
+        }
+
+        // حذف query string و fragment
+        base64Part = base64Part.Split('?')[0]; // حذف query string
+        base64Part = base64Part.Split('#')[0]; // حذف fragment
+
+        // تصحیح padding Base64
+        base64Part = base64Part.Trim();
+        base64Part = FixBase64Padding(base64Part);
+
+        // Decode Base64
+        string decoded;
+        try
+        {
+            var bytes = Convert.FromBase64String(base64Part);
+            decoded = System.Text.Encoding.UTF8.GetString(bytes);
+        }
+        catch (FormatException ex)
+        {
+            throw new FormatException($"خطا در تبدیل Base64. لینک معتبر نیست: {ex.Message}");
+        }
+
+        // فرمت: method:password@host:port
+        var lastAt = decoded.LastIndexOf('@');
+        if (lastAt == -1) throw new FormatException("فرمت Shadowsocks نامعتبر است.");
+
+        var auth = decoded.Substring(0, lastAt);
+        var server = decoded.Substring(lastAt + 1);
+
+        var authParts = auth.Split(':');
+        var method = authParts[0];
+        var password = string.Join(":", authParts.Skip(1)); // رمز ممکنه شامل : باشه
+
+        var serverParts = server.Split(':');
+        var address = serverParts[0];
+        var port = int.Parse(serverParts[1]);
+
+        return $@"{{
+  ""log"": {{ ""loglevel"": ""warning"" }},
+  ""inbounds"": [{{
+    ""port"": 10808,
+    ""listen"": ""127.0.0.1"",
+    ""protocol"": ""socks"",
+    ""settings"": {{ ""auth"": ""noauth"", ""udp"": true }}
+  }}],
+  ""outbounds"": [{{
+    ""protocol"": ""shadowsocks"",
+    ""settings"": {{
+      ""servers"": [{{
+        ""address"": ""{address}"",
+        ""port"": {port},
+        ""method"": ""{method}"",
+        ""password"": ""{password}""
+      }}]
+    }},
+    ""tag"": ""proxy""
+  }}, {{
+    ""protocol"": ""freedom"",
+    ""tag"": ""direct""
+  }}],
+  ""routing"": {{
+    ""rules"": [{{
+      ""type"": ""field"",
+      ""network"": ""tcp,udp"",
+      ""outboundTag"": ""proxy""
+    }}]
+  }}
+}}";
+    }
+
+    private string FixBase64Padding(string base64)
+    {
+        // حذف کاراکترهای غیر Base64
+        base64 = base64.Trim().Replace(" ", "+");
+
+        // محاسبه padding لازم
+        int mod4 = base64.Length % 4;
+        if (mod4 > 0)
+        {
+            base64 += new string('=', 4 - mod4);
+        }
+
+        // حداکثر دو کاراکتر padding مجاز است
+        if (base64.EndsWith("==="))
+            base64 = base64.Substring(0, base64.Length - 1);
+        else if (base64.EndsWith("===="))
+            base64 = base64.Substring(0, base64.Length - 2);
+
+        return base64;
+    }
+
+    private string ParseVmess(string link)
+    {
+        var base64 = link.Substring("vmess://".Length);
+        var json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        var address = root.GetProperty("add").GetString();
+        var port = root.GetProperty("port").GetInt32();
+        var id = root.GetProperty("id").GetString();
+        var net = root.GetProperty("net").GetString() ?? "tcp";
+        var host = root.GetProperty("host").GetString() ?? "";
+        var path = root.GetProperty("path").GetString() ?? "/";
+        var tls = root.GetProperty("tls").GetString() ?? "";
+        var sni = root.GetProperty("sni").GetString() ?? address;
+
+        var wsSettings = net == "ws" ? $@",
+    ""wsSettings"": {{
+      ""path"": ""{path}"",
+      ""headers"": {{ ""Host"": ""{host}"" }}
+    }}" : "";
+
+        return $@"{{
+  ""log"": {{ ""loglevel"": ""warning"" }},
+  ""inbounds"": [{{
+    ""port"": 10808,
+    ""listen"": ""127.0.0.1"",
+    ""protocol"": ""socks"",
+    ""settings"": {{ ""auth"": ""noauth"", ""udp"": true }}
+  }}],
+  ""outbounds"": [{{
+    ""protocol"": ""vmess"",
+    ""settings"": {{
+      ""vnext"": [{{
+        ""address"": ""{address}"",
+        ""port"": {port},
+        ""users"": [{{
+          ""id"": ""{id}"",
+          ""security"": ""auto""
+        }}]
+      }}]
+    }},
+    ""streamSettings"": {{
+      ""network"": ""{net}"",
+      ""security"": ""{(tls == "tls" ? "tls" : "none")}"",
+      ""tlsSettings"": {{ ""serverName"": ""{sni}"" }}{wsSettings}
+    }},
+    ""tag"": ""proxy""
+  }}, {{
+    ""protocol"": ""freedom"",
+    ""tag"": ""direct""
+  }}],
+  ""routing"": {{
+    ""rules"": [{{
+      ""type"": ""field"",
+      ""network"": ""tcp,udp"",
+      ""outboundTag"": ""proxy""
+    }}]
+  }}
+}}";
+    }
+
+    private string ParseVless(string link)
+    {
+        // URL Decoding کامل
+        link = HttpUtility.UrlDecode(link);
+
+        var uri = new Uri(link);
+        var uuid = uri.UserInfo;
+        var address = uri.Host;
+        var port = uri.Port;
+        var query = HttpUtility.ParseQueryString(uri.Query);
+        var security = query["security"] ?? "none";
+        var type = query["type"] ?? "tcp";
+        var encryption = query["encryption"] ?? "none";
+        var sni = query["sni"] ?? address;
+        var host = query["host"] ?? sni;
+        var path = query["path"] ?? "/";
+
+        var tlsOrReality = "";
+        if (security == "tls")
+            tlsOrReality = $@",
+      ""tlsSettings"": {{ ""serverName"": ""{sni}"" }}";
+        else if (security == "reality")
+        {
+            var fp = query["fp"] ?? "chrome";
+            var pbk = query["pbk"] ?? "";
+            var sid = query["sid"] ?? "";
+            var spx = query["spx"] ?? "/";
+            tlsOrReality = $@",
+      ""realitySettings"": {{
+        ""serverName"": ""{sni}"",
+        ""fingerprint"": ""{fp}"",
+        ""publicKey"": ""{pbk}"",
+        ""shortId"": ""{sid}"",
+        ""spiderX"": ""{spx}""
+      }}";
+        }
+
+        var wsOrGrpc = "";
+        if (type == "ws")
+            wsOrGrpc = $@",
+      ""wsSettings"": {{
+        ""path"": ""{path}"",
+        ""headers"": {{ ""Host"": ""{host}"" }}
+      }}";
+        else if (type == "grpc")
+            wsOrGrpc = $@",
+      ""grpcSettings"": {{ ""serviceName"": ""{path}"" }}";
+
+        return $@"{{
+  ""log"": {{ ""loglevel"": ""warning"" }},
+  ""inbounds"": [{{
+    ""port"": 10808,
+    ""listen"": ""127.0.0.1"",
+    ""protocol"": ""socks"",
+    ""settings"": {{ ""auth"": ""noauth"", ""udp"": true }}
+  }}],
+  ""outbounds"": [{{
+    ""protocol"": ""vless"",
+    ""settings"": {{
+      ""vnext"": [{{
+        ""address"": ""{address}"",
+        ""port"": {port},
+        ""users"": [{{
+          ""id"": ""{uuid}"",
+          ""encryption"": ""{encryption}""
+        }}]
+      }}]
+    }},
+    ""streamSettings"": {{
+      ""network"": ""{type}"",
+      ""security"": ""{security}""{tlsOrReality}{wsOrGrpc}
+    }},
+    ""tag"": ""proxy""
+  }}, {{
+    ""protocol"": ""freedom"",
+    ""tag"": ""direct""
+  }}],
+  ""routing"": {{
+    ""rules"": [{{
+      ""type"": ""field"",
+      ""network"": ""tcp,udp"",
+      ""outboundTag"": ""proxy""
+    }}]
+  }}
+}}";
+    }
+
+    private async Task<(string country, string city, string ip)> GetServerInfoAsync()
+    {
+        try
+        {
+            using var client = new HttpClient();
+            var json = await client.GetStringAsync("https://ipapi.co/json/");
+            using var doc = JsonDocument.Parse(json);
+
+            var ip = doc.RootElement.GetProperty("ip").GetString() ?? "نامشخص";
+            var country = doc.RootElement.GetProperty("country_name").GetString() ?? "ناشناخته";
+            var city = doc.RootElement.GetProperty("city").GetString() ?? "ناشناخته";
+
+            return (country, city, ip);
+        }
+        catch
+        {
+            return ("ناموفق", "ناموفق", "ناموفق");
+        }
     }
 
 #if WINDOWS

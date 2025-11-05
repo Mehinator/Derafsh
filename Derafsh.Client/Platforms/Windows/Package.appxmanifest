@@ -40,6 +40,8 @@
   </Applications>
 
   <Capabilities>
+    <Capability Name="internetClient" />
+    <Capability Name="internetClientServer" />
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 

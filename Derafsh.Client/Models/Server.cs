@@ -3,14 +3,12 @@ using System.Runtime.CompilerServices;
 
 namespace Derafsh.Client.Models
 {
-    public class Server : INotifyPropertyChanged 
+    public class Server : INotifyPropertyChanged
     {
         public string Country { get; set; }
         public string City { get; set; }
         public string FlagUrl { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-
+        public string Config { get; set; } // <<-- کلید طلایی اینجا ذخیره می‌شود
 
         private int _ping;
         public int Ping
@@ -19,7 +17,7 @@ namespace Derafsh.Client.Models
             set
             {
                 _ping = value;
-                OnPropertyChanged(); 
+                OnPropertyChanged();
             }
         }
 

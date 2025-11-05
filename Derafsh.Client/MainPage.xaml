@@ -13,7 +13,9 @@
                 FontAttributes="Bold"
                 HorizontalOptions="Center" />
 
-            <ListView ItemsSource="{Binding Servers}" HeightRequest="450">
+            <ListView ItemsSource="{Binding Servers}" 
+                      ItemSelected="OnServerSelected"
+                      HeightRequest="450">
                 <ListView.ItemTemplate>
                     <DataTemplate>
                         <ViewCell>
@@ -28,11 +30,6 @@
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
-
-            <Button
-                Text="تست اجرای موتور"
-                Clicked="OnRunEngineClicked"
-                BackgroundColor="OrangeRed" />
 
             <Button
                 x:Name="ConnectButton"

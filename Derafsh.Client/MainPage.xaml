@@ -1,49 +1,64 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:Derafsh.Client"
              x:Class="Derafsh.Client.MainPage">
 
-    <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="15">
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <local:PingToColorConverter x:Key="PingToColor" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
-            <Label
-                x:Name="StatusLabel"
-                Text="وضعیت: قطع"
-                FontSize="Large"
-                FontAttributes="Bold"
-                HorizontalOptions="Center" />
+    <StackLayout Padding="20" Spacing="15">
+        <ListView x:Name="ServerListView"
+          ItemsSource="{Binding Servers}"
+          SelectedItem="{Binding SelectedServer, Mode=OneWayToSource}"
+          ItemSelected="OnServerSelected"
+          IsPullToRefreshEnabled="False"
+          HeightRequest="500"
+          BackgroundColor="White">
+            <ListView.ItemTemplate>
+                <DataTemplate>
+                    <ViewCell>
+                        <Grid Padding="12" ColumnDefinitions="Auto,*,Auto,Auto">
+                            <Image Grid.Column="0" Source="{Binding FlagUrl}" WidthRequest="40" HeightRequest="30" VerticalOptions="Center"/>
+                            <StackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
+                                <Label Text="{Binding Country}" FontSize="Medium" FontAttributes="Bold" />
+                                <Label Text="{Binding City}" FontSize="Small" />
+                            </StackLayout>
+                            <Label Grid.Column="2" 
+                           Text="{Binding Ping, StringFormat='پینگ: {0} ms'}" 
+                           TextColor="{Binding Ping, Converter={StaticResource PingToColor}}"
+                           VerticalOptions="Center" />
+                            <ActivityIndicator Grid.Column="3" 
+                                       IsRunning="{Binding IsPinging}" 
+                                       IsVisible="{Binding IsPinging}" 
+                                       VerticalOptions="Center" />
+                        </Grid>
+                    </ViewCell>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+        <Button Text="🚀 پیدا کردن بهترین سرور"
+        Clicked="OnFindBestServerClicked"
+        BackgroundColor="#007ACC"
+        TextColor="White"
+        CornerRadius="10"
+        Margin="20,10" />
+        <Button x:Name="ConnectButton"
+        Text="اتصال"
+        Clicked="OnConnectButtonClicked"
+        BackgroundColor="#28A745"
+        TextColor="White"
+        CornerRadius="10"
+        Margin="20,10" />
 
-            <!-- فیلد و دکمه اضافه کردن کانفیگ — فقط یک بار -->
-            <Entry x:Name="ConfigInput" Placeholder="لینک کانفیگ را وارد کنید (vless:// یا ss://)" />
-            <Button Text="افزودن کانفیگ" Clicked="OnAddConfigClicked" />
+        <Label x:Name="StatusLabel" 
+               Text="قطع" 
+               HorizontalOptions="Center" 
+               FontSize="Large" 
+               TextColor="Red" />
 
-            <!-- لیست سرورها -->
-            <ListView ItemsSource="{Binding Servers}" 
-                      ItemSelected="OnServerSelected"
-                      HeightRequest="450">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <ViewCell>
-                            <Grid Padding="10" ColumnDefinitions="Auto,*,Auto">
-                                <Image Grid.Column="0" Source="{Binding FlagUrl}" WidthRequest="40" HeightRequest="30" VerticalOptions="Center"/>
-                                <StackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
-                                    <Label Text="{Binding Country}" FontSize="Medium" FontAttributes="Bold" />
-                                    <Label Text="{Binding City}" FontSize="Small" />
-                                </StackLayout>
-                            </Grid>
-                        </ViewCell>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-
-            <Button
-                x:Name="ConnectButton"
-                Text="اتصال"
-                FontSize="Large"
-                Clicked="OnConnectButtonClicked"
-                HorizontalOptions="Fill" />
-
-        </VerticalStackLayout>
-    </ScrollView>
-
+    </StackLayout>
 </ContentPage>

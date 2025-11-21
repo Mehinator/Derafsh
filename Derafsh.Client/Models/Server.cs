@@ -1,30 +1,31 @@
 ﻿using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace Derafsh.Client.Models
+namespace Derafsh.Client
 {
     public class Server : INotifyPropertyChanged
     {
-        public string Country { get; set; }
-        public string City { get; set; }
-        public string FlagUrl { get; set; }
-        public string Config { get; set; } // <<-- کلید طلایی اینجا ذخیره می‌شود
+        public string Country { get; set; } = "";
+        public string City { get; set; } = "";
+        public string FlagUrl { get; set; } = "";
+        public string Config { get; set; } = "";
 
-        private int _ping;
+        private int _ping = -1;
         public int Ping
         {
             get => _ping;
-            set
-            {
-                _ping = value;
-                OnPropertyChanged();
-            }
+            set { _ping = value; OnPropertyChanged(); }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        private bool _isPinging;
+        public bool IsPinging
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+            get => _isPinging;
+            set { _isPinging = value; OnPropertyChanged(); }
         }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnPropertyChanged([CallerMemberName] string name = "") =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }

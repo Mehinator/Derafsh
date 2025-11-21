@@ -2,63 +2,81 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:Derafsh.Client"
-             x:Class="Derafsh.Client.MainPage">
+             x:Class="Derafsh.Client.MainPage"
+             BackgroundColor="#1A0520" 
+             Shell.NavBarIsVisible="False"
+             NavigationPage.HasNavigationBar="False"
+             FlowDirection="LeftToRight">
 
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:PingToColorConverter x:Key="PingToColor" />
+            <Style TargetType="Button">
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="CornerRadius" Value="15"/>
+                <Setter Property="HeightRequest" Value="50"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="TextColor" Value="#1A0520"/>
+            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <StackLayout Padding="20" Spacing="15">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="20">
+
+        <Border Grid.Row="0" 
+                BackgroundColor="#2D0B35" 
+                Stroke="#FFD700"
+                StrokeThickness="2"
+                StrokeShape="RoundRectangle 20"
+                Margin="0,0,0,20"
+                Padding="15">
+            <Border.Shadow>
+                <Shadow Brush="Black" Offset="0,5" Radius="10" Opacity="0.5"/>
+            </Border.Shadow>
+
+            <StackLayout Orientation="Horizontal" HorizontalOptions="Center" Spacing="15" VerticalOptions="Center">
+                <Image Source="derafsh_logo.png" HeightRequest="70" WidthRequest="70" VerticalOptions="Center"/>
+                <StackLayout Spacing="2" VerticalOptions="Center">
+                    <Label Text="DERAFSH VPN" TextColor="#FFD700" FontSize="22" FontAttributes="Bold" CharacterSpacing="2"/>
+                    <Label x:Name="StatusLabel" Text="در انتظار آزادی..." FontSize="14" TextColor="#FF5252" FontAttributes="Bold"/>
+                </StackLayout>
+            </StackLayout>
+        </Border>
+
         <ListView x:Name="ServerListView"
-          ItemsSource="{Binding Servers}"
-          SelectedItem="{Binding SelectedServer, Mode=OneWayToSource}"
-          ItemSelected="OnServerSelected"
-          IsPullToRefreshEnabled="False"
-          HeightRequest="500"
-          BackgroundColor="White">
+                  Grid.Row="1"
+                  ItemsSource="{Binding Servers}"
+                  SelectedItem="{Binding SelectedServer, Mode=OneWayToSource}"
+                  ItemSelected="OnServerSelected"
+                  SeparatorVisibility="None"
+                  BackgroundColor="Transparent"
+                  HasUnevenRows="True">
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <ViewCell>
-                        <Grid Padding="12" ColumnDefinitions="Auto,*,Auto,Auto">
-                            <Image Grid.Column="0" Source="{Binding FlagUrl}" WidthRequest="40" HeightRequest="30" VerticalOptions="Center"/>
-                            <StackLayout Grid.Column="1" VerticalOptions="Center" Margin="10,0">
-                                <Label Text="{Binding Country}" FontSize="Medium" FontAttributes="Bold" />
-                                <Label Text="{Binding City}" FontSize="Small" />
-                            </StackLayout>
-                            <Label Grid.Column="2" 
-                           Text="{Binding Ping, StringFormat='پینگ: {0} ms'}" 
-                           TextColor="{Binding Ping, Converter={StaticResource PingToColor}}"
-                           VerticalOptions="Center" />
-                            <ActivityIndicator Grid.Column="3" 
-                                       IsRunning="{Binding IsPinging}" 
-                                       IsVisible="{Binding IsPinging}" 
-                                       VerticalOptions="Center" />
-                        </Grid>
+                        <Border Margin="0,5" Padding="15" BackgroundColor="#3E1448" StrokeThickness="0" StrokeShape="RoundRectangle 15">
+                            <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="10">
+                                <Image Grid.Column="0" Source="flag_unknown.png" WidthRequest="30" HeightRequest="30" VerticalOptions="Center" Opacity="0.8"/>
+                                <StackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                    <Label Text="{Binding City}" TextColor="#FFD700" FontSize="14" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
+                                    <Label Text="{Binding Config}" TextColor="#E0B0FF" FontSize="10" LineBreakMode="TailTruncation" Opacity="0.7"/>
+                                </StackLayout>
+                                <StackLayout Grid.Column="2" VerticalOptions="Center" Orientation="Horizontal" Spacing="8">
+                                    <Label Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="13" FontAttributes="Bold" VerticalOptions="Center"/>
+                                    <ActivityIndicator IsRunning="{Binding IsPinging}" IsVisible="{Binding IsPinging}" Color="#FFD700" HeightRequest="18"/>
+                                </StackLayout>
+                            </Grid>
+                        </Border>
                     </ViewCell>
                 </DataTemplate>
             </ListView.ItemTemplate>
         </ListView>
-        <Button Text="🚀 پیدا کردن بهترین سرور"
-        Clicked="OnFindBestServerClicked"
-        BackgroundColor="#007ACC"
-        TextColor="White"
-        CornerRadius="10"
-        Margin="20,10" />
-        <Button x:Name="ConnectButton"
-        Text="اتصال"
-        Clicked="OnConnectButtonClicked"
-        BackgroundColor="#28A745"
-        TextColor="White"
-        CornerRadius="10"
-        Margin="20,10" />
 
-        <Label x:Name="StatusLabel" 
-               Text="قطع" 
-               HorizontalOptions="Center" 
-               FontSize="Large" 
-               TextColor="Red" />
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,20,0,0">
+            <Button Grid.Row="0" Grid.Column="0" Text="🚀 بهترین سرور" Clicked="OnFindBestServerClicked" BackgroundColor="#FFD700"/>
+            <Button Grid.Row="0" Grid.Column="1" Text="🧹 پاکسازی" Clicked="OnCleanAndSaveClicked" BackgroundColor="#FF5252" TextColor="White"/>
+            <Button x:Name="ConnectButton" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Text="اتصال به درفش" Clicked="OnConnectButtonClicked" BackgroundColor="#00E676" HeightRequest="60" FontSize="20" CornerRadius="30" Margin="0,10,0,0"/>
+        </Grid>
 
-    </StackLayout>
+    </Grid>
 </ContentPage>

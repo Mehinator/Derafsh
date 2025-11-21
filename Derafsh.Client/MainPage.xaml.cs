@@ -396,18 +396,81 @@ namespace Derafsh.Client
 
         private async Task PingAllServers()
         {
-            DebugLog.Write("شروع پینگ همه - PullToRefresh یا دکمه - تعداد: " + Servers.Count);
+            DebugLog.Write($"شروع پینگ هوشمند - تعداد: {Servers.Count}");
             IsRefreshing = true;
 
-            var tasks = Servers.Select(s => PingSingleServer(s).ContinueWith(_ => Task.Delay(300)));
+            // این خط جادوییه: حداکثر ۱۰ تا پینگ همزمان
+            using var semaphore = new SemaphoreSlim(10);
+
+            var tasks = Servers.Select(async server =>
+            {
+                await semaphore.WaitAsync(); // نوبت بگیر
+                try
+                {
+                    await PingSingleServer(server);
+                }
+                finally
+                {
+                    semaphore.Release(); // نوبت رو بده نفر بعدی
+                }
+            });
+
             await Task.WhenAll(tasks);
 
-            var sorted = Servers.OrderBy(s => s.Ping == 999 ? 999999 : s.Ping).ToList();
+            // مرتب‌سازی لیست (خوب‌ها بالا، خراب‌ها پایین)
+            var sorted = Servers.OrderBy(s => s.Ping == -1 || s.Ping == 999 ? 999999 : s.Ping).ToList();
             Servers.Clear();
             foreach (var s in sorted) Servers.Add(s);
 
             IsRefreshing = false;
-            DebugLog.Write("پینگ همه تمام شد - لیست مرتب شد");
+            DebugLog.Write("پینگ هوشمند تمام شد.");
+        }
+        private async void OnCleanAndSaveClicked(object sender, EventArgs e)
+        {
+            if (Servers.Count == 0) return;
+
+            bool answer = await DisplayAlert("پاکسازی", "آشغال‌ها رو بریزم دور؟", "آره", "نه");
+            if (!answer) return;
+
+            StatusLabel.Text = "در حال غربالگری...";
+
+            // --- اصلاحیه حیاتی ---
+            // پینگ 999 یعنی خطا. پس باید بگیم پینگ باید کمتر از 900 باشه (یا هر عددی که حس می‌کنی حدِ تحمله)
+            var goodServers = Servers
+                .Where(s => s.Ping > 0 && s.Ping < 800) // فقط زیر 800 میلی‌ثانیه رو نگه دار
+                .OrderBy(s => s.Ping)
+                .ToList();
+
+            if (goodServers.Count == 0)
+            {
+                await DisplayAlert("نتیجه", "همه کانفیگ‌ها داغون بودن! چیزی نموند.", "باشه");
+                StatusLabel.Text = "لغو شد";
+                return;
+            }
+
+            // آپدیت لیست (با تکنیک شوک به UI)
+            Servers.Clear();
+            foreach (var s in goodServers) Servers.Add(s);
+
+            // این دو خط رو هم بذار باشه که مطمئن شیم لیست گرافیکی هم رفرش میشه
+            ServerListView.ItemsSource = null;
+            ServerListView.ItemsSource = Servers;
+
+            // ذخیره در فایل
+            try
+            {
+                string configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "configs.txt");
+                var linesToSave = goodServers.Select(s => s.Config).ToList();
+                await File.WriteAllLinesAsync(configFilePath, linesToSave);
+
+                StatusLabel.Text = $"{goodServers.Count} کانفیگ ناب باقی ماند";
+                // یه فیدبک کوچیک هم بدیم
+                await DisplayAlert("تمیز شد ✨", $"تعداد {goodServers.Count} تا کانفیگِ سرحال (زیر 800ms) ذخیره شد.", "ایول");
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("خطا", ex.Message, "باشه");
+            }
         }
         private async void OnFindBestServerClicked(object sender, EventArgs e)
         {
@@ -675,7 +738,26 @@ namespace Derafsh.Client
                 ],
                 {routing}
             }}";
-        }       
+        }
+        // این متد رو از بیرون صدا می‌زنیم تا همه چی رو بکشه
+        public static void CleanupOnExit()
+        {
+            try
+            {
+                // 1. خاموش کردن پروکسی (کدش رو کپی کردیم اینجا که استاتیک باشه)
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true);
+                key?.SetValue("ProxyEnable", 0);
+
+                // 2. کشتن Xray
+                foreach (var proc in Process.GetProcessesByName("xray"))
+                {
+                    try { proc.Kill(); } catch { }
+                }
+
+                DebugLog.Write("پاکسازی خروج انجام شد.");
+            }
+            catch { }
+        }
 #if WINDOWS
         private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
         private void EnableProxy()

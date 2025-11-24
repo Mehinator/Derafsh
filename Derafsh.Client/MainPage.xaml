@@ -3,7 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:Derafsh.Client"
              x:Class="Derafsh.Client.MainPage"
-             BackgroundColor="#1A0520" 
+             BackgroundColor="#121212"
              Shell.NavBarIsVisible="False"
              NavigationPage.HasNavigationBar="False"
              FlowDirection="LeftToRight">
@@ -11,60 +11,99 @@
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:PingToColorConverter x:Key="PingToColor" />
-            <Style TargetType="Button">
-                <Setter Property="FontAttributes" Value="Bold"/>
-                <Setter Property="CornerRadius" Value="15"/>
-                <Setter Property="HeightRequest" Value="50"/>
-                <Setter Property="FontSize" Value="16"/>
-                <Setter Property="TextColor" Value="#1A0520"/>
-            </Style>
+            <local:BoolToColorConverter x:Key="BoolToColor" />
+            <local:BoolToThicknessConverter x:Key="BoolToThickness" />
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="20">
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="15" RowSpacing="10">
 
-        <Border Grid.Row="0" 
-                BackgroundColor="#2D0B35" 
-                Stroke="#FFD700"
-                StrokeThickness="2"
-                StrokeShape="RoundRectangle 20"
-                Margin="0,0,0,20"
-                Padding="15">
-            <Border.Shadow>
-                <Shadow Brush="Black" Offset="0,5" Radius="10" Opacity="0.5"/>
-            </Border.Shadow>
-
-            <StackLayout Orientation="Horizontal" HorizontalOptions="Center" Spacing="15" VerticalOptions="Center">
-                <Image Source="derafsh_logo.png" HeightRequest="70" WidthRequest="70" VerticalOptions="Center"/>
-                <StackLayout Spacing="2" VerticalOptions="Center">
-                    <Label Text="DERAFSH VPN" TextColor="#FFD700" FontSize="22" FontAttributes="Bold" CharacterSpacing="2"/>
-                    <Label x:Name="StatusLabel" Text="در انتظار آزادی..." FontSize="14" TextColor="#FF5252" FontAttributes="Bold"/>
+        <Border Grid.Row="0" BackgroundColor="#1F1F1F" Stroke="#FFD700" StrokeThickness="1" StrokeShape="RoundRectangle 15" Padding="10">
+            <StackLayout Orientation="Horizontal" Spacing="15" VerticalOptions="Center">
+                <Image Source="derafsh_logo.png" HeightRequest="50" WidthRequest="50"/>
+                <StackLayout Spacing="0" VerticalOptions="Center">
+                    <Label Text="DERAFSH VPN" TextColor="#FFD700" FontSize="20" FontAttributes="Bold" CharacterSpacing="2"/>
+                    <Label x:Name="StatusLabel" Text="Ready..." FontSize="12" TextColor="#AAAAAA"/>
                 </StackLayout>
             </StackLayout>
         </Border>
 
-        <ListView x:Name="ServerListView"
-                  Grid.Row="1"
-                  ItemsSource="{Binding Servers}"
-                  SelectedItem="{Binding SelectedServer, Mode=OneWayToSource}"
-                  ItemSelected="OnServerSelected"
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="5" Margin="0,0,0,10">
+            <Button Grid.Column="0"
+                    x:Name="BtnTabAll" 
+                    Text="همه" 
+                    Clicked="OnTabClicked" 
+                    CommandParameter="All" 
+                    BackgroundColor="#FFD700" 
+                    TextColor="Black" 
+                    CornerRadius="10" 
+                    HeightRequest="40" 
+                    FontSize="12" 
+                    FontAttributes="Bold"/>
+
+            <Button Grid.Column="1"
+                    x:Name="BtnTabPersonal" 
+                    Text="شخصی" 
+                    Clicked="OnTabClicked" 
+                    CommandParameter="Personal" 
+                    BackgroundColor="#333" 
+                    TextColor="White" 
+                    CornerRadius="10" 
+                    HeightRequest="40" 
+                    FontSize="12"/>
+
+            <Button Grid.Column="2"
+                    x:Name="BtnTabOnline" 
+                    Text="آنلاین" 
+                    Clicked="OnTabClicked" 
+                    CommandParameter="Online" 
+                    BackgroundColor="#333" 
+                    TextColor="White" 
+                    CornerRadius="10" 
+                    HeightRequest="40" 
+                    FontSize="12"/>
+        </Grid>
+
+        <ListView x:Name="ServerListView" 
+                  Grid.Row="2" 
+                  IsGroupingEnabled="True"
+                  HasUnevenRows="True"
                   SeparatorVisibility="None"
                   BackgroundColor="Transparent"
-                  HasUnevenRows="True">
+                  ItemSelected="OnServerSelected">
+
+            <ListView.GroupHeaderTemplate>
+                <DataTemplate>
+                    <ViewCell>
+                        <Label Text="{Binding Name}" TextColor="#00E676" FontSize="14" FontAttributes="Bold" Padding="10,5,0,5" BackgroundColor="#121212"/>
+                    </ViewCell>
+                </DataTemplate>
+            </ListView.GroupHeaderTemplate>
+
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <ViewCell>
-                        <Border Margin="0,5" Padding="15" BackgroundColor="#3E1448" StrokeThickness="0" StrokeShape="RoundRectangle 15">
-                            <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="10">
-                                <Image Grid.Column="0" Source="flag_unknown.png" WidthRequest="30" HeightRequest="30" VerticalOptions="Center" Opacity="0.8"/>
-                                <StackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
-                                    <Label Text="{Binding City}" TextColor="#FFD700" FontSize="14" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
-                                    <Label Text="{Binding Config}" TextColor="#E0B0FF" FontSize="10" LineBreakMode="TailTruncation" Opacity="0.7"/>
+                        <Border Margin="5,2" Padding="10" 
+                                BackgroundColor="#252525" 
+                                StrokeShape="RoundRectangle 10"
+                                Stroke="{Binding IsSelected, Converter={StaticResource BoolToColor}}"
+                                StrokeThickness="{Binding IsSelected, Converter={StaticResource BoolToThickness}}">
+
+                            <Grid ColumnDefinitions="30,*,Auto,Auto" ColumnSpacing="10">
+                                <Label Grid.Column="0" Text="{Binding Index}" TextColor="#666" FontSize="12" VerticalOptions="Center" HorizontalOptions="Center"/>
+
+                                <StackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding City}" TextColor="White" FontSize="13" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
+                                    <Label Text="{Binding Config}" TextColor="#888" FontSize="10" LineBreakMode="TailTruncation"/>
                                 </StackLayout>
-                                <StackLayout Grid.Column="2" VerticalOptions="Center" Orientation="Horizontal" Spacing="8">
-                                    <Label Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="13" FontAttributes="Bold" VerticalOptions="Center"/>
-                                    <ActivityIndicator IsRunning="{Binding IsPinging}" IsVisible="{Binding IsPinging}" Color="#FFD700" HeightRequest="18"/>
+
+                                <StackLayout Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalOptions="Center">
+                                    <Label Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="12" FontAttributes="Bold"/>
+                                    <ActivityIndicator IsRunning="{Binding IsPinging}" IsVisible="{Binding IsPinging}" Color="White" HeightRequest="15" WidthRequest="15"/>
                                 </StackLayout>
+
+                                <Button Grid.Column="3" Text="✖" TextColor="White" BackgroundColor="#D50000" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0"
+                                        IsVisible="{Binding IsRemovable}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"/>
                             </Grid>
                         </Border>
                     </ViewCell>
@@ -72,10 +111,14 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <Grid Grid.Row="2" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,20,0,0">
-            <Button Grid.Row="0" Grid.Column="0" Text="🚀 بهترین سرور" Clicked="OnFindBestServerClicked" BackgroundColor="#FFD700"/>
-            <Button Grid.Row="0" Grid.Column="1" Text="🧹 پاکسازی" Clicked="OnCleanAndSaveClicked" BackgroundColor="#FF5252" TextColor="White"/>
-            <Button x:Name="ConnectButton" Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Text="اتصال به درفش" Clicked="OnConnectButtonClicked" BackgroundColor="#00E676" HeightRequest="60" FontSize="20" CornerRadius="30" Margin="0,10,0,0"/>
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,10,0,0">
+            <Button Grid.Row="0" Grid.Column="0" Text="🔄 آپدیت آنلاین" Clicked="OnUpdateOnlineClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
+            <Button Grid.Row="0" Grid.Column="1" Text="➕ افزودن" Clicked="OnAddCustomConfigClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
+            <Button Grid.Row="0" Grid.Column="2" Text="🔥 حذف خراب‌ها" Clicked="OnDeleteDeadConfigsClicked" BackgroundColor="#D50000" TextColor="White" FontSize="11"/>
+
+            <Button Grid.Row="1" Grid.Column="0" Text="⚡ تست پینگ" Clicked="OnFindBestServerClicked" BackgroundColor="#FFD700" TextColor="Black" FontSize="12"/>
+
+            <Button x:Name="ConnectButton" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="اتصال" Clicked="OnConnectButtonClicked" BackgroundColor="#00E676" TextColor="Black" FontAttributes="Bold" HeightRequest="55" CornerRadius="25"/>
         </Grid>
 
     </Grid>

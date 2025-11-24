@@ -1,392 +1,410 @@
-﻿using Derafsh.Client;
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
-using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using System.Web;
-using Microsoft.Maui.Controls;
-using System.Windows.Input;
-using System;
+using Derafsh.Client.Models;
 #if WINDOWS
 using Microsoft.Win32;
 #endif
 
 namespace Derafsh.Client
 {
-    public static class DebugLog
-    {
-        private static readonly string LogPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "derafsh_debug.txt");
-        public static void Write(string msg)
-        {
-            try
-            {
-                string fullMsg = $"{DateTime.Now:HH:mm:ss} - {msg}{Environment.NewLine}";
-                File.AppendAllText(LogPath, fullMsg);
-                // نیروی فلاش برای ساخت فوری فایل
-                using (var fs = new FileStream(LogPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
-                {
-                    fs.Flush(true);
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"لاگ شکست: {ex.Message} - مسیر: {LogPath}");
-            }
-        }
-    }
     public partial class MainPage : ContentPage, INotifyPropertyChanged
     {
+        private const string OnlineConfigUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_servers.txt";
+
+        private string CloudPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_configs.txt");
+        private string UserPath => Path.Combine(FileSystem.AppDataDirectory, "user_configs.txt");
+
+        [DllImport("wininet.dll")] private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
+
+        public ObservableCollection<ServerGroup> ServerGroups { get; } = new();
+        private List<Server> AllServers => ServerGroups.SelectMany(g => g).ToList();
+
+        private Process? xrayProcess;
+        private bool isConnected = false;
+        private Server? _currentServer;
+
+        // وضعیت تب فعلی (All, Personal, Online)
+        private string CurrentTab = "All";
+
         public event PropertyChangedEventHandler? PropertyChanged;
-
         protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-
-        [DllImport("wininet.dll")]
-        private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
-        private const int INTERNET_OPTION_SETTINGS_CHANGED = 39;
-        private const int INTERNET_OPTION_REFRESH = 37;
-
-        public ObservableCollection<Server> Servers { get; } = new();
 
         private Server? _selectedServer;
         public Server? SelectedServer
         {
             get => _selectedServer;
-            set
-            {
-                if (_selectedServer != value)
-                {
-                    _selectedServer = value;
-                    DebugLog.Write($"SelectedServer ست شد (دائمی): {_selectedServer?.City ?? "NULL"}");
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        private Process? xrayProcess;
-        private bool isConnected = false;
-
-        private bool _isRefreshing;
-        public bool IsRefreshing
-        {
-            get => _isRefreshing;
-            set
-            {
-                _isRefreshing = value;
-                OnPropertyChanged();
-                DebugLog.Write($"IsRefreshing تغییر کرد به: {value}");
-            }
+            set { if (_selectedServer != value) { _selectedServer = value; OnPropertyChanged(); } }
         }
 
         public MainPage()
         {
             InitializeComponent();
             BindingContext = this;
-            // *** این خط رو اضافه کن ***
-            LoadDefaultConfigs();
-
-            DebugLog.Write("کانفیگ‌های پیش‌فرض لود شدند");
+            if (ServerListView != null) ServerListView.ItemsSource = ServerGroups;
+            _ = Task.Run(() => MainThread.BeginInvokeOnMainThread(LoadConfigs));
         }
-        private void OnServerSelected(object sender, SelectedItemChangedEventArgs e)
-        {
-            DebugLog.Write($"OnServerSelected کال شد - e.SelectedItem نوع: {(e.SelectedItem?.GetType().Name ?? "NULL")}");
 
-            if (e.SelectedItem is Server server)
+        // --- مدیریت تب‌ها ---
+        private void OnTabClicked(object sender, EventArgs e)
+        {
+            if (sender is Button btn && btn.CommandParameter is string tab)
             {
-                SelectedServer = server;
-                DebugLog.Write($"سرور انتخاب شد (دائمی): {server.City} - پینگ: {server.Ping} ms");
-                MainThread.BeginInvokeOnMainThread(async () => await DisplayAlert("انتخاب شد ✅", $"سرور: {server.City}\nپینگ: {server.Ping} ms", "OK"));
+                CurrentTab = tab;
+                // تغییر رنگ دکمه‌ها
+                BtnTabAll.BackgroundColor = tab == "All" ? Colors.Gold : Color.FromArgb("#333");
+                BtnTabAll.TextColor = tab == "All" ? Colors.Black : Colors.White;
+
+                BtnTabPersonal.BackgroundColor = tab == "Personal" ? Colors.Gold : Color.FromArgb("#333");
+                BtnTabPersonal.TextColor = tab == "Personal" ? Colors.Black : Colors.White;
+
+                BtnTabOnline.BackgroundColor = tab == "Online" ? Colors.Gold : Color.FromArgb("#333");
+                BtnTabOnline.TextColor = tab == "Online" ? Colors.Black : Colors.White;
+
+                LoadConfigs();
             }
-            // اگر null بود → هیچ کاری نکن! (مهم‌ترین قسمت)
-            // دی‌سلکت هم نکن! MAUI خودش هایلایت رو برمی‌داره
         }
-        //private async void OnAddConfigClicked(object sender, EventArgs e)
-        //{
-        //    DebugLog.Write("دکمه 'اضافه کن' زده شد");
-        //    string link = ConfigInput.Text?.Trim() ?? "";
-        //    if (string.IsNullOrEmpty(link) || (!link.StartsWith("vmess://") && !link.StartsWith("vless://") && !link.StartsWith("trojan://") && !link.StartsWith("ss://")))
-        //    {
-        //        await DisplayAlert("خطا", "لینک معتبر نیست!", "باشه");
-        //        DebugLog.Write("لینک نامعتبر - اضافه نشد");
-        //        return;
-        //    }
 
-        //    string displayName = "ناشناخته";
-        //    try
-        //    {
-        //        var uri = new Uri(link);
-        //        displayName = $"{uri.Host}:{uri.Port}";
-        //    }
-        //    catch { }
-
-        //    var newServer = new Server
-        //    {
-        //        Config = link,
-        //        Country = "در حال تست",
-        //        City = displayName,
-        //        FlagUrl = "flag_unknown.png"
-        //    };
-
-        //    Servers.Add(newServer);
-        //    ConfigInput.Text = string.Empty;
-        //    await PingSingleServer(newServer);
-        //    DebugLog.Write($"سرور اضافه شد: {displayName} - مجموع سرورها: {Servers.Count}");
-        //}
-        private void LoadDefaultConfigs()
+        // --- لود کردن لیست (بدون تکرار) ---
+        private async void LoadConfigs()
         {
-            // مسیر فایل configs.txt کنار فایل اجرایی
-            string configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "configs.txt");
+            ServerGroups.Clear();
+            int idx = 1;
 
-            if (!File.Exists(configFilePath))
+            // 1. شخصی‌ها
+            if (CurrentTab == "All" || CurrentTab == "Personal")
             {
-                DebugLog.Write("فایل configs.txt پیدا نشد! ساخت فایل نمونه...");
+                if (File.Exists(UserPath))
+                {
+                    var list = await ParseAndAddFile(UserPath, true);
+                    if (list.Any())
+                    {
+                        foreach (var s in list) s.Index = idx++;
+                        ServerGroups.Add(new ServerGroup("👤 شخصی", list));
+                    }
+                }
+            }
+
+            // 2. آنلاین‌ها
+            if (CurrentTab == "All" || CurrentTab == "Online")
+            {
+                if (!File.Exists(CloudPath)) await UpdateOnlineConfigs(false); // false یعنی رفرش نکن، فقط دانلود
+
+                if (File.Exists(CloudPath))
+                {
+                    var list = await ParseAndAddFile(CloudPath, false);
+                    // همیشه 30 تای رندوم (مگر اینکه قبلاً لود شده باشه و نخوایم تغییر کنه)
+                    // اینجا برای سادگی هر بار رندوم میکنیم
+                    var random = list.OrderBy(x => Guid.NewGuid()).Take(30).ToList();
+                    if (random.Any())
+                    {
+                        foreach (var s in random) s.Index = idx++;
+                        ServerGroups.Add(new ServerGroup("🌐 آنلاین", random));
+                    }
+                }
+            }
+
+            // شوک به UI برای رفرش گرافیکی
+            if (ServerListView != null) { ServerListView.ItemsSource = null; ServerListView.ItemsSource = ServerGroups; }
+
+            // انتخاب خودکار اگه هیچی انتخاب نیست
+            if (AllServers.Any() && SelectedServer == null) SelectServer(AllServers.First());
+        }
+
+        private async Task<List<Server>> ParseAndAddFile(string path, bool isUser)
+        {
+            var list = new List<Server>();
+            try
+            {
+                var fileContent = await File.ReadAllTextAsync(path);
+                // این Regex هم هیستریا رو می‌فهمه هم لینک‌های کثیف رو تمیزتر درمیاره
+                var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+                var matches = regex.Matches(fileContent);
+
+                foreach (Match match in matches)
+                {
+                    string link = match.Value.Trim().TrimEnd(')', ']', '}', '"', '\'', '`');
+                    var s = CreateServerObj(link, isUser);
+                    if (s != null) list.Add(s);
+                }
+            }
+            catch { }
+            return list;
+        }
+
+        private Server? CreateServerObj(string link, bool isUser)
+        {
+            try
+            {
+                string name = "Server";
                 try
                 {
-                    // یه فایل نمونه می‌سازیم که کاربر گیج نشه
-                    File.WriteAllText(configFilePath, "vmess://...\nvless://...");
+                    if (!link.StartsWith("vmess"))
+                    {
+                        var uri = new Uri(link);
+                        name = !string.IsNullOrEmpty(uri.Fragment) ? HttpUtility.UrlDecode(uri.Fragment.TrimStart('#')) : $"{uri.Host}:{uri.Port}";
+                    }
+                    else name = "Vmess Server";
                 }
                 catch { }
-                return;
+                return new Server { Config = link, City = name, IsRemovable = isUser, Ping = -1 };
             }
-
-            try
-            {
-                // خواندن تمام خطوط فایل
-                var lines = File.ReadAllLines(configFilePath);
-
-                int count = 0;
-                foreach (var line in lines)
-                {
-                    string link = line.Trim();
-                    // رد کردن خطوط خالی یا کامنت (اگه با # شروع بشه)
-                    if (string.IsNullOrEmpty(link) || link.StartsWith("#")) continue;
-
-                    // استفاده از همون متد قبلی برای اضافه کردن به لیست
-                    try
-                    {
-                        // لاجیک دستی اضافه کردن (چون متد AddServerToList پرایوت بود، کدش رو اینجا میاریم یا اونو پابلیک کن)
-                        // اینجا کد خلاصه‌ش رو میذارم:
-
-                        string displayName = "Server " + (count + 1);
-                        try
-                        {
-                            if (!link.StartsWith("vmess"))
-                            {
-                                var uri = new Uri(link);
-                                displayName = uri.Fragment.TrimStart('#');
-                                if (string.IsNullOrEmpty(displayName)) displayName = $"{uri.Host}:{uri.Port}";
-                            }
-                            else displayName = "Vmess Server";
-                        }
-                        catch { }
-
-                        Servers.Add(new Server
-                        {
-                            Config = link,
-                            City = HttpUtility.UrlDecode(displayName), // دیکد کردن نام فارسی
-                            Country = "---",
-                            FlagUrl = "flag_unknown.png"
-                        });
-                        count++;
-                    }
-                    catch { }
-                }
-                DebugLog.Write($"{count} کانفیگ از فایل لود شد.");
-
-                if (Servers.Count > 0) SelectedServer = Servers[0];
-            }
-            catch (Exception ex)
-            {
-                DebugLog.Write("خطا در خواندن فایل کانفیگ: " + ex.Message);
-            }
+            catch { return null; }
         }
-        private async void OnConnectButtonClicked(object sender, EventArgs e)
+
+        // --- دکمه‌ها ---
+
+        private async void OnUpdateOnlineClicked(object sender, EventArgs e) => await UpdateOnlineConfigs(true);
+
+        private async Task UpdateOnlineConfigs(bool reload = true)
         {
-            // 1. اگه متصل بودیم، حالا قطعش کن
-            if (isConnected)
+            if (reload) StatusLabel.Text = "Downloading...";
+            try
             {
-                DisableProxy();
-                foreach (var proc in Process.GetProcessesByName("xray")) { try { proc.Kill(); proc.WaitForExit(1000); } catch { } }
-
-                StatusLabel.Text = "قطع";
-                StatusLabel.TextColor = Colors.Red;
-                ConnectButton.Text = "اتصال";
-                ConnectButton.BackgroundColor = Colors.Green; // سبز برای اتصال مجدد
-
-                if (SelectedServer != null)
+                using var client = new HttpClient(); client.Timeout = TimeSpan.FromSeconds(20);
+                var content = await client.GetStringAsync(OnlineConfigUrl);
+                await File.WriteAllTextAsync(CloudPath, content);
+                if (reload)
                 {
-                    SelectedServer.Country = "قطع شده";
-                    SelectedServer.City = "---";
+                    LoadConfigs();
+                    StatusLabel.Text = "Updated ✅";
                 }
+            }
+            catch (Exception ex) { if (reload) StatusLabel.Text = "Update Failed"; }
+        }
 
-                isConnected = false;
+        private async void OnAddCustomConfigClicked(object sender, EventArgs e)
+        {
+            string initial = "";
+            if (Clipboard.Default.HasText) initial = await Clipboard.Default.GetTextAsync();
+            string input = await DisplayPromptAsync("Add Config", "Paste here:", "Add", "Cancel", initialValue: initial);
+
+            if (string.IsNullOrWhiteSpace(input)) return;
+
+            var regex = new Regex(@"(vmess|vless|ss|trojan)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+            var matches = regex.Matches(input);
+            var links = new List<string>();
+
+            foreach (Match m in matches)
+                links.Add(m.Value.Trim().TrimEnd(')', ']', '}', '"', '\'', '`'));
+
+            if (links.Any())
+            {
+                links = links.Distinct().ToList();
+                await File.AppendAllLinesAsync(UserPath, links);
+                LoadConfigs();
+                await DisplayAlert("OK", $"{links.Count} Added.", "OK");
+            }
+            else await DisplayAlert("Error", "No link found.", "OK");
+        }
+
+        private void OnDeleteSingleItemClicked(object sender, EventArgs e)
+        {
+            if (sender is Button btn && btn.CommandParameter is Server s) _ = DeleteServer(s);
+        }
+
+        private async Task DeleteServer(Server s)
+        {
+            if (!await DisplayAlert("Delete", $"Remove {s.City}?", "Yes", "No")) return;
+            try
+            {
+                var lines = (await File.ReadAllLinesAsync(UserPath)).ToList();
+                lines.RemoveAll(l => l.Contains(s.Config));
+                await File.WriteAllLinesAsync(UserPath, lines);
+                LoadConfigs();
+            }
+            catch { }
+        }
+
+        // حذف خراب‌ها (بدون ریلود کردن و پروندن پینگ‌ها)
+        private async void OnDeleteDeadConfigsClicked(object sender, EventArgs e)
+        {
+            if (!await DisplayAlert("Cleanup", "Remove dead configs (Ping > 5000)?", "Yes", "No")) return;
+
+            // 1. شناسایی خراب‌ها از لیست فعلی
+            var deadConfigs = AllServers.Where(s => s.Ping >= 5000 || s.Ping <= 0).ToList();
+
+            if (!deadConfigs.Any())
+            {
+                await DisplayAlert("Info", "All configs are good!", "OK");
                 return;
             }
 
-            if (SelectedServer == null)
+            // 2. حذف از فایل شخصی
+            if (File.Exists(UserPath))
             {
-                // اگه کاربر هیچی انتخاب نکرده بود، ما اولین سرور لیست رو برمیداریم
-                if (Servers.Count > 0)
-                {
-                    SelectedServer = Servers[0];
-                    StatusLabel.Text = "انتخاب خودکار سرور...";
-                }
-                else
-                {
-                    await DisplayAlert("خطا", "لیست کانفیگ‌ها خالیه فرمانده!", "باشه");
-                    return;
-                }
+                var lines = (await File.ReadAllLinesAsync(UserPath)).ToList();
+                int removed = lines.RemoveAll(l => deadConfigs.Any(d => l.Contains(d.Config)));
+                if (removed > 0) await File.WriteAllLinesAsync(UserPath, lines);
             }
 
-            StatusLabel.Text = "در حال راه‌اندازی...";
-            StatusLabel.TextColor = Colors.Orange;
-
-            try
+            // 3. حذف از فایل آنلاین (فقط لوکال)
+            // برای آنلاین‌ها، چون هر بار رندوم میاد، حذف کردنشون از فایل لوکال موثره
+            if (File.Exists(CloudPath))
             {
-                // 3. راه‌اندازی Xray (همون کدهای قبلی که سالم بود)
-                string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
-                string configPath = Path.Combine(coreDir, "config.json");
-                string enginePath = Path.Combine(coreDir, "xray.exe");
-
-                if (!File.Exists(enginePath))
-                {
-                    await DisplayAlert("خطا", "موتور xray.exe پیدا نشد!", "باشه");
-                    return;
-                }
-
-                // کشتن پروسه‌های قبلی برای جلوگیری از تداخل
-                foreach (var proc in Process.GetProcessesByName("xray")) { try { proc.Kill(); } catch { } }
-
-                string configJson = ParseConfig(SelectedServer.Config);
-                await File.WriteAllTextAsync(configPath, configJson);
-
-                // پاک کردن لاگ قدیمی
-                string logPath = Path.Combine(coreDir, "xray_log.txt");
-                if (File.Exists(logPath)) File.Delete(logPath);
-
-                xrayProcess = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = enginePath,
-                        Arguments = $"-c \"{configPath}\"",
-                        WorkingDirectory = coreDir,
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardError = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardInput = true
-                    }
-                };
-
-                xrayProcess.Start();
-
-                // لاگ کردن خطاها برای دیباگ (اختیاری ولی مفید)
-                xrayProcess.ErrorDataReceived += (s, args) => { if (args.Data != null) DebugLog.Write("Xray Error: " + args.Data); };
-                xrayProcess.BeginErrorReadLine();
-
-                // یکم صبر کنیم تا موتور گرم بشه
-                await Task.Delay(2000);
-
-                // 4. فعال کردن پروکسی ویندوز
-                EnableProxy();
-                StatusLabel.Text = "بررسی اتصال...";
-
-                // صبر بیشتر برای اعمال پروکسی
-                await Task.Delay(2000);
-
-                // 5. *** بخش جدید: چک کردن IP از داخل تونل ***
-                string newIp = "نامشخص";
-                string country = "";
-
-                try
-                {
-                    // اینجا به برنامه میگیم حتماً از پورت 10809 (پورت درفش) استفاده کنه
-                    var proxy = new System.Net.WebProxy("socks5://127.0.0.1:10809");
-                    var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
-
-                    using var client = new HttpClient(handler);
-                    client.Timeout = TimeSpan.FromSeconds(20); // 10 ثانیه وقت میدیم
-
-                    // این سایت IP و کشور رو به صورت JSON میده
-                    var jsonResponse = await client.GetStringAsync("http://ip-api.com/json");
-
-                    // تحلیل JSON
-                    using var doc = JsonDocument.Parse(jsonResponse);
-                    var root = doc.RootElement;
-
-                    if (root.GetProperty("status").GetString() == "success")
-                    {
-                        newIp = root.GetProperty("query").GetString();
-                        country = root.GetProperty("country").GetString();
-                    }
-                }
-                catch (Exception ex)
-                {
-                    DebugLog.Write("خطا در اتصال به اینترنت از طریق پروکسی: " + ex.Message);
-                    newIp = "خطا";
-                }
-
-                // 6. نتیجه نهایی
-                if (newIp != "خطا" && newIp != "نامشخص")
-                {
-                    StatusLabel.Text = $"متصل به {country}\nIP: {newIp}";
-                    StatusLabel.TextColor = Colors.Green;
-                    ConnectButton.Text = "قطع اتصال";
-                    ConnectButton.BackgroundColor = Colors.Red; // قرمز برای قطع
-
-                    SelectedServer.Country = country;
-                    SelectedServer.City = newIp; // نمایش IP جای شهر
-                    isConnected = true;
-                }
-                else
-                {
-                    // اگه IP رو نتونستیم بگیریم، یعنی اتصال برقرار نشده
-                    StatusLabel.Text = "اتصال ناموفق (پروکسی کار نمی‌کند)";
-                    StatusLabel.TextColor = Colors.Red;
-                    // برای اینکه کاربر گیج نشه، پروکسی رو خاموش می‌کنیم
-                    DisableProxy();
-                    try { xrayProcess.Kill(); } catch { }
-                }
+                var lines = (await File.ReadAllLinesAsync(CloudPath)).ToList();
+                lines.RemoveAll(l => deadConfigs.Any(d => l.Contains(d.Config)));
+                await File.WriteAllLinesAsync(CloudPath, lines);
             }
-            catch (Exception ex)
+
+            // 4. حذف گرافیکی (بدون ریلود کل صفحه)
+            foreach (var group in ServerGroups)
             {
-                await DisplayAlert("خطا کلی", ex.Message, "باشه");
-                DisableProxy();
+                var toRemove = group.Where(s => deadConfigs.Contains(s)).ToList();
+                foreach (var item in toRemove) group.Remove(item);
+            }
+
+            StatusLabel.Text = $"Removed {deadConfigs.Count} dead configs 🗑️";
+        }
+
+        // *** تغییر مهم: سوییچ سریع (اتصال با کلیک) ***
+        private async void OnServerSelected(object sender, SelectedItemChangedEventArgs e)
+        {
+            if (e.SelectedItem is Server s)
+            {
+                // اگه روی همون سرور فعلی کلیک کرد، هیچ کاری نکن (حتی اگه وصله)
+                if (_currentServer == s) return;
+
+                SelectServer(s);
+
+                // اگه وصل هستیم و سرور عوض شده، باید "سوییچ" کنیم
+                if (isConnected)
+                {
+                    // 1. اول قطع کن
+                    // (چون متد دکمه async void هست، نمی‌تونیم await کنیم، پس دستی Disconnect رو صدا می‌زنیم)
+                    Disconnect();
+
+                    StatusLabel.Text = "سوییچ سرور...";
+
+                    // 2. یه تنفس کوتاه به Xray میدیم که پورت رو آزاد کنه
+                    await Task.Delay(500);
+
+                    // 3. حالا وصل شو
+                    // اینجا دکمه اتصال رو صدا می‌زنیم که پروسه وصل شدن طی بشه
+                    OnConnectButtonClicked(sender, EventArgs.Empty);
+                }
             }
         }
+        private void SelectServer(Server s)
+        {
+            foreach (var item in AllServers) item.IsSelected = false;
+            s.IsSelected = true; _currentServer = s; SelectedServer = s;
+        }
+
+        private async void OnFindBestServerClicked(object sender, EventArgs e)
+        {
+            if (!AllServers.Any()) return;
+            StatusLabel.Text = "Testing Speed & Location...";
+
+            // 1. پینگ موازی (حداکثر 10 تا همزمان که IP-API بن نکنه)
+            using var sem = new SemaphoreSlim(10);
+            var tasks = AllServers.Select(async s => {
+                await sem.WaitAsync();
+                try { await PingSingleServer(s); }
+                finally { sem.Release(); }
+            });
+            await Task.WhenAll(tasks);
+
+            // 2. مرتب‌سازی گروه‌ها (سالم‌ها بالا، 9999 ها پایین)
+            foreach (var group in ServerGroups)
+            {
+                // لیست رو کپی میکنیم، مرتب میکنیم، دوباره میریزیم
+                var sorted = group.OrderBy(s => s.Ping).ToList();
+                group.Clear();
+                foreach (var s in sorted) group.Add(s);
+            }
+
+            // 3. انتخاب بهترین
+            var best = AllServers.Where(s => s.Ping < 5000).OrderBy(s => s.Ping).FirstOrDefault();
+
+            if (best != null)
+            {
+                SelectServer(best);
+                ServerListView.ScrollTo(best, ScrollToPosition.MakeVisible, true);
+                StatusLabel.Text = $"Best: {best.Ping}ms | {best.Country}";
+                StatusLabel.TextColor = Colors.Green;
+            }
+            else
+            {
+                StatusLabel.Text = "No Live Server ❌";
+                StatusLabel.TextColor = Colors.Red;
+            }
+        }
+
         private async Task PingSingleServer(Server server)
         {
             server.IsPinging = true;
-            server.Ping = -1;
+            // پیش‌فرض رو میذاریم عدد بزرگ که اگه فیلتر بود بره ته لیست
+            server.Ping = 9999;
 
             try
             {
-                var uri = new Uri(server.Config);
-                string host = uri.Host;
-                int port = uri.Port == -1 ? 443 : uri.Port;
+                // استخراج آدرس و پورت (دستی و تمیز)
+                string host = "";
+                int port = 443;
 
+                // تلاش برای درآوردن آدرس از کانفیگ
+                if (server.Config.StartsWith("vmess"))
+                {
+                    // برای ویمس چون دیکد میخواد، فعلا هاست رو خالی میذاریم که پینگ نگیره یا باید دیکد شه
+                    // اینجا یه آدرس فیک میذاریم که کرش نکنه، یا اگه خواستی دیکد کن
+                    // فعلا فرض میکنیم پینگ نداره
+                    throw new Exception("Skipping VMess Ping");
+                }
+                else
+                {
+                    var uri = new Uri(server.Config);
+                    host = uri.Host;
+                    port = uri.Port == -1 ? 443 : uri.Port;
+                }
+
+                // 1. تست اتصال (پینگ)
                 using var client = new TcpClient();
-                var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4.5));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)); // 2 ثانیه مهلت
                 var stopwatch = Stopwatch.StartNew();
 
                 await client.ConnectAsync(host, port, cts.Token);
                 stopwatch.Stop();
 
-                int ping = (int)stopwatch.ElapsedMilliseconds;
-                server.Ping = ping > 0 ? ping : 1;
-                DebugLog.Write($"پینگ موفق برای {server.City}: {ping} ms");
+                // اگه رسیدیم اینجا یعنی وصل شده
+                int pingTime = (int)stopwatch.ElapsedMilliseconds;
+                server.Ping = pingTime;
+
+                // 2. گرفتن اطلاعات کشور و IP (فقط اگه پینگ موفق بود)
+                try
+                {
+                    using var webClient = new HttpClient();
+                    webClient.Timeout = TimeSpan.FromSeconds(2); // سریع چک کن
+                    // این API بهمون میگه این IP مال کجاست
+                    var json = await webClient.GetStringAsync($"http://ip-api.com/json/{host}?fields=country,query");
+
+                    // پارس ساده دستی (بدون کلاس اضافه)
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        using var doc = JsonDocument.Parse(json);
+                        string country = doc.RootElement.GetProperty("country").GetString() ?? "Unknown";
+                        string ip = doc.RootElement.GetProperty("query").GetString() ?? host;
+
+                        // نمایش در لیست: کشور + پرچم
+                        server.Country = $"{country} ({ip})";
+                    }
+                }
+                catch
+                {
+                    // اگه نتونست کشور رو بگیره، فقط بنویسه آنلاین
+                    if (server.Country == "") server.Country = "Unknown Location";
+                }
             }
             catch
             {
-                server.Ping = 999;
-                DebugLog.Write($"پینگ ناموفق برای {server.City}");
+                server.Ping = 9999; // این یعنی مرده
+                server.Country = "⛔ در دسترس نیست";
             }
             finally
             {
@@ -394,408 +412,187 @@ namespace Derafsh.Client
             }
         }
 
-        private async Task PingAllServers()
+        private async void OnConnectButtonClicked(object sender, EventArgs e)
         {
-            DebugLog.Write($"شروع پینگ هوشمند - تعداد: {Servers.Count}");
-            IsRefreshing = true;
+            if (isConnected) { Disconnect(); return; }
+            if (_currentServer == null) return;
 
-            // این خط جادوییه: حداکثر ۱۰ تا پینگ همزمان
-            using var semaphore = new SemaphoreSlim(10);
-
-            var tasks = Servers.Select(async server =>
-            {
-                await semaphore.WaitAsync(); // نوبت بگیر
-                try
-                {
-                    await PingSingleServer(server);
-                }
-                finally
-                {
-                    semaphore.Release(); // نوبت رو بده نفر بعدی
-                }
-            });
-
-            await Task.WhenAll(tasks);
-
-            // مرتب‌سازی لیست (خوب‌ها بالا، خراب‌ها پایین)
-            var sorted = Servers.OrderBy(s => s.Ping == -1 || s.Ping == 999 ? 999999 : s.Ping).ToList();
-            Servers.Clear();
-            foreach (var s in sorted) Servers.Add(s);
-
-            IsRefreshing = false;
-            DebugLog.Write("پینگ هوشمند تمام شد.");
-        }
-        private async void OnCleanAndSaveClicked(object sender, EventArgs e)
-        {
-            if (Servers.Count == 0) return;
-
-            bool answer = await DisplayAlert("پاکسازی", "آشغال‌ها رو بریزم دور؟", "آره", "نه");
-            if (!answer) return;
-
-            StatusLabel.Text = "در حال غربالگری...";
-
-            // --- اصلاحیه حیاتی ---
-            // پینگ 999 یعنی خطا. پس باید بگیم پینگ باید کمتر از 900 باشه (یا هر عددی که حس می‌کنی حدِ تحمله)
-            var goodServers = Servers
-                .Where(s => s.Ping > 0 && s.Ping < 800) // فقط زیر 800 میلی‌ثانیه رو نگه دار
-                .OrderBy(s => s.Ping)
-                .ToList();
-
-            if (goodServers.Count == 0)
-            {
-                await DisplayAlert("نتیجه", "همه کانفیگ‌ها داغون بودن! چیزی نموند.", "باشه");
-                StatusLabel.Text = "لغو شد";
-                return;
-            }
-
-            // آپدیت لیست (با تکنیک شوک به UI)
-            Servers.Clear();
-            foreach (var s in goodServers) Servers.Add(s);
-
-            // این دو خط رو هم بذار باشه که مطمئن شیم لیست گرافیکی هم رفرش میشه
-            ServerListView.ItemsSource = null;
-            ServerListView.ItemsSource = Servers;
-
-            // ذخیره در فایل
+            StatusLabel.Text = "Connecting...";
             try
             {
-                string configFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "configs.txt");
-                var linesToSave = goodServers.Select(s => s.Config).ToList();
-                await File.WriteAllLinesAsync(configFilePath, linesToSave);
+                string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
+                string configPath = Path.Combine(coreDir, "config.json");
+                string enginePath = Path.Combine(coreDir, "xray.exe");
+                if (!File.Exists(enginePath)) { await DisplayAlert("Error", "xray missing", "OK"); return; }
 
-                StatusLabel.Text = $"{goodServers.Count} کانفیگ ناب باقی ماند";
-                // یه فیدبک کوچیک هم بدیم
-                await DisplayAlert("تمیز شد ✨", $"تعداد {goodServers.Count} تا کانفیگِ سرحال (زیر 800ms) ذخیره شد.", "ایول");
+                KillXray();
+                // ساخت کانفیگ
+                File.WriteAllText(configPath, GenerateXrayConfig(_currentServer.Config));
+
+                xrayProcess = new Process { StartInfo = new ProcessStartInfo { FileName = enginePath, Arguments = $"-c \"{configPath}\"", WorkingDirectory = coreDir, CreateNoWindow = true, UseShellExecute = false } };
+                xrayProcess.Start();
+
+                await Task.Delay(1500);
+                EnableProxy();
+                StatusLabel.Text = "Verifying Location...";
+
+                // *** بخش جدید: گرفتن کشور واقعی بعد از اتصال ***
+                string ip = "Unknown", country = "";
+                try
+                {
+                    // حتماً از پروکسی 10809 استفاده می‌کنیم
+                    var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy("socks5://127.0.0.1:10809"), UseProxy = true };
+                    using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+
+                    // این سایت هم IP میده هم اسم کامل کشور
+                    var json = await client.GetStringAsync("http://ip-api.com/json");
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.GetProperty("status").GetString() == "success")
+                    {
+                        ip = doc.RootElement.GetProperty("query").GetString();
+                        country = doc.RootElement.GetProperty("country").GetString(); // اسم کشور (مثلاً Germany)
+                    }
+                }
+                catch { }
+
+                if (ip != "Unknown")
+                {
+                    // نمایش کشور در هدر
+                    StatusLabel.Text = $"Connected to {country} 🌍\nIP: {ip}";
+                    StatusLabel.TextColor = Colors.Green;
+                    ConnectButton.Text = "Disconnect";
+                    ConnectButton.BackgroundColor = Colors.Red;
+                    isConnected = true;
+                }
+                else
+                {
+                    StatusLabel.Text = "Connected (No Data) ⚠️";
+                    ConnectButton.Text = "Disconnect";
+                    ConnectButton.BackgroundColor = Colors.Red;
+                    isConnected = true;
+                }
             }
-            catch (Exception ex)
-            {
-                await DisplayAlert("خطا", ex.Message, "باشه");
-            }
+            catch (Exception ex) { await DisplayAlert("Error", ex.Message, "OK"); Disconnect(); }
         }
-        private async void OnFindBestServerClicked(object sender, EventArgs e)
+
+        private void Disconnect() { DisableProxy(); KillXray(); StatusLabel.Text = "Disconnected"; StatusLabel.TextColor = Colors.Gray; ConnectButton.Text = "Connect"; ConnectButton.BackgroundColor = Color.FromArgb("#00E676"); isConnected = false; }
+        private static void KillXray() { foreach (var p in Process.GetProcessesByName("xray")) try { p.Kill(); } catch { } }
+        public static void CleanupOnExit()
         {
-            // اگه لیستمون خالیه، ضایع نشیم
-            if (Servers.Count == 0)
-            {
-                await DisplayAlert("خالیه!", "اول یه کانفیگ اضافه کن مهران جان.", "باشه");
-                return;
-            }
-
-            StatusLabel.Text = "در حال تست سرعت...";
-            StatusLabel.TextColor = Colors.Orange;
-
-            // 1. پینگ همه رو می‌گیریم و لیست رو مرتب می‌کنیم (از متد قبلی استفاده می‌کنیم)
-            await PingAllServers();
-
-            StatusLabel.Text = "بروزرسانی شد";
-            StatusLabel.TextColor = Colors.Gray;
-
-            // 2. انتخاب هوشمند بهترین سرور
-            // اولین سرور توی لیست الان کمترین پینگ رو داره (چون مرتب شده)
-            var bestServer = Servers.FirstOrDefault();
-
-            if (bestServer != null && bestServer.Ping < 1000) // اگه پینگش معقول بود
-            {
-                SelectedServer = bestServer;
-
-                // یه پیغام خوشحال‌کننده
-                await DisplayAlert("پیدا شد! ⚡",
-                    $"بهترین سرور: {bestServer.City}\nپینگ: {bestServer.Ping} ms\n\nآماده اتصال!",
-                    "بزن بریم");
-            }
-            else
-            {
-                await DisplayAlert("نتیجه", "سرور خوبی پیدا نشد. شاید اینترنتت ضعیفه؟", "باشه");
-            }
+#if WINDOWS
+            try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 0); KillXray(); } catch { }
+#endif
         }
-        private string ParseConfig(string link)
+
+        private string GenerateXrayConfig(string link)
         {
-            // 1. تمیزکاری لینک
-            if (string.IsNullOrEmpty(link)) throw new FormatException("لینک خالی است.");
+            if (string.IsNullOrEmpty(link)) throw new FormatException("Link empty");
             link = link.Trim();
-            // حذف توضیحات (هر چیزی بعد از #)
             if (link.Contains("#")) link = link.Substring(0, link.IndexOf('#'));
 
-            // 2. هدر ثابت (تنظیمات حیاتی شبکه)
-            // Sniffing روشن: برای باز شدن یوتیوب/تلگرام
-            // DNS گوگل: برای دور زدن آلودگی DNS
-            string header = @"
-              ""log"": { ""loglevel"": ""warning"" },
-              ""inbounds"": [
-                {
-                  ""port"": 10809,
-                  ""listen"": ""127.0.0.1"",
-                  ""protocol"": ""socks"",
-                  ""settings"": { ""auth"": ""noauth"", ""udp"": true },
-                  ""sniffing"": {
-                    ""enabled"": true,
-                    ""destOverride"": [""http"", ""tls""]
-                  }
-                }
-              ],
-              ""dns"": {
-                ""servers"": [""8.8.8.8"", ""1.1.1.1""]
-              },";
-
-            // 3. روتینگ (هدایت ترافیک)
-            string routing = @"
-              ""routing"": {
-                ""domainStrategy"": ""IPIfNonMatch"",
-                ""rules"": [
-                  { ""type"": ""field"", ""outboundTag"": ""proxy"", ""network"": ""tcp,udp"" }
-                ]
-              }";
-
-            // 4. ساخت موتور (Outbound) بر اساس نوع لینک
+            string header = @"""log"":{""loglevel"":""warning""},""inbounds"":[{""port"":10809,""listen"":""127.0.0.1"",""protocol"":""socks"",""settings"":{""auth"":""noauth"",""udp"":true},""sniffing"":{""enabled"":true,""destOverride"":[""http"",""tls""]}}],""dns"":{""servers"":[""8.8.8.8"",""1.1.1.1""]},";
+            string routing = @"""routing"":{""domainStrategy"":""IPIfNonMatch"",""rules"":[{""type"":""field"",""outboundTag"":""proxy"",""network"":""tcp,udp""}]}";
             string outboundObj = "";
             string protocol = link.Contains("://") ? link.Substring(0, link.IndexOf("://")) : "";
 
             try
             {
-                if (protocol == "vmess")
+                // تنظیمات عمومی MUX (خاموش برای پایداری بیشتر)
+                string muxSettings = @",""mux"":{""enabled"":false,""concurrency"":-1}";
+
+                if (protocol == "vless")
                 {
-                    // --- دیکد VMESS ---
+                    var uri = new Uri(link);
+                    var q = HttpUtility.ParseQueryString(uri.Query);
+                    string encryption = q["encryption"] ?? "none";
+                    string flow = q["flow"] ?? "";
+                    string type = q["type"] ?? "tcp";
+                    string security = q["security"] ?? "none";
+                    string sni = q["sni"] ?? uri.Host;
+                    // تغییر: اگه fp نبود، رندوم بذار
+                    string fp = q["fp"] ?? "randomized";
+                    string pbk = q["pbk"] ?? "";
+                    string sid = q["sid"] ?? "";
+                    string path = q["path"] ?? "/";
+                    string host = q["host"] ?? sni;
+                    string serviceName = q["serviceName"] ?? "";
+                    string mode = q["mode"] ?? "auto";
+
+                    string streamSettings = $@"""network"":""{type}"",""security"":""{security}"",";
+
+                    if (security == "reality")
+                        streamSettings += $@"""realitySettings"":{{""show"":false,""fingerprint"":""{fp}"",""serverName"":""{sni}"",""publicKey"":""{pbk}"",""shortId"":""{sid}"",""spiderX"":""""}},";
+                    else if (security == "tls")
+                        streamSettings += $@"""tlsSettings"":{{""serverName"":""{sni}"",""fingerprint"":""{fp}"",""allowInsecure"":true}},";
+
+                    if (type == "ws") streamSettings += $@"""wsSettings"":{{""path"":""{path}"",""headers"":{{""Host"":""{host}""}}}},";
+                    else if (type == "grpc") streamSettings += $@"""grpcSettings"":{{""serviceName"":""{serviceName}""}},";
+                    else if (type == "http" || type == "xhttp") streamSettings += $@"""httpSettings"":{{""path"":""{path}"",""host"":[""{host}""],""method"":""{mode}""}},";
+
+                    string flowJson = !string.IsNullOrEmpty(flow) ? $@"""flow"":""{flow}""," : "";
+
+                    outboundObj = $@"{{""tag"":""proxy"",""protocol"":""vless"",""settings"":{{""vnext"":[{{""address"":""{uri.Host}"",""port"":{uri.Port},""users"":[{{""id"":""{uri.UserInfo}"",""encryption"":""{encryption}"",{flowJson}""level"":0}}]}}]}},""streamSettings"":{{{streamSettings}""sockopt"":{{""tcpFastOpen"":true}}}}{muxSettings}}}";
+                }
+                else if (protocol == "vmess")
+                {
                     string base64 = link.Substring(8);
                     string decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-                    var vmess = JsonSerializer.Deserialize<VmessConfig>(decoded);
-
-                    // هندل کردن پورت (چون گاهی رشته است گاهی عدد)
-                    string port = vmess.port?.ToString() ?? "443";
-
-                    // تنظیمات امنیت و شبکه
-                    string streamSettings = "";
-                    if (vmess.net == "ws")
-                        streamSettings = $@"""wsSettings"": {{ ""path"": ""{vmess.path}"", ""headers"": {{ ""Host"": ""{vmess.host}"" }} }},";
-                    else if (vmess.net == "grpc")
-                        streamSettings = $@"""grpcSettings"": {{ ""serviceName"": ""{vmess.path}"" }},";
-
-                    string tlsSettings = "";
-                    if (vmess.tls == "tls")
-                    {
-                        tlsSettings = $@"""tlsSettings"": {{ 
-                            ""serverName"": ""{vmess.sni ?? vmess.host}"", 
-                            ""allowInsecure"": false, 
-                            ""fingerprint"": ""{vmess.fp ?? "chrome"}"" 
-                        }},";
-                    }
-
-                    outboundObj = $@"{{
-                        ""protocol"": ""vmess"",
-                        ""settings"": {{
-                            ""vnext"": [{{
-                                ""address"": ""{vmess.add}"",
-                                ""port"": {port},
-                                ""users"": [{{ ""id"": ""{vmess.id}"", ""alterId"": {vmess.aid ?? 0}, ""security"": ""{vmess.scy ?? "auto"}"" }}]
-                            }}]
-                        }},
-                        ""streamSettings"": {{
-                            ""network"": ""{vmess.net}"",
-                            ""security"": ""{vmess.tls}"",
-                            {streamSettings}
-                            {tlsSettings}
-                            ""sockopt"": {{ ""tcpFastOpen"": true }}
-                        }},
-                        ""tag"": ""proxy""
-                    }}";
-                }
-                else if (protocol == "vless")
-                {
-                    // --- دیکد VLESS (پادشاه جدید) ---
-                    var uri = new Uri(link);
-                    var query = HttpUtility.ParseQueryString(uri.Query);
-
-                    string id = uri.UserInfo;
-                    string address = uri.Host;
-                    int port = uri.Port;
-                    string type = query["type"] ?? "tcp";
-                    string security = query["security"] ?? "none";
-                    string flow = query["flow"] ?? "";
-                    string sni = query["sni"] ?? address;
-                    string fp = query["fp"] ?? "chrome";
-                    string pbk = query["pbk"] ?? ""; // کلید Reality
-                    string sid = query["sid"] ?? ""; // ShortId Reality
-                    string path = query["path"] ?? "/";
-
-                    // تنظیمات پیچیده TLS / Reality
-                    string securitySettings = "";
-                    if (security == "reality")
-                    {
-                        securitySettings = $@"
-                            ""realitySettings"": {{
-                                ""show"": false,
-                                ""fingerprint"": ""{fp}"",
-                                ""serverName"": ""{sni}"",
-                                ""publicKey"": ""{pbk}"",
-                                ""shortId"": ""{sid}"",
-                                ""spiderX"": """"
-                            }},";
-                    }
-                    else if (security == "tls")
-                    {
-                        securitySettings = $@"
-                            ""tlsSettings"": {{
-                                ""serverName"": ""{sni}"",
-                                ""fingerprint"": ""{fp}"",
-                                ""allowInsecure"": false
-                            }},";
-                    }
-
-                    string flowJson = !string.IsNullOrEmpty(flow) ? $@"""flow"": ""{flow}""," : "";
+                    var v = JsonSerializer.Deserialize<ConfigDto>(decoded);
+                    string port = v.port?.ToString() ?? "443";
+                    string aid = v.aid?.ToString() ?? "0";
+                    string net = v.net ?? "tcp";
+                    string fp = v.fp ?? "randomized"; // رندوم
 
                     string netSettings = "";
-                    if (type == "ws") netSettings = $@"""wsSettings"": {{ ""path"": ""{path}"", ""headers"": {{ ""Host"": ""{query["host"] ?? sni}"" }} }},";
-                    else if (type == "grpc") netSettings = $@"""grpcSettings"": {{ ""serviceName"": ""{query["serviceName"] ?? path}"" }},";
+                    if (net == "ws") netSettings = $@"""wsSettings"":{{""path"":""{v.path}"",""headers"":{{""Host"":""{v.host}""}}}},";
+                    else if (net == "grpc") netSettings = $@"""grpcSettings"":{{""serviceName"":""{v.path}""}},";
+                    else if (net == "http" || net == "h2") netSettings = $@"""httpSettings"":{{""path"":""{v.path}"",""host"":[""{v.host}""]}},";
 
-                    outboundObj = $@"{{
-                        ""protocol"": ""vless"",
-                        ""settings"": {{
-                            ""vnext"": [{{
-                                ""address"": ""{address}"",
-                                ""port"": {port},
-                                ""users"": [{{ ""id"": ""{id}"", ""encryption"": ""none"", {flowJson} ""level"": 0 }}]
-                            }}]
-                        }},
-                        ""streamSettings"": {{
-                            ""network"": ""{type}"",
-                            ""security"": ""{security}"",
-                            {securitySettings}
-                            {netSettings}
-                            ""sockopt"": {{ ""tcpFastOpen"": true }}
-                        }},
-                        ""tag"": ""proxy""
-                    }}";
-                }
-                else if (protocol == "trojan")
-                {
-                    // --- دیکد Trojan ---
-                    var uri = new Uri(link);
-                    var query = HttpUtility.ParseQueryString(uri.Query);
-                    string sni = query["sni"] ?? uri.Host;
+                    string tlsSettings = v.tls == "tls" ? $@"""security"":""tls"",""tlsSettings"":{{""serverName"":""{v.sni ?? v.host}"",""allowInsecure"":true,""fingerprint"":""{fp}""}}," : $@"""security"":""none"",";
 
-                    outboundObj = $@"{{
-                        ""protocol"": ""trojan"",
-                        ""settings"": {{
-                            ""servers"": [{{
-                                ""address"": ""{uri.Host}"",
-                                ""port"": {uri.Port},
-                                ""password"": ""{uri.UserInfo}""
-                            }}]
-                        }},
-                        ""streamSettings"": {{
-                            ""network"": ""tcp"",
-                            ""security"": ""tls"",
-                            ""tlsSettings"": {{ ""serverName"": ""{sni}"", ""allowInsecure"": false }},
-                            ""sockopt"": {{ ""tcpFastOpen"": true }}
-                        }},
-                        ""tag"": ""proxy""
-                    }}";
+                    outboundObj = $@"{{""tag"":""proxy"",""protocol"":""vmess"",""settings"":{{""vnext"":[{{""address"":""{v.add}"",""port"":{port},""users"":[{{""id"":""{v.id}"",""alterId"":{aid},""security"":""{v.scy ?? "auto"}""}}]}}]}},""streamSettings"":{{""network"":""{net}"",{tlsSettings}{netSettings}""sockopt"":{{""tcpFastOpen"":true}}}}{muxSettings}}}";
                 }
                 else if (protocol == "ss")
                 {
-                    // --- دیکد ShadowSocks (همون کد قبلی سالم) ---
                     link = HttpUtility.UrlDecode(link);
                     var uri = new Uri(link);
                     string userInfo = uri.UserInfo;
                     if (string.IsNullOrEmpty(userInfo)) userInfo = uri.OriginalString.Replace("ss://", "").Split('@')[0];
-
-                    // فیکس کردن بیس64 ناقص
                     string base64 = userInfo.Split('#')[0].Trim().Replace(" ", "+").Replace("-", "+").Replace("_", "/");
                     switch (base64.Length % 4) { case 2: base64 += "=="; break; case 3: base64 += "="; break; }
-
                     string decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
                     var parts = decoded.Split(':');
-
-                    outboundObj = $@"{{
-                        ""protocol"": ""shadowsocks"",
-                        ""settings"": {{
-                            ""servers"": [{{
-                                ""address"": ""{uri.Host}"",
-                                ""port"": {uri.Port},
-                                ""method"": ""{parts[0]}"",
-                                ""password"": ""{(parts.Length > 1 ? parts[1] : "")}""
-                            }}]
-                        }},
-                        ""tag"": ""proxy""
-                    }}";
+                    outboundObj = $@"{{""tag"":""proxy"",""protocol"":""shadowsocks"",""settings"":{{""servers"":[{{""address"":""{uri.Host}"",""port"":{uri.Port},""method"":""{parts[0]}"",""password"":""{(parts.Length > 1 ? parts[1] : "")}""}}]}}{muxSettings}}}";
                 }
-                else
+                else if (protocol == "trojan")
                 {
-                    throw new Exception($"پروتکل {protocol} پشتیبانی نمی‌شود.");
+                    var uri = new Uri(link);
+                    var q = HttpUtility.ParseQueryString(uri.Query);
+                    string sni = q["sni"] ?? uri.Host;
+                    outboundObj = $@"{{""tag"":""proxy"",""protocol"":""trojan"",""settings"":{{""servers"":[{{""address"":""{uri.Host}"",""port"":{uri.Port},""password"":""{uri.UserInfo}""}}]}},""streamSettings"":{{""network"":""tcp"",""security"":""tls"",""tlsSettings"":{{""serverName"":""{sni}"",""allowInsecure"":true}},""sockopt"":{{""tcpFastOpen"":true}}}}{muxSettings}}}";
                 }
-            }
-            catch (Exception ex)
-            {
-                DebugLog.Write($"خطا در پارس کانفیگ {protocol}: {ex.Message}");
-                throw;
-            }
-
-            // 5. ترکیب نهایی JSON
-            return $@"{{
-        {header}
-                ""outbounds"": [
-                    {outboundObj},
-                    {{ ""protocol"": ""freedom"", ""tag"": ""direct"" }}
-                ],
-                {routing}
-            }}";
-        }
-        // این متد رو از بیرون صدا می‌زنیم تا همه چی رو بکشه
-        public static void CleanupOnExit()
-        {
-            try
-            {
-                // 1. خاموش کردن پروکسی (کدش رو کپی کردیم اینجا که استاتیک باشه)
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true);
-                key?.SetValue("ProxyEnable", 0);
-
-                // 2. کشتن Xray
-                foreach (var proc in Process.GetProcessesByName("xray"))
+                else if (protocol == "hysteria2")
                 {
-                    try { proc.Kill(); } catch { }
-                }
+                    var uri = new Uri(link);
+                    var q = HttpUtility.ParseQueryString(uri.Query);
+                    string sni = q["sni"] ?? uri.Host;
+                    string obfs = q["obfs"] ?? "none";
+                    string obfsPass = q["obfs-password"] ?? "";
+                    string obfsJson = obfs != "none" ? $@",""obfs"":{{""type"":""{obfs}"",""password"":""{obfsPass}""}}" : "";
 
-                DebugLog.Write("پاکسازی خروج انجام شد.");
+                    outboundObj = $@"{{""tag"":""proxy"",""protocol"":""hysteria2"",""settings"":{{""servers"":[{{""address"":""{uri.Host}"",""port"":{uri.Port},""password"":""{uri.UserInfo}""{obfsJson}}}]}},""streamSettings"":{{""network"":""udp"",""security"":""tls"",""tlsSettings"":{{""serverName"":""{sni}"",""allowInsecure"":true}}}}{muxSettings}}}";
+                }
             }
-            catch { }
+            catch (Exception ex) { DebugLog.Write("Gen Config Error: " + ex.Message); throw; }
+
+            return $@"{{{header}""outbounds"":[{outboundObj},{{""protocol"":""freedom"",""tag"":""direct""}}],{routing}}}";
         }
+
 #if WINDOWS
-        private const string RegistryKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-        private void EnableProxy()
-        {
-            DebugLog.Write("EnableProxy کال شد");
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            key?.SetValue("ProxyEnable", 1);
-            key?.SetValue("ProxyServer", "socks=127.0.0.1:10809");
-            key?.SetValue("ProxyOverride", "<local>");
-
-            for (int i = 0; i < 4; i++)
-            {
-                InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
-                InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
-                Task.Delay(600).Wait();
-            }
-            DebugLog.Write("پراکسی فعال شد");
-        }
-
-        private void DisableProxy()
-        {
-            DebugLog.Write("DisableProxy کال شد");
-            using var key = Registry.CurrentUser.OpenSubKey(RegistryKeyPath, true);
-            key?.SetValue("ProxyEnable", 0);
-            key?.DeleteValue("ProxyServer", false);
-            key?.DeleteValue("ProxyOverride", false);
-
-            for (int i = 0; i < 4; i++)
-            {
-                InternetSetOption(IntPtr.Zero, INTERNET_OPTION_SETTINGS_CHANGED, IntPtr.Zero, 0);
-                InternetSetOption(IntPtr.Zero, INTERNET_OPTION_REFRESH, IntPtr.Zero, 0);
-                Task.Delay(600).Wait();
-            }
-            DebugLog.Write("پراکسی غیرفعال شد");
-        }
+        private void EnableProxy() { try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 1); key?.SetValue("ProxyServer", "socks=127.0.0.1:10809"); InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); } catch { } }
+        private void DisableProxy() { try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 0); InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); } catch { } }
 #else
-        private void EnableProxy() { DebugLog.Write("EnableProxy روی غیرویندوز - نادیده گرفته شد"); }
-        private void DisableProxy() { DebugLog.Write("DisableProxy روی غیرویندوز - نادیده گرفته شد"); }
+        private void EnableProxy() {} private void DisableProxy() {}
 #endif
     }
 }

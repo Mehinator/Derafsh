@@ -2,60 +2,75 @@ import requests
 import re
 import os
 
-# لیست کانال‌های هدف (نسخه وب s/)
-# می‌تونی هر کانالی که خواستی اضافه کنی
+# لیست کانال‌ها (اصلاح شده و استاندارد)
+# نکته: لینک آخر رو درست کردم چون https و /s/ نداشت
 CHANNELS = [
     "https://t.me/s/Daily_Configs",
     "https://t.me/s/V2rayNGn",
     "https://t.me/s/PrivateVPNs",
     "https://t.me/s/DirectVPN",
     "https://t.me/s/mehrosaboran",
-    "t.me/Cook_Vpn",
+    "https://t.me/s/Cook_Vpn", 
 ]
 
 # فایل خروجی
 OUTPUT_FILE = "derafsh_servers.txt"
 
-def get_configs():
-    valid_configs = set() # استفاده از set برای حذف تکراری‌ها
-    
-    # الگوی Regex برای شکار لینک‌ها
+# سقف تعداد کانفیگ (که سنگین نشه)
+MAX_CONFIGS = 200
+
+def get_new_configs():
+    found_configs = []
     pattern = r'(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&\'()*+,;=%]+'
     
-    print("🚀 Starting Config Collection...")
-
+    print("🚀 Scraping Telegram Channels...")
     for url in CHANNELS:
         try:
-            print(f"🔎 Scanning: {url}")
-            response = requests.get(url, timeout=15)
+            response = requests.get(url, timeout=10)
             if response.status_code == 200:
-                # پیدا کردن همه لینک‌ها
                 matches = re.findall(pattern, response.text)
                 for conf in matches:
-                    # تمیزکاری (حذف تگ‌های HTML که ممکنه چسبیده باشه)
-                    clean_conf = conf.split('<')[0].split('"')[0].strip()
-                    # فیلتر کردن لینک‌های خیلی کوتاه یا خراب
-                    if len(clean_conf) > 15:
-                        valid_configs.add(clean_conf)
-                print(f"   ✅ Found {len(matches)} links.")
-        except Exception as e:
-            print(f"   ❌ Error: {e}")
-
-    return list(valid_configs)
+                    clean = conf.split('<')[0].split('"')[0].strip()
+                    if len(clean) > 15:
+                        found_configs.append(clean)
+                print(f"   ✅ {url.split('/')[-1]}: Found {len(matches)}")
+        except:
+            print(f"   ❌ Skip: {url}")
+            
+    return found_configs
 
 if __name__ == "__main__":
-    configs = get_configs()
+    # 1. خواندن کانفیگ‌های قدیمی از فایل (برای اینکه همش نپره)
+    old_configs = []
+    if os.path.exists(OUTPUT_FILE):
+        try:
+            with open(OUTPUT_FILE, "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.strip():
+                        old_configs.append(line.strip())
+        except:
+            pass
+
+    # 2. گرفتن کانفیگ‌های جدید از تلگرام
+    new_configs = get_new_configs()
     
-    if configs:
-        # ذخیره در فایل
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            # نوشتن هدر (اختیاری)
-            # f.write(f"# Derafsh Auto-Update: {len(configs)} servers\n")
-            for config in configs:
-                f.write(config + "\n")
-        
-        print(f"\n🎉 Success! Saved {len(configs)} unique configs to {OUTPUT_FILE}")
+    # 3. ترکیب هوشمند (جدیدها اول، قدیمی‌ها بعد)
+    # استفاده از dict برای حذف تکراری‌ها با حفظ ترتیب (جدیدها اولویت دارن)
+    combined = list(dict.fromkeys(new_configs + old_configs))
+    
+    # 4. اعمال محدودیت (برش زدن لیست)
+    if len(combined) > MAX_CONFIGS:
+        final_list = combined[:MAX_CONFIGS]
+        print(f"✂️ Trimmed list from {len(combined)} to {MAX_CONFIGS}")
     else:
-        print("\n⚠️ No configs found! Check internet or channels.")
-        # اگه چیزی پیدا نکرد، فایل رو خالی نکنیم که قبلی‌ها بپرن (اختیاری)
-        # exit(1)
+        final_list = combined
+        print(f"📦 Total configs: {len(final_list)}")
+
+    # 5. ذخیره نهایی
+    if final_list:
+        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            for config in final_list:
+                f.write(config + "\n")
+        print("💾 Update Complete!")
+    else:
+        print("⚠️ No configs found.")

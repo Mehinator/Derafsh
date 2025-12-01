@@ -3,10 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:Derafsh.Client"
              x:Class="Derafsh.Client.MainPage"
-             BackgroundColor="#121212"
-             Shell.NavBarIsVisible="False"
-             NavigationPage.HasNavigationBar="False"
-             FlowDirection="LeftToRight">
+             BackgroundColor="#121212" Shell.NavBarIsVisible="False" NavigationPage.HasNavigationBar="False" FlowDirection="LeftToRight">
 
     <ContentPage.Resources>
         <ResourceDictionary>
@@ -22,56 +19,19 @@
             <StackLayout Orientation="Horizontal" Spacing="15" VerticalOptions="Center">
                 <Image Source="derafsh_logo.png" HeightRequest="50" WidthRequest="50"/>
                 <StackLayout Spacing="0" VerticalOptions="Center">
-                    <Label Text="DERAFSH VPN" TextColor="#FFD700" FontSize="20" FontAttributes="Bold" CharacterSpacing="2"/>
+                    <Label Text="DERAFSH" TextColor="#FFD700" FontSize="20" FontAttributes="Bold" CharacterSpacing="2"/>
                     <Label x:Name="StatusLabel" Text="Ready..." FontSize="12" TextColor="#AAAAAA"/>
                 </StackLayout>
             </StackLayout>
         </Border>
 
-        <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="5" Margin="0,0,0,10">
-            <Button Grid.Column="0"
-                    x:Name="BtnTabAll" 
-                    Text="همه" 
-                    Clicked="OnTabClicked" 
-                    CommandParameter="All" 
-                    BackgroundColor="#FFD700" 
-                    TextColor="Black" 
-                    CornerRadius="10" 
-                    HeightRequest="40" 
-                    FontSize="12" 
-                    FontAttributes="Bold"/>
-
-            <Button Grid.Column="1"
-                    x:Name="BtnTabPersonal" 
-                    Text="شخصی" 
-                    Clicked="OnTabClicked" 
-                    CommandParameter="Personal" 
-                    BackgroundColor="#333" 
-                    TextColor="White" 
-                    CornerRadius="10" 
-                    HeightRequest="40" 
-                    FontSize="12"/>
-
-            <Button Grid.Column="2"
-                    x:Name="BtnTabOnline" 
-                    Text="آنلاین" 
-                    Clicked="OnTabClicked" 
-                    CommandParameter="Online" 
-                    BackgroundColor="#333" 
-                    TextColor="White" 
-                    CornerRadius="10" 
-                    HeightRequest="40" 
-                    FontSize="12"/>
+        <Grid Grid.Row="1" ColumnDefinitions="*,*,*" ColumnSpacing="5">
+            <Button x:Name="BtnTabAll" Grid.Column="0" Text="All" Clicked="OnTabClicked" CommandParameter="All" BackgroundColor="#FFD700" TextColor="Black" CornerRadius="10" HeightRequest="40" FontSize="12" FontAttributes="Bold"/>
+            <Button x:Name="BtnTabPersonal" Grid.Column="1" Text="Personal" Clicked="OnTabClicked" CommandParameter="Personal" BackgroundColor="#333" TextColor="White" CornerRadius="10" HeightRequest="40" FontSize="12"/>
+            <Button x:Name="BtnTabOnline" Grid.Column="2" Text="Online" Clicked="OnTabClicked" CommandParameter="Online" BackgroundColor="#333" TextColor="White" CornerRadius="10" HeightRequest="40" FontSize="12"/>
         </Grid>
 
-        <ListView x:Name="ServerListView" 
-                  Grid.Row="2" 
-                  IsGroupingEnabled="True"
-                  HasUnevenRows="True"
-                  SeparatorVisibility="None"
-                  BackgroundColor="Transparent"
-                  ItemSelected="OnServerSelected">
-
+        <ListView x:Name="ServerListView" Grid.Row="2" IsGroupingEnabled="True" HasUnevenRows="True" SeparatorVisibility="None" BackgroundColor="Transparent" ItemSelected="OnServerSelected">
             <ListView.GroupHeaderTemplate>
                 <DataTemplate>
                     <ViewCell>
@@ -79,31 +39,25 @@
                     </ViewCell>
                 </DataTemplate>
             </ListView.GroupHeaderTemplate>
-
             <ListView.ItemTemplate>
                 <DataTemplate>
                     <ViewCell>
-                        <Border Margin="5,2" Padding="10" 
-                                BackgroundColor="#252525" 
-                                StrokeShape="RoundRectangle 10"
-                                Stroke="{Binding IsSelected, Converter={StaticResource BoolToColor}}"
-                                StrokeThickness="{Binding IsSelected, Converter={StaticResource BoolToThickness}}">
+                        <Border Margin="5,2" Padding="8" BackgroundColor="#252525" StrokeShape="RoundRectangle 10" Stroke="{Binding IsSelected, Converter={StaticResource BoolToColor}}" StrokeThickness="{Binding IsSelected, Converter={StaticResource BoolToThickness}}">
+                            <Grid ColumnDefinitions="25,*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                                <Label Grid.Column="0" Text="{Binding Index}" TextColor="#666" FontSize="11" VerticalOptions="Center" HorizontalOptions="Center"/>
 
-                            <Grid ColumnDefinitions="30,*,Auto,Auto" ColumnSpacing="10">
-                                <Label Grid.Column="0" Text="{Binding Index}" TextColor="#666" FontSize="12" VerticalOptions="Center" HorizontalOptions="Center"/>
-
-                                <StackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <StackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
                                     <Label Text="{Binding City}" TextColor="White" FontSize="13" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
-                                    <Label Text="{Binding Config}" TextColor="#888" FontSize="10" LineBreakMode="TailTruncation"/>
+                                    <Label Text="{Binding Country}" TextColor="#888" FontSize="10" LineBreakMode="TailTruncation"/>
                                 </StackLayout>
 
-                                <StackLayout Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalOptions="Center">
-                                    <Label Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="12" FontAttributes="Bold"/>
-                                    <ActivityIndicator IsRunning="{Binding IsPinging}" IsVisible="{Binding IsPinging}" Color="White" HeightRequest="15" WidthRequest="15"/>
-                                </StackLayout>
+                                <Label Grid.Column="2" Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center"/>
 
-                                <Button Grid.Column="3" Text="✖" TextColor="White" BackgroundColor="#D50000" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0"
-                                        IsVisible="{Binding IsRemovable}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"/>
+                                <Button Grid.Column="3" Text="📶" TextColor="Black" BackgroundColor="#FFD700" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"/>
+
+                                <Button Grid.Column="4" Text="💾" TextColor="White" BackgroundColor="#2962FF" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding ShowSave}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"/>
+
+                                <Button Grid.Column="5" Text="✖" TextColor="White" BackgroundColor="#D50000" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding IsRemovable}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"/>
                             </Grid>
                         </Border>
                     </ViewCell>
@@ -111,15 +65,19 @@
             </ListView.ItemTemplate>
         </ListView>
 
-        <Grid Grid.Row="3" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,10,0,0">
-            <Button Grid.Row="0" Grid.Column="0" Text="🔄 آپدیت آنلاین" Clicked="OnUpdateOnlineClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
-            <Button Grid.Row="0" Grid.Column="1" Text="➕ افزودن" Clicked="OnAddCustomConfigClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
-            <Button Grid.Row="0" Grid.Column="2" Text="🔥 حذف خراب‌ها" Clicked="OnDeleteDeadConfigsClicked" BackgroundColor="#D50000" TextColor="White" FontSize="11"/>
+        <Grid Grid.Row="3" ColumnDefinitions="*,*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="10" Margin="0,10,0,0">
 
-            <Button Grid.Row="1" Grid.Column="0" Text="⚡ تست پینگ" Clicked="OnFindBestServerClicked" BackgroundColor="#FFD700" TextColor="Black" FontSize="12"/>
+            <Button Grid.Row="0" Grid.Column="0" Text="🔄 Update" Clicked="OnUpdateOnlineClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
+            <Button Grid.Row="0" Grid.Column="1" Text="➕ Add" Clicked="OnAddCustomConfigClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
+            <Button Grid.Row="0" Grid.Column="2" Text="🧹 Clean" Clicked="OnDeleteDeadConfigsClicked" BackgroundColor="#333" TextColor="White" FontSize="11"/>
 
-            <Button x:Name="ConnectButton" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="اتصال" Clicked="OnConnectButtonClicked" BackgroundColor="#00E676" TextColor="Black" FontAttributes="Bold" HeightRequest="55" CornerRadius="25"/>
+            <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3" Text="⚡ TEST ALL SPEEDS ⚡" Clicked="OnFindBestServerClicked" BackgroundColor="#FFAB00" TextColor="Black" FontAttributes="Bold"/>
+
+            <Button x:Name="ConnectButton" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3" Text="CONNECT" Clicked="OnConnectButtonClicked" BackgroundColor="#00C853" TextColor="White" FontAttributes="Bold" HeightRequest="55" CornerRadius="25">
+                <Button.Shadow>
+                    <Shadow Brush="#00C853" Offset="0,5" Radius="10" Opacity="0.5"/>
+                </Button.Shadow>
+            </Button>
         </Grid>
-
     </Grid>
 </ContentPage>

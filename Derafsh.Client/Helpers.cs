@@ -1,11 +1,13 @@
 ﻿using System.Globalization;
 using System.IO;
-using Microsoft.Maui.Controls; // برای IValueConverter
+using Microsoft.Maui.Controls;
 using System;
+using System.Collections.Generic; // برای IEnumerable
+using System.Collections.ObjectModel; // برای ObservableCollection
 
 namespace Derafsh.Client
 {
-    // لاگ
+    // ==================== لاگ ====================
     public static class DebugLog
     {
         private static readonly string LogPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "derafsh_debug.txt");
@@ -17,22 +19,22 @@ namespace Derafsh.Client
         }
     }
 
-    // مبدل‌ها
+    // ==================== مبدل‌ها (Converters) ====================
     public class BoolToColorConverter : IValueConverter
     {
-        public object Convert(object v, Type t, object p, CultureInfo c) => (bool)v ? Colors.Gold : Colors.Transparent;
-        public object ConvertBack(object v, Type t, object p, CultureInfo c) => null;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v is bool b && b) ? Colors.Gold : Colors.Transparent;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
     public class BoolToThicknessConverter : IValueConverter
     {
-        public object Convert(object v, Type t, object p, CultureInfo c) => (bool)v ? 2 : 0;
-        public object ConvertBack(object v, Type t, object p, CultureInfo c) => null;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v is bool b && b) ? 2 : 0;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
     public class PingToColorConverter : IValueConverter
     {
-        public object Convert(object v, Type t, object p, CultureInfo c)
+        public object? Convert(object? v, Type t, object? p, CultureInfo c)
         {
             if (v is int ping)
             {
@@ -42,11 +44,12 @@ namespace Derafsh.Client
             }
             return Colors.Red;
         }
-        public object ConvertBack(object v, Type t, object p, CultureInfo c) => null;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
-    // کلاس گروپ (اینجا باشه بهتره)
-    public class ServerGroup : System.Collections.ObjectModel.ObservableCollection<Derafsh.Client.Models.Server>
+    // ==================== کلاس گروه‌بندی ====================
+    // اصلاح شده: ObjectModel با O بزرگ و استفاده از using بالا
+    public class ServerGroup : ObservableCollection<Derafsh.Client.Models.Server>
     {
         public string Name { get; private set; }
         public ServerGroup(string name, IEnumerable<Derafsh.Client.Models.Server> servers) : base(servers) { Name = name; }

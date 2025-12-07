@@ -17,7 +17,7 @@ CHANNELS = [
 OUTPUT_FILE = "derafsh_servers.txt"
 
 # سقف تعداد کانفیگ (که سنگین نشه)
-MAX_CONFIGS = 200
+MAX_CONFIGS = 2000
 
 def get_new_configs():
     found_configs = []

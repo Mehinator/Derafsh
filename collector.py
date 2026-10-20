@@ -42,7 +42,16 @@ LINK_PATTERN = re.compile(r'(?:vmess|vless|ss|trojan|hysteria2)://[^\s<>"]+')
 # تا برنامه دقیقاً همون لینکی رو بخونه که اینجا ذخیره شده
 APP_SAFE_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~:/?#@!$&'()*+,;=%")
 
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
+# شکل UUID داره ولی هگز نیست (کانفیگ قلابی/خراب) → Xray اصلاً اجراش نمی‌کنه
+UUID_SHAPE = re.compile(r'^[^-]{8}-[^-]{4}-[^-]{4}-[^-]{4}-[^-]{12}$')
+UUID_HEX = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+
+
+def bad_uuid(value):
+    return bool(UUID_SHAPE.match(value)) and not UUID_HEX.match(value)
+
+
+HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 
 
 def clean_link(link):
@@ -62,13 +71,15 @@ def clean_link(link):
             data = body[8:].replace('-', '+').replace('_', '/')
             text = base64.b64decode(data + '=' * (-len(data) % 4)).decode('utf-8-sig')
             info = json.loads(text)
-            if not info.get("add") or not info.get("port"):
+            if not info.get("add") or not info.get("port") or bad_uuid(str(info.get("id", ""))):
                 return None
             body = "vmess://" + base64.b64encode(text.encode('utf-8')).decode()
         else:
             body = ''.join(c if c in APP_SAFE_CHARS else quote(c) for c in body)
             parts = urlsplit(body)
             if not parts.hostname or parts.port is None:
+                return None
+            if body.startswith("vless://") and bad_uuid(unquote(parts.username or "")):
                 return None
     except Exception:
         return None

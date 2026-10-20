@@ -27,6 +27,9 @@ OUTPUT_FILE = "derafsh_servers.txt"
 # فایل منبع: هر کانفیگ به کدوم کانال تلگرام تعلق داره
 SOURCES_FILE = "derafsh_sources.json"
 
+# لینک اشتراک (subscription) استاندارد base64، برای v2rayNG / Hiddify / NekoBox روی اندروید
+SUB_FILE = "derafsh_sub.txt"
+
 # سقف تعداد کانفیگ (که سنگین نشه)
 MAX_CONFIGS = 2000
 
@@ -72,6 +75,8 @@ def clean_link(link):
     if sep:
         # اسم کانفیگ (بعد از #) هم percent-encode می‌شه؛ برنامه موقع نمایش decode می‌کنه
         name = quote(unquote(name), safe='')
+        if not name:
+            sep = ''  # لینکی که با # خالی تموم شده
     return body + sep + name
 
 
@@ -165,8 +170,11 @@ if __name__ == "__main__":
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             for config in final_list:
                 f.write(config + "\n")
+        with open(SUB_FILE, "w", encoding="ascii") as f:
+            f.write(base64.b64encode("\n".join(final_list).encode("utf-8")).decode("ascii"))
         # فقط منبع کانفیگ‌هایی که توی لیست نهایی هستن رو نگه می‌داریم
-        final_sources = {c: sources[c] for c in final_list if c in sources}
+        # (c + '#'): کلید قدیمی لینک‌هایی که قبلاً با # خالی ذخیره شده بودن
+        final_sources = {c: sources.get(c) or sources[c + '#'] for c in final_list if c in sources or c + '#' in sources}
         with open(SOURCES_FILE, "w", encoding="utf-8") as f:
             json.dump(final_sources, f, ensure_ascii=False, indent=1)
         print("💾 Update Complete!")

@@ -34,7 +34,7 @@ jobs:
         run: |
           git config --global user.name "Derafsh Bot"
           git config --global user.email "bot@derafsh.com"
-          git add derafsh_servers.txt derafsh_sources.json
+          git add derafsh_servers.txt derafsh_sources.json derafsh_sub.txt
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -49,6 +49,7 @@ jobs:
         run: |
           curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_servers.txt"
           curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_sources.json"
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_sub.txt"
 
       # گیت‌هاب کرون رو بعد از 60 روز بی‌فعالیتی ریپو خاموش می‌کنه؛ این مرحله هر بار دوباره روشنش نگه می‌داره
       - name: Keep workflow alive

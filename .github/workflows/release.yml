@@ -1,0 +1,108 @@
+name: Release builds
+
+# Builds the Windows zip and the Android APK on GitHub and attaches them to the release with the same tag.
+# Run it by pushing a tag (v1.3.0, ...) or by hand from the Actions tab.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.3.0 (the release must already exist, draft is fine)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install the MAUI Windows workload
+        run: dotnet workload install maui-windows
+
+      # The build downloads Xray for Windows itself (pinned version, SHA-256 checked)
+      - name: Publish (self-contained, nothing to install for users)
+        run: >
+          dotnet publish Derafsh.Client/Derafsh.Client.csproj -f net10.0-windows10.0.19041.0 -p:TargetFrameworks=net10.0-windows10.0.19041.0 -c Release -r win-x64
+          --self-contained true -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:PublishReadyToRun=true
+          -o publish/Derafsh
+
+      - name: Zip
+        shell: pwsh
+        run: Compress-Archive -Path publish/Derafsh -DestinationPath "Derafsh-$env:TAG-Windows-x64.zip"
+
+      - name: Attach to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload $env:TAG "Derafsh-$env:TAG-Windows-x64.zip" --clobber
+
+  android:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Install the MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Install Android SDK parts the build needs
+        shell: pwsh
+        run: >
+          dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:InstallAndroidDependencies
+          -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME" -p:AcceptAndroidSDKLicenses=True
+
+      - name: Restore the signing key
+        shell: pwsh
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if (-not $env:KEYSTORE) { throw "Secret ANDROID_KEYSTORE_BASE64 is missing" }
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\derafsh.keystore", [Convert]::FromBase64String($env:KEYSTORE))
+
+      # The build downloads Xray for Android and hev-socks5-tunnel itself (pinned versions, SHA-256 checked)
+      - name: Publish the APK (signed with the Derafsh release key)
+        shell: pwsh
+        env:
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: >
+          dotnet publish Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -c Release
+          -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME"
+          -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$env:RUNNER_TEMP\derafsh.keystore" -p:AndroidSigningKeyAlias=derafsh
+          -p:AndroidSigningStorePass=env:KEYSTORE_PASS -p:AndroidSigningKeyPass=env:KEYSTORE_PASS
+          -o publish/android
+
+      - name: Attach to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $apk = Get-ChildItem publish/android -Filter *-Signed.apk | Select-Object -First 1
+          if (-not $apk) { throw "No signed APK was produced" }
+          Copy-Item $apk.FullName "Derafsh-$env:TAG-Android-arm64.apk"
+          gh release upload $env:TAG "Derafsh-$env:TAG-Android-arm64.apk" --clobber

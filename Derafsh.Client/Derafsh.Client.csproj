@@ -4,7 +4,7 @@
 		<!--<TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
 		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>-->
 		<!-- .NET 10 (LTS, supported to Nov 2028). .NET 9 support ended in May 2026. -->
-    <TargetFrameworks>net10.0-windows10.0.19041.0</TargetFrameworks>
+    <TargetFrameworks>net10.0-android;net10.0-windows10.0.19041.0</TargetFrameworks>
 		<MauiVersion>10.0.60</MauiVersion>
 		<OutputType>Exe</OutputType>
 		<RootNamespace>Derafsh.Client</RootNamespace>
@@ -21,7 +21,7 @@
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">13.1</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">29.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 		<GenerateAppInstallerFile>False</GenerateAppInstallerFile>
@@ -34,6 +34,8 @@
     <WindowsPackageType>None</WindowsPackageType>
 		<!-- Ship the Windows App runtime inside the app: it then runs without installing anything (and from F5 in VS) -->
 		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+		<!-- A MAUI app only needs the .NET runtime pack, not the ASP.NET / WindowsDesktop ones -->
+		<DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -45,25 +47,80 @@
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
 	</ItemGroup>
 
+	<!-- Android: arm64 phones only (the Xray engine is shipped for arm64-v8a) -->
+	<PropertyGroup Condition="'$(TargetFramework)'=='net10.0-android'">
+		<RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
+	</PropertyGroup>
+
+	<!-- Android engine: Xray (run as a process) + hev-socks5-tunnel (in-process VPN tunnel).
+	     Not stored in git; downloaded and SHA-256 checked on first build. -->
+	<PropertyGroup>
+		<XrayAndroidVersion>v26.3.27</XrayAndroidVersion>
+		<XrayAndroidSha256>57149ffd48b629c07bf76938e73ab2729fde5910091497eab3e93d1c190f4c1b</XrayAndroidSha256>
+		<HevVersion>2.19.1</HevVersion>
+		<HevSha256>107958f7a07051386248ba8dba778b63d8dcefdfb2c3665b0ee9a8c93de5f6ca</HevSha256>
+		<AndroidEngineDir>$(MSBuildProjectDirectory)\Platforms\Android</AndroidEngineDir>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(TargetFramework)'=='net10.0-android'">
+		<AndroidNativeLibrary Include="Platforms\Android\native\arm64-v8a\libxray.so" Abi="arm64-v8a" />
+		<AndroidLibrary Include="Platforms\Android\libs\hev-socks5-tunnel.aar" />
+	</ItemGroup>
+	<Target Name="FetchAndroidEngine" BeforeTargets="PrepareForBuild;_ResolveLibraryProjectImports" Condition="'$(TargetFramework)'=='net10.0-android'">
+		<DownloadFile Condition="!Exists('$(AndroidEngineDir)\native\arm64-v8a\libxray.so')" SourceUrl="https://github.com/XTLS/Xray-core/releases/download/$(XrayAndroidVersion)/Xray-android-arm64-v8a.zip" DestinationFolder="$(IntermediateOutputPath)xray-android" />
+		<GetFileHash Condition="!Exists('$(AndroidEngineDir)\native\arm64-v8a\libxray.so')" Files="$(IntermediateOutputPath)xray-android\Xray-android-arm64-v8a.zip" Algorithm="SHA256">
+			<Output TaskParameter="Hash" PropertyName="_XraySha" />
+		</GetFileHash>
+		<Error Condition="!Exists('$(AndroidEngineDir)\native\arm64-v8a\libxray.so') And '$(_XraySha.ToLower())' != '$(XrayAndroidSha256)'" Text="Xray Android download failed its SHA-256 check." />
+		<Unzip Condition="!Exists('$(AndroidEngineDir)\native\arm64-v8a\libxray.so')" SourceFiles="$(IntermediateOutputPath)xray-android\Xray-android-arm64-v8a.zip" DestinationFolder="$(IntermediateOutputPath)xray-android\x" />
+		<Copy Condition="!Exists('$(AndroidEngineDir)\native\arm64-v8a\libxray.so')" SourceFiles="$(IntermediateOutputPath)xray-android\x\xray" DestinationFiles="$(AndroidEngineDir)\native\arm64-v8a\libxray.so" />
+
+		<DownloadFile Condition="!Exists('$(AndroidEngineDir)\libs\hev-socks5-tunnel.aar')" SourceUrl="https://github.com/heiher/hev-socks5-tunnel/releases/download/$(HevVersion)/hev-socks5-tunnel.aar" DestinationFolder="$(AndroidEngineDir)\libs" />
+		<GetFileHash Files="$(AndroidEngineDir)\libs\hev-socks5-tunnel.aar" Algorithm="SHA256">
+			<Output TaskParameter="Hash" PropertyName="_HevSha" />
+		</GetFileHash>
+		<Error Condition="'$(_HevSha.ToLower())' != '$(HevSha256)'" Text="hev-socks5-tunnel.aar failed its SHA-256 check." />
+	</Target>
+
+	<!-- Windows engine: Xray-core for Windows in Core/. Not stored in git; downloaded and SHA-256 checked when
+	     missing or when Core/xray.version doesn't match the pinned version. -->
+	<PropertyGroup>
+		<XrayWindowsVersion>v26.3.27</XrayWindowsVersion>
+		<XrayWindowsSha256>d004c39288ce9ada487c6f398c7c545f7d749e44bdfdd59dbc9f865afba4e1ad</XrayWindowsSha256>
+		<XrayCoreDir>$(MSBuildProjectDirectory)\Core</XrayCoreDir>
+	</PropertyGroup>
+	<Target Name="FetchWindowsEngine" BeforeTargets="PrepareForBuild" Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
+		<ReadLinesFromFile File="$(XrayCoreDir)\xray.version" Condition="Exists('$(XrayCoreDir)\xray.version')">
+			<Output TaskParameter="Lines" PropertyName="_XrayInstalled" />
+		</ReadLinesFromFile>
+		<PropertyGroup>
+			<_XrayNeeded Condition="!Exists('$(XrayCoreDir)\xray.exe') Or '$(_XrayInstalled)' != '$(XrayWindowsVersion)'">true</_XrayNeeded>
+		</PropertyGroup>
+		<DownloadFile Condition="'$(_XrayNeeded)'=='true'" SourceUrl="https://github.com/XTLS/Xray-core/releases/download/$(XrayWindowsVersion)/Xray-windows-64.zip" DestinationFolder="$(IntermediateOutputPath)xray-windows" />
+		<GetFileHash Condition="'$(_XrayNeeded)'=='true'" Files="$(IntermediateOutputPath)xray-windows\Xray-windows-64.zip" Algorithm="SHA256">
+			<Output TaskParameter="Hash" PropertyName="_XrayWinSha" />
+		</GetFileHash>
+		<Error Condition="'$(_XrayNeeded)'=='true' And '$(_XrayWinSha.ToLower())' != '$(XrayWindowsSha256)'" Text="Xray Windows download failed its SHA-256 check." />
+		<Unzip Condition="'$(_XrayNeeded)'=='true'" SourceFiles="$(IntermediateOutputPath)xray-windows\Xray-windows-64.zip" DestinationFolder="$(IntermediateOutputPath)xray-windows\x" />
+		<Copy Condition="'$(_XrayNeeded)'=='true'" SourceFiles="$(IntermediateOutputPath)xray-windows\x\xray.exe;$(IntermediateOutputPath)xray-windows\x\geoip.dat;$(IntermediateOutputPath)xray-windows\x\geosite.dat" DestinationFolder="$(XrayCoreDir)" />
+		<Copy Condition="'$(_XrayNeeded)'=='true'" SourceFiles="$(IntermediateOutputPath)xray-windows\x\LICENSE" DestinationFiles="$(XrayCoreDir)\LICENSE-Xray-core.txt" />
+		<WriteLinesToFile Condition="'$(_XrayNeeded)'=='true'" File="$(XrayCoreDir)\xray.version" Lines="$(XrayWindowsVersion)" Overwrite="true" />
+		<!-- Added here, not statically: on a fresh clone these files only exist after the download above -->
+		<ItemGroup>
+			<_XrayCoreFiles Include="Core\xray.exe;Core\geoip.dat;Core\geosite.dat;Core\LICENSE-Xray-core.txt" />
+			<None Remove="@(_XrayCoreFiles)" />
+			<None Include="@(_XrayCoreFiles)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		</ItemGroup>
+	</Target>
+
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
 	</ItemGroup>
 
 	<ItemGroup>
-		<None Update="configs.txt">
+		<!-- Windows-only files (the Android build gets its engine from Platforms/Android) -->
+		<None Update="configs.txt" Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
 		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-		</None>
-		<None Update="Core\geoip.dat">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-		<None Update="Core\geosite.dat">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-		<None Update="Core\xray.exe">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-		<None Update="Core\LICENSE-Xray-core.txt">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 

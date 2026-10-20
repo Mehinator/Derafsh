@@ -24,3 +24,13 @@ xray_log.txt
 # --- لاگ و فایل‌های ویندوز ---
 *.log
 [Tt]humbs.db
+
+# Android engine binaries (downloaded and SHA-256 checked by the build)
+Derafsh.Client/Platforms/Android/native/
+Derafsh.Client/Platforms/Android/libs/*.aar
+
+# Windows engine (downloaded and SHA-256 checked by the build, see FetchWindowsEngine in the csproj)
+Derafsh.Client/Core/xray.exe
+Derafsh.Client/Core/geoip.dat
+Derafsh.Client/Core/geosite.dat
+Derafsh.Client/Core/xray.version

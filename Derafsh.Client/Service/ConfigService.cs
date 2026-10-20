@@ -237,7 +237,7 @@ namespace Derafsh.Client.Services
             switch (network)
             {
                 case "ws":
-                    s["wsSettings"] = new JsonObject { ["path"] = path, ["headers"] = new JsonObject { ["Host"] = host } };
+                    s["wsSettings"] = new JsonObject { ["path"] = path, ["host"] = host };
                     break;
                 case "grpc":
                     s["grpcSettings"] = new JsonObject { ["serviceName"] = serviceName ?? "" };

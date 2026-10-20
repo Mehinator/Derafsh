@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#512BD4</color>
-    <color name="colorPrimaryDark">#2B0B98</color>
-    <color name="colorAccent">#2B0B98</color>
+    <!-- Derafsh theme (Theme.xaml): status bar and system accents -->
+    <color name="colorPrimary">#100B15</color>
+    <color name="colorPrimaryDark">#100B15</color>
+    <color name="colorAccent">#F2C14E</color>
 </resources>

@@ -29,7 +29,7 @@ namespace Derafsh.Client
         public ObservableCollection<ServerGroup> ServerGroups { get; } = new();
         private List<Server> AllServers => ServerGroups.SelectMany(g => g).ToList();
 
-        private Process? xrayProcess;
+        private XrayProc? xrayProcess;
         private bool isConnected = false;
         // فقط وقتی خود درفش پروکسی ویندوز رو روشن کرده، موقع بستن برنامه خاموشش می‌کنیم
         private static bool s_proxyEnabled;
@@ -52,6 +52,14 @@ namespace Derafsh.Client
             BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
             HighlightTab("All");
             SetConnState(ConnState.Disconnected);
+#if ANDROID
+            // اندروید: VPN بعد از بستن صفحه هم روشن می‌مونه؛ با باز شدن دوباره وضعیتش رو نشون بده
+            if (DerafshVpnService.IsRunning)
+            {
+                isConnected = true;
+                SetConnState(ConnState.Connected, Preferences.Default.Get("connected_name", "") + "  ·  VPN is on");
+            }
+#endif
             _ = Task.Run(() => MainThread.BeginInvokeOnMainThread(LoadConfigs));
 
             // لیست آنلاین هر 4 ساعت روی گیت‌هاب آپدیت می‌شه؛ اگه نسخه ما قدیمی‌تره، خودکار بگیر
@@ -60,12 +68,53 @@ namespace Derafsh.Client
             DebugLog.Write("=== STARTUP ===");
         }
 
-        // ستون اصلی حداکثر 880 پیکسل و وسط پنجره، تا روی مانیتورهای عریض کش نیاد
+        // ستون اصلی حداکثر 880 پیکسل و وسط پنجره، تا روی مانیتورهای عریض کش نیاد؛ روی گوشی چیدمان فشرده
+        private bool? _compact;
         protected override void OnSizeAllocated(double width, double height)
         {
             base.OnSizeAllocated(width, height);
-            double side = Math.Max(24, (width - 880) / 2);
-            RootGrid.Padding = new Thickness(side, 20, side, 16);
+            if (width <= 0) return;
+            bool compact = width < 640;
+            double side = compact ? 14 : Math.Max(24, (width - 880) / 2);
+            RootGrid.Padding = new Thickness(side, compact ? 14 : 20, side, compact ? 10 : 16);
+            if (_compact != compact) { _compact = compact; ApplyLayout(compact); }
+        }
+
+        private void ApplyLayout(bool compact)
+        {
+            // کارت اتصال: روی گوشی دکمه زیر متن
+            Grid.SetRow(ConnectButton, compact ? 1 : 0);
+            Grid.SetColumn(ConnectButton, compact ? 0 : 1);
+            Grid.SetColumnSpan(ConnectButton, compact ? 2 : 1);
+            ConnectButton.HorizontalOptions = compact ? LayoutOptions.Fill : LayoutOptions.End;
+            ConnectButton.Margin = compact ? new Thickness(0, 12, 0, 0) : new Thickness(0);
+            ConnGrid.ColumnSpacing = compact ? 0 : 20;
+
+            // نوار ابزار: روی گوشی تب‌ها بالا و چهار دکمه 2×2 زیرش
+            Grid.SetRow(ActionsBar, compact ? 1 : 0);
+            Grid.SetColumn(ActionsBar, compact ? 0 : 2);
+            Grid.SetColumnSpan(ActionsBar, compact ? 3 : 1);
+            ToolbarGrid.RowSpacing = compact ? 10 : 0;
+            ActionsBar.ColumnDefinitions.Clear();
+            ActionsBar.RowDefinitions.Clear();
+            var buttons = new[] { TestAllButton, RefreshButton, RemoveDeadButton, AddConfigButton };
+            if (compact)
+            {
+                ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+                ActionsBar.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                ActionsBar.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                for (int i = 0; i < buttons.Length; i++) { Grid.SetColumn(buttons[i], i % 2); Grid.SetRow(buttons[i], i / 2); buttons[i].HeightRequest = 40; }
+            }
+            else
+            {
+                for (int i = 0; i < buttons.Length; i++) { ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto)); Grid.SetColumn(buttons[i], i); Grid.SetRow(buttons[i], 0); buttons[i].HeightRequest = 34; }
+            }
+
+            // rows already on screen keep the old template, so reattach the list to rebuild them
+            ServerListView.ItemTemplate = (DataTemplate)Resources[compact ? "CompactRow" : "WideRow"];
+            ServerListView.ItemsSource = null;
+            ServerListView.ItemsSource = ServerGroups;
         }
 
         private static T Res<T>(string key) => Application.Current!.Resources.TryGetValue(key, out var v) && v is T t ? t : default!;
@@ -345,36 +394,23 @@ namespace Derafsh.Client
         }
 
         // --- xray موقت برای تست یه کانفیگ (پینگ و جمینی) ---
-        private async Task<(Process proc, int port, string configPath)> StartTestXray(string link)
+        private async Task<(XrayProc proc, int port, string configPath)> StartTestXray(string link)
         {
-            string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
             int port = Random.Shared.Next(30000, 60000);
-            string configPath = Path.Combine(coreDir, $"test_{port}.json");
+            string configPath = Path.Combine(XrayProc.WorkDir, $"test_{port}.json");
             await File.WriteAllTextAsync(configPath, _configService.GenerateXrayConfig(link, port));
-            var proc = new Process { StartInfo = new ProcessStartInfo { FileName = Path.Combine(coreDir, "xray.exe"), Arguments = $"-c \"{configPath}\"", WorkingDirectory = coreDir, CreateNoWindow = true, UseShellExecute = false } };
-            try { proc.Start(); }
-            catch { proc.Dispose(); try { File.Delete(configPath); } catch { } throw; }
-            await WaitForPortAsync(port);
+            XrayProc proc;
+            try { proc = XrayProc.Start(configPath); }
+            catch { try { File.Delete(configPath); } catch { } throw; }
+            await XrayProc.WaitForPortAsync(port);
             return (proc, port, configPath);
         }
 
         // حتماً بعد از هر تست صدا زده بشه، وگرنه xray توی پس‌زمینه باز می‌مونه
-        private static void StopTestXray(Process? proc, string? configPath)
+        private static void StopTestXray(XrayProc? proc, string? configPath)
         {
-            try { if (proc != null && !proc.HasExited) proc.Kill(); } catch { }
             proc?.Dispose();
             try { if (configPath != null) File.Delete(configPath); } catch { }
-        }
-
-        // صبر تا xray پورت SOCKS رو باز کنه (به‌جای یه تأخیر ثابت که گاهی کم بود)
-        private static async Task WaitForPortAsync(int port, int timeoutMs = 3000)
-        {
-            var sw = Stopwatch.StartNew();
-            while (sw.ElapsedMilliseconds < timeoutMs)
-            {
-                try { using var c = new TcpClient(); await c.ConnectAsync("127.0.0.1", port); return; }
-                catch { await Task.Delay(100); }
-            }
         }
 
         // --- تست جمینی (از طریق خود کانفیگ) ---
@@ -383,12 +419,11 @@ namespace Derafsh.Client
         {
             if (s.GeminiStatus == "testing") return;
             s.GeminiStatus = "testing";
-            Process? proc = null; string? configPath = null;
+            XrayProc? proc = null; string? configPath = null;
             try
             {
                 (proc, int port, configPath) = await StartTestXray(s.Config);
-                var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy($"socks5://127.0.0.1:{port}"), UseProxy = true };
-                using var client = new HttpClient(handler);
+                using var client = XrayProc.SocksClient(port);
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
                 using var res = await client.GetAsync("https://gemini.google.com/app", HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 // اول صفحه کافیه (کد وضعیت و پیام «در کشور شما در دسترس نیست»)؛ دانلود کل صفحه از کانفیگ کند خیلی طول می‌کشه
@@ -425,7 +460,7 @@ namespace Derafsh.Client
         {
             if (s.IsPinging) return;
             s.IsPinging = true;
-            Process? proc = null; string? configPath = null;
+            XrayProc? proc = null; string? configPath = null;
             try
             {
                 // اول یه تست سریع TCP (vmess و hysteria2 مستقیم با xray تست می‌شن)
@@ -439,8 +474,7 @@ namespace Derafsh.Client
 
                 // تست واقعی با Xray
                 (proc, int port, configPath) = await StartTestXray(s.Config);
-                var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy($"socks5://127.0.0.1:{port}"), UseProxy = true };
-                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(4) };
+                using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(4));
                 var sw = Stopwatch.StartNew();
                 using var res = await client.GetAsync("http://www.gstatic.com/generate_204");
                 sw.Stop();
@@ -530,31 +564,32 @@ namespace Derafsh.Client
             SetConnState(ConnState.Connecting);
             try
             {
-                string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
-                string configPath = Path.Combine(coreDir, "config.json");
-                string enginePath = Path.Combine(coreDir, "xray.exe");
-                if (!File.Exists(enginePath))
+                if (!XrayProc.EngineExists)
                 {
-                    await DisplayAlertAsync("Xray engine is missing", "Derafsh needs the Core folder next to the app. Reinstall Derafsh and try again.", "OK");
+                    await DisplayAlertAsync("Xray engine is missing", "Derafsh can't find its Xray engine. Reinstall Derafsh and try again.", "OK");
                     SetConnState(ConnState.Disconnected);
                     return;
                 }
 
-                KillXray();
-
                 // *** استفاده از سرویس برای تولید کانفیگ نهایی ***
+                string configPath = Path.Combine(XrayProc.WorkDir, "config.json");
                 File.WriteAllText(configPath, _configService.GenerateXrayConfig(_currentServer.Config));
 
-                xrayProcess = new Process { StartInfo = new ProcessStartInfo { FileName = enginePath, Arguments = $"-c \"{configPath}\"", WorkingDirectory = coreDir, CreateNoWindow = true, UseShellExecute = false } };
-                xrayProcess.Start();
-                await WaitForPortAsync(10809, 5000);
+#if ANDROID
+                // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره
+                if (!await VpnController.StartAsync(configPath))
+                    throw new Exception(VpnController.LastError ?? "The VPN didn't start.");
+#else
+                KillXray();
+                xrayProcess = XrayProc.Start(configPath);
+                await XrayProc.WaitForPortAsync(10809, 5000);
                 EnableProxy();
+#endif
 
                 string? ip = null, country = null;
                 try
                 {
-                    var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy("socks5://127.0.0.1:10809"), UseProxy = true };
-                    using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(6) };
+                    using var client = XrayProc.SocksClient(10809, TimeSpan.FromSeconds(8));
                     using var doc = JsonDocument.Parse(await client.GetStringAsync("https://api.country.is"));
                     ip = doc.RootElement.GetProperty("ip").GetString();
                     country = doc.RootElement.GetProperty("country").GetString();
@@ -562,6 +597,7 @@ namespace Derafsh.Client
                 catch { }
 
                 isConnected = true;
+                Preferences.Default.Set("connected_name", _currentServer.City);
                 SetConnState(ConnState.Connected, ip != null
                     ? $"{_currentServer.City}  ·  IP {ip}  ·  {country}"
                     : $"{_currentServer.City}  ·  couldn't check the IP — try opening a website");
@@ -573,8 +609,22 @@ namespace Derafsh.Client
             }
         }
 
-        private void Disconnect() { DisableProxy(); KillXray(); isConnected = false; SetConnState(ConnState.Disconnected); }
-        private static void KillXray() { foreach (var p in Process.GetProcessesByName("xray")) try { p.Kill(); } catch { } }
+        private void Disconnect()
+        {
+#if ANDROID
+            VpnController.Stop();
+#else
+            DisableProxy(); xrayProcess?.Dispose(); xrayProcess = null; KillXray();
+#endif
+            isConnected = false; SetConnState(ConnState.Disconnected);
+        }
+
+        private static void KillXray()
+        {
+#if WINDOWS
+            foreach (var p in Process.GetProcessesByName("xray")) try { p.Kill(); } catch { }
+#endif
+        }
 
         public static void CleanupOnExit()
         {

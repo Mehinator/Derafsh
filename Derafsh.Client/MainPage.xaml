@@ -16,6 +16,102 @@
             <local:PingToColorConverter x:Key="PingColor" Untested="{StaticResource TextMuted}" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
             <local:GeminiTextConverter x:Key="GeminiText" />
             <local:GeminiColorConverter x:Key="GeminiColor" Neutral="{StaticResource TextMuted}" Good="{StaticResource Success}" Warn="{StaticResource Warning}" Bad="{StaticResource Danger}" />
+
+            <!-- Desktop row: results and buttons on the right -->
+            <DataTemplate x:Key="WideRow" x:DataType="models:Server">
+                <ViewCell>
+                    <Border Margin="0,3" Padding="16,10" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
+                            Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroupList>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceHover}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateGroupList>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+                            <!-- Name (✦ = favorite) -->
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
+                                <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
+                            </Grid>
+                            <!-- Protocol · country · source -->
+                            <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
+
+                            <!-- Results -->
+                            <HorizontalStackLayout Grid.Column="1" Spacing="16" HorizontalOptions="End">
+                                <Label Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
+                                       FontSize="12" VerticalOptions="Center" />
+                                <Label Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
+                                       FontFamily="{StaticResource FontMono}" FontSize="13" MinimumWidthRequest="72" HorizontalTextAlignment="End" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
+                                            <Setter Property="Text" Value="testing…" />
+                                            <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </HorizontalStackLayout>
+
+                            <!-- Actions -->
+                            <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6" HorizontalOptions="End">
+                                <Button Text="Ping" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="Test this config's speed" />
+                                <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="Check whether Gemini opens through this config" />
+                                <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="{Binding IsFavorite, Converter={StaticResource FavoriteName}}"
+                                        SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
+                                <Button Text="Save" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="Save to your Personal list" />
+                                <Button Text="Delete" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="Delete from your Personal list" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+                </ViewCell>
+            </DataTemplate>
+
+            <!-- Phone row: name and ping, then source and Gemini result, then the buttons on their own line -->
+            <DataTemplate x:Key="CompactRow" x:DataType="models:Server">
+                <ViewCell>
+                    <Border Margin="0,4" Padding="14,12" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
+                            Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+                            <Grid ColumnDefinitions="Auto,*">
+                                <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
+                                <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
+                            </Grid>
+                            <Label Grid.Column="1" Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
+                                   FontFamily="{StaticResource FontMono}" FontSize="13" HorizontalTextAlignment="End" VerticalOptions="Center">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
+                                        <Setter Property="Text" Value="testing…" />
+                                        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                            <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
+                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
+                                   FontSize="12" HorizontalTextAlignment="End" VerticalOptions="Center" />
+                            <HorizontalStackLayout Grid.Row="2" Grid.ColumnSpan="2" Spacing="8" Margin="0,4,0,0">
+                                <Button Text="Ping" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}" />
+                                <Button Text="Gemini" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
+                                <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
+                                        SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
+                                <Button Text="Save" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}" />
+                                <Button Text="Delete" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" HeightRequest="36" Padding="14,0" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+                </ViewCell>
+            </DataTemplate>
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -39,7 +135,7 @@
 
             <!-- Connection -->
             <Border Grid.Row="1" Style="{StaticResource Card}">
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="20">
+                <Grid x:Name="ConnGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="20">
                     <VerticalStackLayout Spacing="4" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="10">
                             <BoxView x:Name="ConnDot" WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{StaticResource TextMuted}" VerticalOptions="Center" />
@@ -52,7 +148,7 @@
             </Border>
 
             <!-- Tabs + list actions -->
-            <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Grid x:Name="ToolbarGrid" Grid.Row="2" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
                 <Border BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Hairline}" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="3" VerticalOptions="Center">
                     <HorizontalStackLayout Spacing="2">
                         <Button x:Name="BtnTabAll" Text="All" CommandParameter="All" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
@@ -60,21 +156,21 @@
                         <Button x:Name="BtnTabOnline" Text="Online" CommandParameter="Online" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
                     </HorizontalStackLayout>
                 </Border>
-                <HorizontalStackLayout Grid.Column="2" Spacing="8" VerticalOptions="Center">
+                <Grid x:Name="ActionsBar" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8" VerticalOptions="Center">
                     <Button x:Name="TestAllButton" Text="Test all" Style="{StaticResource SecondaryButton}" Clicked="OnFindBestServerClicked"
                             ToolTipProperties.Text="Ping every config in the list and select the fastest" />
-                    <Button Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked"
+                    <Button x:Name="RefreshButton" Grid.Column="1" Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked"
                             ToolTipProperties.Text="Download the newest free configs (the list is refreshed every 4 hours)" />
-                    <Button Text="Remove dead" Style="{StaticResource SecondaryButton}" Clicked="OnDeleteDeadConfigsClicked"
+                    <Button x:Name="RemoveDeadButton" Grid.Column="2" Text="Remove dead" Style="{StaticResource SecondaryButton}" Clicked="OnDeleteDeadConfigsClicked"
                             ToolTipProperties.Text="Remove configs that didn't answer the last test" />
-                    <Button Text="Add config" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked"
+                    <Button x:Name="AddConfigButton" Grid.Column="3" Text="Add config" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked"
                             ToolTipProperties.Text="Paste your own vless / vmess / ss / trojan / hysteria2 links" />
-                </HorizontalStackLayout>
+                </Grid>
             </Grid>
 
             <!-- Server list -->
             <ListView x:Name="ServerListView" Grid.Row="3" IsGroupingEnabled="True" HasUnevenRows="True" SeparatorVisibility="None"
-                      BackgroundColor="Transparent" SelectionMode="Single" ItemSelected="OnServerSelected">
+                      BackgroundColor="Transparent" SelectionMode="Single" ItemSelected="OnServerSelected" ItemTemplate="{StaticResource WideRow}">
                 <ListView.GroupHeaderTemplate>
                     <DataTemplate x:DataType="local:ServerGroup">
                         <ViewCell>
@@ -82,67 +178,6 @@
                         </ViewCell>
                     </DataTemplate>
                 </ListView.GroupHeaderTemplate>
-                <ListView.ItemTemplate>
-                    <DataTemplate x:DataType="models:Server">
-                        <ViewCell>
-                            <Border Margin="0,3" Padding="16,10" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
-                                    Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroupList>
-                                        <VisualStateGroup x:Name="CommonStates">
-                                            <VisualState x:Name="Normal" />
-                                            <VisualState x:Name="PointerOver">
-                                                <VisualState.Setters>
-                                                    <Setter Property="BackgroundColor" Value="{StaticResource SurfaceHover}" />
-                                                </VisualState.Setters>
-                                            </VisualState>
-                                        </VisualStateGroup>
-                                    </VisualStateGroupList>
-                                </VisualStateManager.VisualStateGroups>
-
-                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
-                                    <!-- Name (✦ = favorite) -->
-                                    <Grid ColumnDefinitions="Auto,*">
-                                        <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
-                                        <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
-                                    </Grid>
-                                    <!-- Protocol · country · source -->
-                                    <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
-
-                                    <!-- Results -->
-                                    <HorizontalStackLayout Grid.Column="1" Spacing="16" HorizontalOptions="End">
-                                        <Label Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
-                                               FontSize="12" VerticalOptions="Center" />
-                                        <Label Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
-                                               FontFamily="{StaticResource FontMono}" FontSize="13" MinimumWidthRequest="72" HorizontalTextAlignment="End" VerticalOptions="Center">
-                                            <Label.Triggers>
-                                                <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
-                                                    <Setter Property="Text" Value="testing…" />
-                                                    <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
-                                                </DataTrigger>
-                                            </Label.Triggers>
-                                        </Label>
-                                    </HorizontalStackLayout>
-
-                                    <!-- Actions -->
-                                    <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6" HorizontalOptions="End">
-                                        <Button Text="Ping" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Test this config's speed" />
-                                        <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Check whether Gemini opens through this config" />
-                                        <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="{Binding IsFavorite, Converter={StaticResource FavoriteName}}"
-                                                SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
-                                        <Button Text="Save" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Save to your Personal list" />
-                                        <Button Text="Delete" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"
-                                                ToolTipProperties.Text="Delete from your Personal list" />
-                                    </HorizontalStackLayout>
-                                </Grid>
-                            </Border>
-                        </ViewCell>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
             </ListView>
 
             <!-- Empty list -->

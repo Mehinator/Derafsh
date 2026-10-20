@@ -15,7 +15,7 @@ namespace Derafsh.Client
                 Title = "Derafsh",
                 Width = 1000,
                 Height = 780,
-                MinimumWidth = 760,
+                MinimumWidth = 380,
                 MinimumHeight = 560,
             };
 

@@ -2,10 +2,19 @@
 
 ## Xray-core
 
-`Derafsh.Client/Core/xray.exe`, `geoip.dat`, `geosite.dat` — Xray-core v26.3.27, unmodified, from the official release
-`Xray-windows-64.zip` (https://github.com/XTLS/Xray-core/releases/tag/v26.3.27).
-Licensed under the Mozilla Public License 2.0; the full license ships next to the binary as `Core/LICENSE-Xray-core.txt`.
-Source code: https://github.com/XTLS/Xray-core
+Xray-core v26.3.27, unmodified, from the official releases (https://github.com/XTLS/Xray-core/releases/tag/v26.3.27).
+The build downloads it and checks its SHA-256:
+
+- Windows: `xray.exe`, `geoip.dat`, `geosite.dat` from `Xray-windows-64.zip`, shipped in the app's `Core/` folder.
+- Android: the `xray` binary from `Xray-android-arm64-v8a.zip`, shipped inside the APK as `libxray.so`.
+
+Licensed under the Mozilla Public License 2.0; the full license ships with the Windows app as `Core/LICENSE-Xray-core.txt`
+and is at https://github.com/XTLS/Xray-core/blob/main/LICENSE. Source code: https://github.com/XTLS/Xray-core
+
+## hev-socks5-tunnel (Android only)
+
+`hev-socks5-tunnel.aar` v2.19.1 by hev (https://github.com/heiher/hev-socks5-tunnel), unmodified, used to pass the
+phone's VPN traffic to Xray. Licensed under the MIT License (https://github.com/heiher/hev-socks5-tunnel/blob/main/License).
 
 ## Vazirmatn font
 

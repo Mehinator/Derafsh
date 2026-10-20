@@ -1,5 +1,12 @@
 # Third-party notices
 
+## Xray-core
+
+`Derafsh.Client/Core/xray.exe`, `geoip.dat`, `geosite.dat` — Xray-core v26.3.27, unmodified, from the official release
+`Xray-windows-64.zip` (https://github.com/XTLS/Xray-core/releases/tag/v26.3.27).
+Licensed under the Mozilla Public License 2.0; the full license ships next to the binary as `Core/LICENSE-Xray-core.txt`.
+Source code: https://github.com/XTLS/Xray-core
+
 ## Vazirmatn font
 
 `Derafsh.Client/Resources/Fonts/Vazirmatn-Bold.ttf` — used for the Persian wordmark «درفش».

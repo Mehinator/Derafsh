@@ -31,7 +31,7 @@
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
                     <HorizontalStackLayout Spacing="10">
                         <Label Text="درفش" FontFamily="{StaticResource FontPersian}" FontSize="22" VerticalOptions="Center" />
-                        <Label Text="DERAFSH" Style="{StaticResource SectionLabel}" VerticalOptions="Center" />
+                        <Label x:Name="BrandLabel" Text="DERAFSH" Style="{StaticResource SectionLabel}" VerticalOptions="Center" />
                     </HorizontalStackLayout>
                     <Label Text="Free configs from Telegram, refreshed every 4 hours" Style="{StaticResource MetaLabel}" />
                 </VerticalStackLayout>

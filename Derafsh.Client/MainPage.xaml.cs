@@ -49,6 +49,7 @@ namespace Derafsh.Client
             InitializeComponent();
             BindingContext = this;
             ServerListView.ItemsSource = ServerGroups;
+            BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
             HighlightTab("All");
             SetConnState(ConnState.Disconnected);
             _ = Task.Run(() => MainThread.BeginInvokeOnMainThread(LoadConfigs));
@@ -349,7 +350,7 @@ namespace Derafsh.Client
             string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
             int port = Random.Shared.Next(30000, 60000);
             string configPath = Path.Combine(coreDir, $"test_{port}.json");
-            await File.WriteAllTextAsync(configPath, _configService.GenerateXrayConfig(link).Replace("10809", port.ToString()));
+            await File.WriteAllTextAsync(configPath, _configService.GenerateXrayConfig(link, port));
             var proc = new Process { StartInfo = new ProcessStartInfo { FileName = Path.Combine(coreDir, "xray.exe"), Arguments = $"-c \"{configPath}\"", WorkingDirectory = coreDir, CreateNoWindow = true, UseShellExecute = false } };
             try { proc.Start(); }
             catch { proc.Dispose(); try { File.Delete(configPath); } catch { } throw; }

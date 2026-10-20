@@ -2,22 +2,24 @@ name: Update Derafsh Configs
 
 on:
   schedule:
-    - cron: '0 0 * * *' # هر 4 ساعت یکبار (ساعت 0, 4, 8, 12...)
+    - cron: '17 */4 * * *' # هر 4 ساعت یکبار (ساعت 0:17, 4:17, 8:17...)؛ دقیقه 17 چون سر ساعت گیت‌هاب شلوغه و دیر اجرا می‌کنه
   workflow_dispatch: # اجازه میده دکمه Run رو دستی هم بزنی
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10
+
     permissions:
       contents: write # اجازه میده فایل رو تغییر بده و ذخیره کنه
+      actions: write # برای روشن نگه داشتن کرون (پایین رو ببین)
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v6
         with:
           python-version: '3.x'
 
@@ -28,9 +30,29 @@ jobs:
         run: python collector.py
 
       - name: Commit and Push changes
+        id: commit
         run: |
           git config --global user.name "Derafsh Bot"
           git config --global user.email "bot@derafsh.com"
-          git add derafsh_servers.txt
-          git commit -m "🔄 Auto-update configs" || echo "No changes to commit"
-          git push
+          git add derafsh_servers.txt derafsh_sources.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "🔄 Auto-update configs"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # برنامه فایل‌ها رو از jsDelivr می‌گیره که تا چند ساعت نسخه قدیمی رو نگه می‌داره؛ اینجا کش رو پاک می‌کنیم
+      - name: Refresh jsDelivr cache
+        if: steps.commit.outputs.changed == 'true'
+        run: |
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_servers.txt"
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_sources.json"
+
+      # گیت‌هاب کرون رو بعد از 60 روز بی‌فعالیتی ریپو خاموش می‌کنه؛ این مرحله هر بار دوباره روشنش نگه می‌داره
+      - name: Keep workflow alive
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update_configs.yml/enable"

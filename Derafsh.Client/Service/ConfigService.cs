@@ -102,7 +102,7 @@ namespace Derafsh.Client.Services
                     else if (type == "http" || type == "xhttp") netSettings = $@"""httpSettings"":{{""path"":""{path}"",""host"":[""{host}""],""method"":""GET""}},";
                     else if (type == "tcp")
                     {
-                        if (headerType == "http") netSettings = $@"""tcpSettings"":{{""header"":{{""type"":""http"",""request"":{{""version"":""1.1"",""method"":""GET"",""path"":[""{path}""],""headers"":{{""Host"":[""{host}""],""User-Agent"":[""Mozilla/5.0""]}}}}}},";
+                        if (headerType == "http") netSettings = $@"""tcpSettings"":{{""header"":{{""type"":""http"",""request"":{{""version"":""1.1"",""method"":""GET"",""path"":[""{path}""],""headers"":{{""Host"":[""{host}""],""User-Agent"":[""Mozilla/5.0""]}}}}}}}},";
                         else if (headerType != "none") netSettings = $@"""tcpSettings"":{{""header"":{{""type"":""{headerType}""}}}},";
                     }
 

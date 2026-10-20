@@ -10,6 +10,17 @@ namespace Derafsh.Client.Models
         public string Config { get; set; } = "";
         public string Country { get; set; } = "";
 
+        // منبع کانفیگ (مثلاً کانال تلگرام) یا "شخصی"
+        public string Source { get; set; } = "";
+
+        // امتیاز شخصی کاربر؛ فقط روی همین دستگاه ذخیره می‌شود
+        private bool _isFavorite;
+        public bool IsFavorite { get => _isFavorite; set { _isFavorite = value; OnPropertyChanged(); } }
+
+        // نتیجه تست جمینی روی همین کانفیگ
+        private string _geminiStatus = "";
+        public string GeminiStatus { get => _geminiStatus; set { _geminiStatus = value; OnPropertyChanged(); } }
+
         // این فیلد تعیین می‌کنه دکمه حذف یا ذخیره بیاد
         private bool _isRemovable;
         public bool IsRemovable

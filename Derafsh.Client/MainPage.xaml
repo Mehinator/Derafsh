@@ -43,21 +43,27 @@
                 <DataTemplate>
                     <ViewCell>
                         <Border Margin="5,2" Padding="8" BackgroundColor="#252525" StrokeShape="RoundRectangle 10" Stroke="{Binding IsSelected, Converter={StaticResource BoolToColor}}" StrokeThickness="{Binding IsSelected, Converter={StaticResource BoolToThickness}}">
-                            <Grid ColumnDefinitions="25,*,Auto,Auto,Auto,Auto" ColumnSpacing="5">
+                            <Grid ColumnDefinitions="25,*,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="5">
                                 <Label Grid.Column="0" Text="{Binding Index}" TextColor="#666" FontSize="11" VerticalOptions="Center" HorizontalOptions="Center"/>
 
                                 <StackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
                                     <Label Text="{Binding City}" TextColor="White" FontSize="13" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
                                     <Label Text="{Binding Country}" TextColor="#888" FontSize="10" LineBreakMode="TailTruncation"/>
+                                    <Label Text="{Binding Source}" TextColor="#888" FontSize="10" LineBreakMode="TailTruncation"/>
+                                    <Label Text="{Binding GeminiStatus}" TextColor="#AAAAAA" FontSize="10" FontAttributes="Bold" LineBreakMode="TailTruncation"/>
                                 </StackLayout>
 
                                 <Label Grid.Column="2" Text="{Binding Ping, StringFormat='{0}ms'}" TextColor="{Binding Ping, Converter={StaticResource PingToColor}}" FontSize="11" FontAttributes="Bold" VerticalOptions="Center"/>
 
                                 <Button Grid.Column="3" Text="📶" TextColor="Black" BackgroundColor="#FFD700" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"/>
 
-                                <Button Grid.Column="4" Text="💾" TextColor="White" BackgroundColor="#2962FF" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding ShowSave}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"/>
+                                <Button Grid.Column="4" Text="🤖" TextColor="White" BackgroundColor="#6A1B9A" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"/>
 
-                                <Button Grid.Column="5" Text="✖" TextColor="White" BackgroundColor="#D50000" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding IsRemovable}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"/>
+                                <Button Grid.Column="5" Text="⭐" TextColor="White" BackgroundColor="{Binding IsFavorite, Converter={StaticResource BoolToColor}}" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"/>
+
+                                <Button Grid.Column="6" Text="💾" TextColor="White" BackgroundColor="#2962FF" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding ShowSave}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"/>
+
+                                <Button Grid.Column="7" Text="✖" TextColor="White" BackgroundColor="#D50000" CornerRadius="5" HeightRequest="30" WidthRequest="30" Padding="0" IsVisible="{Binding IsRemovable}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"/>
                             </Grid>
                         </Border>
                     </ViewCell>

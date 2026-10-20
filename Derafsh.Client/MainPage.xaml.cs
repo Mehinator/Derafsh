@@ -19,6 +19,12 @@ namespace Derafsh.Client
         private const string OnlineConfigUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_servers.txt";
         private string CloudPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_configs.txt");
         private string UserPath => Path.Combine(FileSystem.AppDataDirectory, "user_configs.txt");
+        private const string OnlineSourcesUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sources.json";
+        private string CloudSourcesPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_sources.json");
+        private string FavoritesPath => Path.Combine(FileSystem.AppDataDirectory, "favorites.json");
+
+        // نتیجه تست جمینی در همین اجرای برنامه (با عوض کردن تب پاک نشه)
+        private readonly Dictionary<string, string> _geminiCache = new();
 
         [DllImport("wininet.dll")] private static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength);
 
@@ -49,6 +55,10 @@ namespace Derafsh.Client
             BindingContext = this;
             if (ServerListView != null) ServerListView.ItemsSource = ServerGroups;
             _ = Task.Run(() => MainThread.BeginInvokeOnMainThread(LoadConfigs));
+
+            // لیست آنلاین هر 4 ساعت روی گیت‌هاب آپدیت می‌شه؛ اگه نسخه ما قدیمی‌تره، خودکار بگیر
+            if (!File.Exists(CloudPath) || File.GetLastWriteTime(CloudPath) < DateTime.Now.AddHours(-4))
+                MainThread.BeginInvokeOnMainThread(async () => await UpdateOnlineConfigs(true));
             DebugLog.Write("=== STARTUP ===");
         }
 
@@ -59,6 +69,8 @@ namespace Derafsh.Client
         {
             ServerGroups.Clear();
             int idx = 1;
+            var favs = ReadFavorites();
+            var sources = ReadJsonDict(CloudSourcesPath);
 
             // 1. شخصی‌ها
             if (CurrentTab == "All" || CurrentTab == "Personal")
@@ -67,6 +79,9 @@ namespace Derafsh.Client
                 {
                     // استفاده از متد سرویس
                     var list = _configService.ParseFile(UserPath, true);
+                    Decorate(list, new(), favs);
+                    foreach (var s in list) s.Source = "👤 شخصی";
+                    list = list.OrderByDescending(x => x.IsFavorite).ToList();
                     if (list.Any())
                     {
                         foreach (var s in list) s.Index = idx++;
@@ -78,12 +93,12 @@ namespace Derafsh.Client
             // 2. آنلاین‌ها
             if (CurrentTab == "All" || CurrentTab == "Online")
             {
-                if (!File.Exists(CloudPath)) _ = UpdateOnlineConfigs(false);
                 if (File.Exists(CloudPath))
                 {
                     // استفاده از متد سرویس
                     var list = _configService.ParseFile(CloudPath, false);
-                    var selected = list.Take(20).ToList();
+                    Decorate(list, sources, favs);
+                    var selected = list.OrderByDescending(x => x.IsFavorite).Take(20).ToList();
                     if (selected.Any())
                     {
                         foreach (var s in selected) s.Index = idx++;
@@ -106,6 +121,9 @@ namespace Derafsh.Client
                 using var client = new HttpClient(); client.Timeout = TimeSpan.FromSeconds(20);
                 var content = await client.GetStringAsync(OnlineConfigUrl);
                 await File.WriteAllTextAsync(CloudPath, content);
+
+                // فایل منبع اختیاریه؛ اگه نبود، برنامه بدون اون کار می‌کنه
+                try { await File.WriteAllTextAsync(CloudSourcesPath, await client.GetStringAsync(OnlineSourcesUrl)); } catch { }
                 if (reload) { LoadConfigs(); StatusLabel.Text = "Updated ✅"; }
             }
             catch (Exception ex) { if (reload) StatusLabel.Text = "Update Error"; }
@@ -169,7 +187,8 @@ namespace Derafsh.Client
             if (!await DisplayAlert("Cleanup", "Delete dead configs?", "Yes", "No")) return;
             if (File.Exists(UserPath))
             {
-                var deadList = AllServers.Where(s => s.IsRemovable && (s.Ping >= 9999 || s.Ping <= 0)).Select(s => s.Config).ToHashSet();
+                // فقط کانفیگ‌هایی که واقعاً تست شده و خراب بودن (Ping = -1 یعنی تست نشده)
+                var deadList = AllServers.Where(s => s.IsRemovable && s.Ping >= 9999).Select(s => s.Config).ToHashSet();
                 if (deadList.Any())
                 {
                     var lines = (await File.ReadAllLinesAsync(UserPath)).ToList();
@@ -209,6 +228,87 @@ namespace Derafsh.Client
                 if (BtnTabOnline != null) { BtnTabOnline.BackgroundColor = tab == "Online" ? Colors.Gold : Color.FromArgb("#333"); BtnTabOnline.TextColor = tab == "Online" ? Colors.Black : Colors.White; }
                 LoadConfigs();
             }
+        }
+
+        // --- امتیاز شخصی (⭐) ---
+        private void OnFavoriteClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) ToggleFavorite(s); }
+        private void ToggleFavorite(Server s)
+        {
+            var favs = ReadFavorites();
+            s.IsFavorite = !s.IsFavorite;
+            if (s.IsFavorite) favs.Add(s.Config); else favs.Remove(s.Config);
+            try { File.WriteAllText(FavoritesPath, JsonSerializer.Serialize(favs.ToList())); } catch { }
+
+            // فقط گروه همین کانفیگ دوباره مرتب بشه (LoadConfigs نمی‌خوایم، چون نتیجه تست‌ها رو پاک می‌کنه)
+            foreach (var group in ServerGroups)
+            {
+                if (!group.Contains(s)) continue;
+                var sorted = group.OrderByDescending(x => x.IsFavorite).ToList();
+                group.Clear(); foreach (var x in sorted) group.Add(x);
+            }
+        }
+
+        private HashSet<string> ReadFavorites()
+        {
+            try { if (File.Exists(FavoritesPath)) return JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(FavoritesPath)) ?? new(); } catch { }
+            return new();
+        }
+
+        private static Dictionary<string, string> ReadJsonDict(string path)
+        {
+            try { if (File.Exists(path)) return JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) ?? new(); } catch { }
+            return new();
+        }
+
+        // اطلاعات منبع، امتیاز و نتیجه تست جمینی رو به هر کانفیگ می‌ده
+        private void Decorate(List<Server> list, Dictionary<string, string> sources, HashSet<string> favs)
+        {
+            foreach (var s in list)
+            {
+                s.Source = sources.TryGetValue(s.Config, out var src) ? "📡 " + src : "";
+                s.IsFavorite = favs.Contains(s.Config);
+                s.GeminiStatus = _geminiCache.TryGetValue(s.Config, out var g) ? g : "";
+            }
+        }
+
+        // --- تست جمینی (از طریق خود کانفیگ) ---
+        private void OnGeminiTestClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = TestGemini(s); }
+        private async Task TestGemini(Server s)
+        {
+            s.GeminiStatus = "⏳ Testing...";
+            string coreDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
+            int testPort = new Random().Next(30000, 60000);
+            string configPath = Path.Combine(coreDir, $"gemini_{testPort}.json");
+            Process? proc = null;
+            try
+            {
+                await File.WriteAllTextAsync(configPath, _configService.GenerateXrayConfig(s.Config).Replace("10809", testPort.ToString()));
+                proc = new Process { StartInfo = new ProcessStartInfo { FileName = Path.Combine(coreDir, "xray.exe"), Arguments = $"-c \"{configPath}\"", WorkingDirectory = coreDir, CreateNoWindow = true, UseShellExecute = false } };
+                proc.Start();
+                await Task.Delay(1000);
+
+                var handler = new HttpClientHandler { Proxy = new System.Net.WebProxy($"socks5://127.0.0.1:{testPort}"), UseProxy = true };
+                using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                using var res = await client.GetAsync("https://gemini.google.com/app");
+                string body = await res.Content.ReadAsStringAsync();
+                s.GeminiStatus = ClassifyGemini(res.StatusCode, body);
+            }
+            catch (TaskCanceledException) { s.GeminiStatus = "❌ Timeout"; }
+            catch { s.GeminiStatus = "❌ Failed"; }
+            finally
+            {
+                try { proc?.Kill(); } catch { }
+                try { File.Delete(configPath); } catch { }
+            }
+            _geminiCache[s.Config] = s.GeminiStatus;
+        }
+
+        private static string ClassifyGemini(System.Net.HttpStatusCode code, string body)
+        {
+            if (body.Contains("not available in your country", StringComparison.OrdinalIgnoreCase)) return "🌍 Region locked";
+            if (code == System.Net.HttpStatusCode.Forbidden) return "🚫 Blocked (403)";
+            if (code == System.Net.HttpStatusCode.OK) return "✅ Gemini OK";
+            return $"⚠️ HTTP {(int)code}";
         }
 
         // --- پینگ ---

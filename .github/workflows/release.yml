@@ -77,6 +77,10 @@ jobs:
           dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:InstallAndroidDependencies
           -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME" -p:AcceptAndroidSDKLicenses=True
 
+      # The Android build reads the AAR very early, so fetch the engine files first in their own step
+      - name: Download Xray for Android and hev-socks5-tunnel (pinned, SHA-256 checked)
+        run: dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:FetchAndroidEngine
+
       - name: Restore the signing key
         shell: pwsh
         env:

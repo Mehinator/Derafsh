@@ -44,7 +44,14 @@ HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 def clean_link(link):
     """لینک رو یکدست می‌کنه تا برنامه بتونه بخونه و وصل بشه. لینک خراب یا ناقص = None"""
-    link = link.strip().rstrip(")]}\"'`")
+    link = link.strip()
+    # علامت‌های چسبیده به آخر لینک (مثلاً لینکی که توی پرانتز نوشته شده) حذف می‌شن،
+    # ولی پرانتزی که جفتش توی خود لینکه (مثل اسم "(S102)") می‌مونه
+    while link and link[-1] in ")]}\"'`":
+        pair = {')': '(', ']': '[', '}': '{'}.get(link[-1])
+        if pair and link.count(pair) >= link.count(link[-1]):
+            break
+        link = link[:-1]
     body, sep, name = link.partition('#')
     try:
         if body.startswith("vmess://"):

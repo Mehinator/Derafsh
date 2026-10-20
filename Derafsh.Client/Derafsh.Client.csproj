@@ -1,9 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<!--<TargetFrameworks>net9.0-android;net9.0-ios;net9.0-maccatalyst</TargetFrameworks>
-		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net9.0-windows10.0.19041.0</TargetFrameworks>-->
-    <TargetFrameworks>net9.0-windows10.0.19041.0</TargetFrameworks>
+		<!--<TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>-->
+		<!-- .NET 10 (LTS, supported to Nov 2028). .NET 9 support ended in May 2026. -->
+    <TargetFrameworks>net10.0-windows10.0.19041.0</TargetFrameworks>
+		<MauiVersion>10.0.60</MauiVersion>
 		<OutputType>Exe</OutputType>
 		<RootNamespace>Derafsh.Client</RootNamespace>
 		<UseMaui>true</UseMaui>
@@ -29,11 +31,13 @@
 		<GenerateTestArtifacts>True</GenerateTestArtifacts>
 		<HoursBetweenUpdateChecks>0</HoursBetweenUpdateChecks>
     <WindowsPackageType>None</WindowsPackageType>
+		<!-- Ship the Windows App runtime inside the app: it then runs without installing anything (and from F5 in VS) -->
+		<WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<MauiIcon Include="Resources\AppIcon\appicon.png" Color="#1A0520" />
-    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#1A0520" BaseSize="128,128" />
+		<MauiIcon Include="Resources\AppIcon\appicon.png" Color="#100B15" />
+    <MauiSplashScreen Include="Resources\Splash\splash.png" Color="#100B15" BaseSize="128,128" />
 		<MauiImage Include="Resources\Images\*" />
 		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
 		<MauiFont Include="Resources\Fonts\*" />
@@ -42,8 +46,6 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
-		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="$(MauiVersion)" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="9.0.0" />
 	</ItemGroup>
 
 	<ItemGroup>

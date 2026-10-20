@@ -44,7 +44,10 @@ namespace Derafsh.Client.Services
                     if (!link.StartsWith("vmess"))
                     {
                         var uri = new Uri(link);
-                        name = !string.IsNullOrEmpty(uri.Fragment) ? HttpUtility.UrlDecode(uri.Fragment.TrimStart('#')) : $"{uri.Host}:{uri.Port}";
+                        name = HttpUtility.UrlDecode(uri.Fragment.TrimStart('#'));
+                        // اسم خالی یا فقط کاراکترهای نامرئی (مثلاً لینکی که با # تموم شده) → host:port
+                        if (!name.Any(c => !char.IsWhiteSpace(c) && char.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.Format))
+                            name = $"{uri.Host}:{uri.Port}";
                     }
                     else name = "Vmess Server";
                 }
@@ -117,7 +120,7 @@ namespace Derafsh.Client.Services
                 {
                     string base64 = link.Substring(8);
                     string decoded = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-                    var v = JsonSerializer.Deserialize<ConfigDto>(decoded);
+                    var v = JsonSerializer.Deserialize<ConfigDto>(decoded) ?? throw new FormatException("Invalid vmess link");
                     string port = v.port?.ToString() ?? "443";
                     string netSettings = v.net == "ws" ? $@"""wsSettings"":{{""path"":""{v.path}"",""headers"":{{""Host"":""{v.host}""}}}}," : "";
                     string tlsSettings = v.tls == "tls" ? $@"""security"":""tls"",""tlsSettings"":{{""serverName"":""{v.sni ?? v.host}"",""allowInsecure"":true,""fingerprint"":""{v.fp ?? "chrome"}""}}," : $@"""security"":""none"",";

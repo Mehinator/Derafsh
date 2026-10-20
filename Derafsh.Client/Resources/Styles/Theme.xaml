@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Derafsh theme.
+    Neutrals: violet-black, taken from the banner's purple.
+    Accent: the banner's gold, used only for the main action, the selected row and the four-pointed star.
+    Crimson: the banner's frame, as one thin rule at the top of the window.
+    Success / Warning / Danger: status only (ping, Gemini result, connection), never decoration.
+    All text colors pass WCAG AA (4.5:1) on every surface below.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Surfaces -->
+    <Color x:Key="Bg">#100B15</Color>
+    <Color x:Key="Surface">#18121F</Color>
+    <Color x:Key="SurfaceRaised">#231A2D</Color>
+    <Color x:Key="SurfaceHover">#2A2035</Color>
+    <Color x:Key="Hairline">#2E2438</Color>
+    <Color x:Key="BorderStrong">#4B3E59</Color>
+
+    <!-- Text -->
+    <Color x:Key="TextPrimary">#F3EEF7</Color>
+    <Color x:Key="TextSecondary">#BEB3C9</Color>
+    <Color x:Key="TextMuted">#9A8DA8</Color>
+
+    <!-- Accent -->
+    <Color x:Key="Accent">#F2C14E</Color>
+    <Color x:Key="AccentHover">#F6CF6E</Color>
+    <Color x:Key="AccentPressed">#D9A933</Color>
+    <Color x:Key="OnAccent">#1A1222</Color>
+
+    <!-- Brand: the banner's crimson frame. A thin rule only — never status, never a button -->
+    <Color x:Key="Crimson">#D02B42</Color>
+
+    <!-- Status -->
+    <Color x:Key="Success">#4ADE97</Color>
+    <Color x:Key="Warning">#F5B041</Color>
+    <Color x:Key="Danger">#F4707A</Color>
+
+    <!-- Type: one sans for text, mono for labels and numbers -->
+    <x:String x:Key="FontBody">OpenSansRegular</x:String>
+    <x:String x:Key="FontStrong">OpenSansSemibold</x:String>
+    <x:String x:Key="FontMono">Consolas</x:String>
+    <x:String x:Key="FontPersian">VazirmatnBold</x:String>
+
+    <Style TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="14" />
+    </Style>
+
+    <Style x:Key="MetaLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="SectionLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CharacterSpacing" Value="1.5" />
+    </Style>
+
+    <Style x:Key="Card" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{StaticResource Surface}" />
+        <Setter Property="Stroke" Value="{StaticResource Hairline}" />
+        <Setter Property="StrokeThickness" Value="1" />
+        <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+        <Setter Property="Padding" Value="20,16" />
+    </Style>
+
+    <!-- The one loud button: Connect -->
+    <Style x:Key="PrimaryButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="{StaticResource Accent}" />
+        <Setter Property="TextColor" Value="{StaticResource OnAccent}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="HeightRequest" Value="44" />
+        <Setter Property="MinimumWidthRequest" Value="150" />
+        <Setter Property="Padding" Value="24,0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource AccentHover}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource AccentPressed}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                            <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <!-- Quiet outlined buttons: list actions, Disconnect -->
+    <Style x:Key="SecondaryButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderColor" Value="{StaticResource BorderStrong}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="HeightRequest" Value="34" />
+        <Setter Property="MinimumHeightRequest" Value="0" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="Padding" Value="14,0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceHover}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters>
+                            <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                            <Setter Property="BorderColor" Value="{StaticResource Hairline}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="SecondaryButtonLarge" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="HeightRequest" Value="44" />
+        <Setter Property="MinimumWidthRequest" Value="150" />
+        <Setter Property="Padding" Value="24,0" />
+    </Style>
+
+    <!-- Small labelled buttons inside each server row -->
+    <Style x:Key="RowButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderColor" Value="{StaticResource Hairline}" />
+        <Setter Property="BorderWidth" Value="1" />
+        <Setter Property="HeightRequest" Value="28" />
+        <Setter Property="MinimumHeightRequest" Value="0" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="Padding" Value="10,0" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                            <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+                            <Setter Property="BorderColor" Value="{StaticResource BorderStrong}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceHover}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <Style x:Key="RowButtonDanger" TargetType="Button" BasedOn="{StaticResource RowButton}">
+        <Setter Property="TextColor" Value="{StaticResource Danger}" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+                            <Setter Property="BorderColor" Value="{StaticResource Danger}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
+
+    <!-- Note: the template's implicit Button style (Styles.xaml) still merges into these keyed styles,
+         so every style here resets MinimumHeightRequest / MinimumWidthRequest itself. -->
+
+    <!-- Segmented tabs (selected state is set in code) -->
+    <Style x:Key="TabButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="HeightRequest" Value="30" />
+        <Setter Property="MinimumHeightRequest" Value="0" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="Padding" Value="14,0" />
+    </Style>
+
+</ResourceDictionary>

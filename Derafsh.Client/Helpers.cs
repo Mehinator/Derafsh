@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IO;
 using Microsoft.Maui.Controls;
 using System;
@@ -22,28 +22,71 @@ namespace Derafsh.Client
     // ==================== مبدل‌ها (Converters) ====================
     public class BoolToColorConverter : IValueConverter
     {
-        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v is bool b && b) ? Colors.Gold : Colors.Transparent;
+        public Color TrueColor { get; set; } = Colors.Gold;
+        public Color FalseColor { get; set; } = Colors.Transparent;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => v is true ? TrueColor : FalseColor;
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
-    public class BoolToThicknessConverter : IValueConverter
+    public class BoolToTextConverter : IValueConverter
     {
-        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v is bool b && b) ? 2 : 0;
+        public string TrueText { get; set; } = "";
+        public string FalseText { get; set; } = "";
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => v is true ? TrueText : FalseText;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
+    }
+
+    // پینگ: -1 = تست نشده، 9999 = جواب نداد
+    public class PingToTextConverter : IValueConverter
+    {
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
+            v is int ping ? ping switch { < 0 => "—", >= 9999 => "no reply", _ => $"{ping} ms" } : "—";
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
     public class PingToColorConverter : IValueConverter
     {
-        public object? Convert(object? v, Type t, object? p, CultureInfo c)
+        public Color Untested { get; set; } = Colors.Gray;
+        public Color Good { get; set; } = Colors.LightGreen;
+        public Color Slow { get; set; } = Colors.Orange;
+        public Color Bad { get; set; } = Colors.Red;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
+            v is int ping ? ping switch { < 0 => Untested, < 500 => Good, < 1000 => Slow, _ => Bad } : Untested;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
+    }
+
+    // نتیجه تست جمینی: "" (تست نشده)، "testing"، "ok"، "region"، "blocked"، "timeout"، "failed"، "http:کد"
+    public class GeminiTextConverter : IValueConverter
+    {
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v as string) switch
         {
-            if (v is int ping)
-            {
-                if (ping <= 0) return Colors.Gray;
-                if (ping < 500) return Colors.LightGreen;
-                if (ping < 1000) return Colors.Orange;
-            }
-            return Colors.Red;
-        }
+            null or "" => "",
+            "testing" => "Gemini: testing…",
+            "ok" => "Gemini ✓",
+            "region" => "Gemini: region-locked",
+            "blocked" => "Gemini: blocked",
+            "timeout" => "Gemini: no reply",
+            "failed" => "Gemini: failed",
+            var s when s.StartsWith("http:") => $"Gemini: HTTP {s[5..]}",
+            var s => s,
+        };
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
+    }
+
+    public class GeminiColorConverter : IValueConverter
+    {
+        public Color Neutral { get; set; } = Colors.Gray;
+        public Color Good { get; set; } = Colors.LightGreen;
+        public Color Warn { get; set; } = Colors.Orange;
+        public Color Bad { get; set; } = Colors.Red;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v as string) switch
+        {
+            "ok" => Good,
+            "region" => Warn,
+            "blocked" or "timeout" or "failed" => Bad,
+            var s when s != null && s.StartsWith("http:") => Warn,
+            _ => Neutral,
+        };
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 

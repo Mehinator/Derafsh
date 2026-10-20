@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:Derafsh.Client"
     Shell.FlyoutBehavior="Disabled"
-    Title="Derafsh.Client">
+    Title="Derafsh">
 
     <ShellContent
         Title="Home"

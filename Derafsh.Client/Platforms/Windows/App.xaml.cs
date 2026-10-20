@@ -17,6 +17,13 @@ namespace Derafsh.Client.WinUI
         public App()
         {
             this.InitializeComponent();
+
+            // یه خطای پیش‌بینی‌نشده نباید کل برنامه رو ببنده (و پروکسی ویندوز رو روشن جا بذاره)
+            this.UnhandledException += (_, e) =>
+            {
+                DebugLog.Write("Unhandled: " + e.Exception);
+                e.Handled = true;
+            };
         }
 
         protected override MauiApp CreateMauiApp() => MauiProgram.CreateMauiApp();

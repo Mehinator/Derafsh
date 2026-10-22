@@ -10,12 +10,15 @@ namespace Derafsh.Client.Models
         public string Config { get; set; } = "";
         public string Country { get; set; } = "";
 
+        // آدرس سرور (IP یا دامنه). خیلی از کانفیگ‌ها اسم یکسان دارن («@filembad»، «(S104)»)؛ آدرس فرقشون رو نشون می‌ده
+        public string Address { get; set; } = "";
+
         // منبع کانفیگ (اسم کانال تلگرام) یا "Personal"
         private string _source = "";
         public string Source { get => _source; set { _source = value; OnPropertyChanged(); OnPropertyChanged(nameof(Meta)); } }
 
-        // خط دوم هر ردیف: پروتکل · کشور · منبع
-        public string Meta => string.Join("  ·  ", new[] { Protocol, CountryCode, Source }.Where(x => !string.IsNullOrEmpty(x)));
+        // خط دوم هر ردیف: پروتکل · آدرس سرور · کشور · منبع
+        public string Meta => string.Join("  ·  ", new[] { Protocol, Address, CountryCode, Source }.Where(x => !string.IsNullOrEmpty(x)));
 
         public string Protocol => Config.Split("://")[0] switch
         {

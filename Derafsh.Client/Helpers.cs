@@ -94,7 +94,14 @@ namespace Derafsh.Client
     // اصلاح شده: ObjectModel با O بزرگ و استفاده از using بالا
     public class ServerGroup : ObservableCollection<Derafsh.Client.Models.Server>
     {
-        public string Name { get; private set; }
-        public ServerGroup(string name, IEnumerable<Derafsh.Client.Models.Server> servers) : base(servers) { Name = name; }
+        // عنوان گروه وسط تست خودکار عوض می‌شه («… · 7 · TESTING…»)
+        private string _name;
+        public string Name { get => _name; set { _name = value; OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(Name))); } }
+
+        // اسم لیست ذخیره‌شده (تب Saved)؛ برای بقیه‌ی گروه‌ها null. دکمه‌ی «Delete list» فقط برای این‌ها نمایش داده می‌شه
+        public string? SavedListName { get; init; }
+        public bool IsSavedList => SavedListName != null;
+
+        public ServerGroup(string name, IEnumerable<Derafsh.Client.Models.Server> servers) : base(servers) { _name = name; }
     }
 }

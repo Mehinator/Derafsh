@@ -154,15 +154,17 @@
                         <Button x:Name="BtnTabAll" Text="All" CommandParameter="All" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
                         <Button x:Name="BtnTabPersonal" Text="Personal" CommandParameter="Personal" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
                         <Button x:Name="BtnTabOnline" Text="Online" CommandParameter="Online" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
+                        <Button x:Name="BtnTabSaved" Text="Saved" CommandParameter="Saved" Clicked="OnTabClicked" Style="{StaticResource TabButton}"
+                                ToolTipProperties.Text="Lists you saved, one per network (for example Irancell, Shatel, home Wi-Fi)" />
                     </HorizontalStackLayout>
                 </Border>
                 <Grid x:Name="ActionsBar" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8" VerticalOptions="Center">
                     <Button x:Name="TestAllButton" Text="Test all" Style="{StaticResource SecondaryButton}" Clicked="OnFindBestServerClicked"
-                            ToolTipProperties.Text="Ping every config in the list and select the fastest" />
+                            ToolTipProperties.Text="Test again on this network: online configs that answer are shown, fastest first" />
                     <Button x:Name="RefreshButton" Grid.Column="1" Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked"
                             ToolTipProperties.Text="Download the newest free configs (the list is refreshed every 4 hours)" />
-                    <Button x:Name="RemoveDeadButton" Grid.Column="2" Text="Remove dead" Style="{StaticResource SecondaryButton}" Clicked="OnDeleteDeadConfigsClicked"
-                            ToolTipProperties.Text="Remove configs that didn't answer the last test" />
+                    <Button x:Name="SaveListButton" Grid.Column="2" Text="Save list" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked"
+                            ToolTipProperties.Text="Save the configs that work on this network under a name (for example your internet provider)" />
                     <Button x:Name="AddConfigButton" Grid.Column="3" Text="Add config" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked"
                             ToolTipProperties.Text="Paste your own vless / vmess / ss / trojan / hysteria2 links" />
                 </Grid>
@@ -174,7 +176,11 @@
                 <ListView.GroupHeaderTemplate>
                     <DataTemplate x:DataType="local:ServerGroup">
                         <ViewCell>
-                            <Label Text="{Binding Name}" Style="{StaticResource SectionLabel}" Padding="2,8,0,6" />
+                            <Grid ColumnDefinitions="*,Auto" Padding="2,8,0,6">
+                                <Label Text="{Binding Name}" Style="{StaticResource SectionLabel}" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" />
+                                <Button Grid.Column="1" Text="Delete list" IsVisible="{Binding IsSavedList}" Style="{StaticResource RowButtonDanger}" HeightRequest="30" Padding="12,0"
+                                        Clicked="OnDeleteSavedListClicked" CommandParameter="{Binding .}" ToolTipProperties.Text="Delete this saved list" />
+                            </Grid>
                         </ViewCell>
                     </DataTemplate>
                 </ListView.GroupHeaderTemplate>
@@ -182,7 +188,7 @@
 
             <!-- Empty list -->
             <VerticalStackLayout x:Name="EmptyState" Grid.Row="3" IsVisible="False" Spacing="8" VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="440">
-                <Label Text="No configs here yet" FontFamily="{StaticResource FontStrong}" FontSize="16" HorizontalTextAlignment="Center" />
+                <Label x:Name="EmptyTitle" Text="No configs here yet" FontFamily="{StaticResource FontStrong}" FontSize="16" HorizontalTextAlignment="Center" />
                 <Label x:Name="EmptyText" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" />
                 <HorizontalStackLayout Spacing="8" HorizontalOptions="Center" Margin="0,8,0,0">
                     <Button x:Name="EmptyRefreshButton" Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" />

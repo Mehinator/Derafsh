@@ -6,7 +6,7 @@ Xray-core v26.3.27, unmodified, from the official releases (https://github.com/X
 The build downloads it and checks its SHA-256:
 
 - Windows: `xray.exe`, `geoip.dat`, `geosite.dat` from `Xray-windows-64.zip`, shipped in the app's `Core/` folder.
-- Android: the `xray` binary from `Xray-android-arm64-v8a.zip`, shipped inside the APK as `libxray.so`.
+- Android: the `xray` binary from `Xray-android-arm64-v8a.zip` (64-bit) and from `Xray-linux-arm32-v7a.zip` (32-bit phones; Xray has no 32-bit Android build), shipped inside the APK as `libxray.so`.
 
 Licensed under the Mozilla Public License 2.0; the full license ships with the Windows app as `Core/LICENSE-Xray-core.txt`
 and is at https://github.com/XTLS/Xray-core/blob/main/LICENSE. Source code: https://github.com/XTLS/Xray-core

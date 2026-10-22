@@ -51,9 +51,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload $env:TAG "Derafsh-$env:TAG-Windows-x64.zip" --clobber
 
+  # Three APKs: arm64 (most phones), armv7 (32-bit phones) and universal (both, for people who don't know which one)
   android:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: arm64
+            abis: arm64-v8a
+          - variant: armv7
+            abis: armeabi-v7a
+          - variant: universal
+            abis: arm64-v8a armeabi-v7a
     steps:
       - uses: actions/checkout@v5
         with:
@@ -78,7 +89,7 @@ jobs:
           -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME" -p:AcceptAndroidSDKLicenses=True
 
       # The Android build reads the AAR very early, so fetch the engine files first in their own step
-      - name: Download Xray for Android and hev-socks5-tunnel (pinned, SHA-256 checked)
+      - name: Download Xray (arm64 + arm32) and hev-socks5-tunnel (pinned, SHA-256 checked)
         run: dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:FetchAndroidEngine
 
       - name: Restore the signing key
@@ -89,17 +100,32 @@ jobs:
           if (-not $env:KEYSTORE) { throw "Secret ANDROID_KEYSTORE_BASE64 is missing" }
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\derafsh.keystore", [Convert]::FromBase64String($env:KEYSTORE))
 
-      # The build downloads Xray for Android and hev-socks5-tunnel itself (pinned versions, SHA-256 checked)
       - name: Publish the APK (signed with the Derafsh release key)
         shell: pwsh
         env:
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: >
           dotnet publish Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -c Release
+          -p:DerafshAndroidAbis=${{ matrix.variant }}
           -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME"
           -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$env:RUNNER_TEMP\derafsh.keystore" -p:AndroidSigningKeyAlias=derafsh
           -p:AndroidSigningStorePass=env:KEYSTORE_PASS -p:AndroidSigningKeyPass=env:KEYSTORE_PASS
           -o publish/android
+
+      # A VPN app without its engine would install fine and then never connect; check before attaching
+      - name: Check the APK has Xray and the tunnel for each ABI
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $apk = Get-ChildItem publish/android -Filter *-Signed.apk | Select-Object -First 1
+          if (-not $apk) { throw "No signed APK was produced" }
+          $names = [IO.Compression.ZipFile]::OpenRead($apk.FullName).Entries.FullName
+          foreach ($abi in "${{ matrix.abis }}".Split(' ')) {
+            foreach ($lib in "libxray.so", "libhev-socks5-tunnel.so", "libmonodroid.so") {
+              if ("lib/$abi/$lib" -notin $names) { throw "lib/$abi/$lib is missing from the APK" }
+            }
+          }
+          $names | Where-Object { $_ -like 'lib/*' } | Sort-Object
 
       - name: Attach to the release
         shell: pwsh
@@ -107,6 +133,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $apk = Get-ChildItem publish/android -Filter *-Signed.apk | Select-Object -First 1
-          if (-not $apk) { throw "No signed APK was produced" }
-          Copy-Item $apk.FullName "Derafsh-$env:TAG-Android-arm64.apk"
-          gh release upload $env:TAG "Derafsh-$env:TAG-Android-arm64.apk" --clobber
+          $name = "Derafsh-$env:TAG-Android-${{ matrix.variant }}.apk"
+          Copy-Item $apk.FullName $name
+          gh release upload $env:TAG $name --clobber

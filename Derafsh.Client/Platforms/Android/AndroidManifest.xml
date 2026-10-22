@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+	<!-- hev-socks5-tunnel's AAR says Android 10+, but its native library only uses functions that exist from
+	     Android 7.0 (API 24, the app's minimum); without this override the build refuses Android 7-9 -->
+	<uses-sdk tools:overrideLibrary="hev.socks5.tunnel" />
 	<!-- extractNativeLibs: libxray.so has to be on disk to be executed -->
 	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:extractNativeLibs="true" android:label="Derafsh"></application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />

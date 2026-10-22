@@ -40,13 +40,15 @@ namespace Derafsh.Client.Services
         {
             try
             {
-                string name = "Server";
+                string name = "Server", address = "";
                 try
                 {
                     if (!link.StartsWith("vmess"))
                     {
                         var uri = new Uri(link);
                         name = HttpUtility.UrlDecode(uri.Fragment.TrimStart('#'));
+                        // ss قدیمی کل «روش:رمز@آدرس:پورت» رو base64 می‌کنه؛ اونجا Host آدرس واقعی نیست
+                        if (!link.StartsWith("ss://") || link.Split('#')[0].Contains('@')) address = uri.Host;
                         // اسم خالی یا فقط کاراکترهای نامرئی (مثلاً لینکی که با # تموم شده) → host:port
                         if (!HasVisibleText(name)) name = $"{uri.Host}:{uri.Port}";
                     }
@@ -55,6 +57,7 @@ namespace Derafsh.Client.Services
                         // اسم vmess داخل خود لینک (فیلد ps) هست
                         var v = DecodeVmess(link);
                         name = HasVisibleText(v.ps) ? v.ps! : $"{v.add}:{ToInt(v.port, 443)}";
+                        address = v.add ?? "";
                     }
                 }
                 catch { }
@@ -62,7 +65,7 @@ namespace Derafsh.Client.Services
                 // استخراج پرچم
                 string flag = ExtractFlag(name) ?? "🏳️";
 
-                return new Server { Config = link, City = name, Country = flag, IsRemovable = isUser };
+                return new Server { Config = link, City = name, Country = flag, Address = address.Trim('[', ']'), IsRemovable = isUser };
             }
             catch { return null; }
         }
@@ -118,6 +121,24 @@ namespace Derafsh.Client.Services
                 },
             };
             return config.ToJsonString();
+        }
+
+        // اندروید: روی گوشی‌های ۳۲ بیتی xray نسخه‌ی لینوکسیه و DNS گوشی رو پیدا نمی‌کنه، پس آدرس سرور اینجا با DNS
+        // خود اندروید به IP تبدیل می‌شه (روی همه‌ی گوشی‌ها، تا رفتار یکی باشه). اسم TLS (serverName) و Host موقع
+        // ساختن کانفیگ از روی دامنه پر شدن و عوض نمی‌شن.
+        public static async Task<string> ResolveServerAddressAsync(string configJson)
+        {
+            var root = JsonNode.Parse(configJson)!;
+            var settings = root["outbounds"]![0]!["settings"]!.AsObject();
+            JsonNode target = settings["vnext"]?[0] ?? settings["servers"]?[0] ?? settings;
+            string? address = (string?)target["address"];
+            if (string.IsNullOrEmpty(address) || System.Net.IPAddress.TryParse(address, out _)) return configJson;
+
+            var ips = await System.Net.Dns.GetHostAddressesAsync(address);
+            var ip = ips.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? ips.FirstOrDefault()
+                     ?? throw new Exception($"Couldn't find the address of {address}.");
+            target["address"] = ip.ToString();
+            return root.ToJsonString();
         }
 
         private static JsonObject Vless(string link)

@@ -37,9 +37,10 @@
     <Color x:Key="Warning">#F5B041</Color>
     <Color x:Key="Danger">#F4707A</Color>
 
-    <!-- Type: one sans for text, mono for labels and numbers -->
-    <x:String x:Key="FontBody">OpenSansRegular</x:String>
-    <x:String x:Key="FontStrong">OpenSansSemibold</x:String>
+    <!-- Type: the app is in Persian (right to left). Vazirmatn for all text (it has Latin letters too), mono only
+         for numbers (ping) so they line up. No letter spacing on Persian text: it breaks the joining of letters. -->
+    <x:String x:Key="FontBody">VazirmatnRegular</x:String>
+    <x:String x:Key="FontStrong">VazirmatnSemiBold</x:String>
     <x:String x:Key="FontMono">Consolas</x:String>
     <x:String x:Key="FontPersian">VazirmatnBold</x:String>
 
@@ -57,9 +58,22 @@
 
     <Style x:Key="SectionLabel" TargetType="Label">
         <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
+    <!-- Latin brand line (DERAFSH · 1.4.0): mono, letterspaced -->
+    <Style x:Key="BrandLatinLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
         <Setter Property="FontFamily" Value="{StaticResource FontMono}" />
         <Setter Property="FontSize" Value="12" />
         <Setter Property="CharacterSpacing" Value="1.5" />
+    </Style>
+
+    <Style x:Key="TitleLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
+        <Setter Property="FontSize" Value="20" />
     </Style>
 
     <Style x:Key="Card" TargetType="Border">
@@ -111,11 +125,11 @@
         <Setter Property="BackgroundColor" Value="Transparent" />
         <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
         <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
-        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontSize" Value="14" />
         <Setter Property="CornerRadius" Value="6" />
         <Setter Property="BorderColor" Value="{StaticResource BorderStrong}" />
         <Setter Property="BorderWidth" Value="1" />
-        <Setter Property="HeightRequest" Value="34" />
+        <Setter Property="HeightRequest" Value="40" />
         <Setter Property="MinimumHeightRequest" Value="0" />
         <Setter Property="MinimumWidthRequest" Value="0" />
         <Setter Property="Padding" Value="14,0" />
@@ -201,6 +215,25 @@
                 </VisualStateGroup>
             </VisualStateGroupList>
         </Setter>
+    </Style>
+
+    <!-- The home screen's round Connect button (gold) and its connected state (quiet, «قطع اتصال») -->
+    <Style x:Key="ConnectCircle" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+        <Setter Property="FontSize" Value="20" />
+        <Setter Property="WidthRequest" Value="168" />
+        <Setter Property="HeightRequest" Value="168" />
+        <Setter Property="CornerRadius" Value="84" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style x:Key="ConnectCircleOn" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="WidthRequest" Value="168" />
+        <Setter Property="HeightRequest" Value="168" />
+        <Setter Property="CornerRadius" Value="84" />
+        <Setter Property="BackgroundColor" Value="{StaticResource SurfaceRaised}" />
+        <Setter Property="Padding" Value="0" />
     </Style>
 
     <!-- Note: the template's implicit Button style (Styles.xaml) still merges into these keyed styles,

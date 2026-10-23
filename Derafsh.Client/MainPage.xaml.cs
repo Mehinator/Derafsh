@@ -1,17 +1,20 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Derafsh.Client.Models;
-using Derafsh.Client.Services; // اتصال به سرویس‌ها
+using Derafsh.Client.Services;
 #if WINDOWS
 using Microsoft.Win32;
 #endif
 
 namespace Derafsh.Client
 {
+    // صفحه‌ی اصلی: دو نما روی یک صفحه
+    //   HomeView: دکمه‌ی گرد اتصال، گزینه‌ی «فقط سروری که جمینی را باز می‌کند»، سرور (خودکار یا انتخاب کاربر)
+    //   ServersView: لیست‌ها (آنلاین / شخصی / ذخیره‌شده‌ها)، تست، ذخیره، افزودن کانفیگ، انتخاب سرور
+    // تست سرورها: MainPage.Testing.cs؛ لیست‌های ذخیره‌شده: MainPage.Lists.cs
     public partial class MainPage : ContentPage
     {
         private const string OnlineConfigUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_servers.txt";
@@ -31,13 +34,19 @@ namespace Derafsh.Client
         // فقط وقتی خود درفش پروکسی ویندوز رو روشن کرده، موقع بستن برنامه خاموشش می‌کنیم
         private static bool s_proxyEnabled;
         private Server? _currentServer;
-        private string CurrentTab = "All";
         private bool _isUpdating, _isTestingAll;
 
-        // *** استفاده از سرویس جداگانه ***
+        // کدوم لیست توی صفحه‌ی سرورها نمایش داده می‌شه: ListOnline، ListPersonal یا "saved:" + اسم لیست
+        private const string ListOnline = "online", ListPersonal = "personal", SavedPrefix = "saved:";
+        private string _currentList = ListOnline;
+        private readonly List<string> _pickerKeys = new();
+
+        // true: «اتصال» خودش سریع‌ترین سرور سالم رو پیدا می‌کنه؛ false: سروری که کاربر توی لیست زده
+        private bool _autoServer = true;
+
         private readonly ConfigService _configService = new ConfigService();
 
-        // نتیجه تست‌ها در همین اجرای برنامه (با Refresh یا عوض کردن تب پاک نشن)
+        // نتیجه تست‌ها در همین اجرای برنامه (با دانلود لیست یا عوض کردن لیست پاک نمی‌شن)
         private readonly Dictionary<string, string> _geminiCache = new();
         private readonly Dictionary<string, int> _pingCache = new();
 
@@ -47,14 +56,18 @@ namespace Derafsh.Client
             BindingContext = this;
             ServerListView.ItemsSource = ServerGroups;
             BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
-            HighlightTab("All");
+            GeminiCheck.IsChecked = Preferences.Default.Get("require_gemini", false);
+            RefreshListPicker();
             SetConnState(ConnState.Disconnected);
+#if WINDOWS
+            RestoreProxy();   // اگه دفعه‌ی قبل برنامه وسط اتصال بسته شده، پروکسی قبلی کاربر برمی‌گرده
+#endif
 #if ANDROID
             // اندروید: VPN بعد از بستن صفحه هم روشن می‌مونه؛ با باز شدن دوباره وضعیتش رو نشون بده
             if (DerafshVpnService.IsRunning)
             {
                 isConnected = true;
-                SetConnState(ConnState.Connected, Preferences.Default.Get("connected_name", "") + "  ·  VPN is on");
+                SetConnState(ConnState.Connected, Preferences.Default.Get("connected_name", "") + "  ·  VPN روشن است");
             }
 #endif
             MainThread.BeginInvokeOnMainThread(async () =>
@@ -65,10 +78,11 @@ namespace Derafsh.Client
                 if (!File.Exists(CloudPath) || File.GetLastWriteTime(CloudPath) < DateTime.Now.AddHours(-4)) await UpdateOnlineConfigs();
                 else await DiscoverAsync(fresh: false);
             });
-            DebugLog.Write("=== STARTUP ===");
         }
 
-        // ستون اصلی حداکثر 880 پیکسل و وسط پنجره، تا روی مانیتورهای عریض کش نیاد؛ روی گوشی چیدمان فشرده
+        // ---------- چیدمان و جابه‌جایی بین دو صفحه ----------
+
+        // ستون صفحه‌ی سرورها حداکثر 880 پیکسل و وسط پنجره؛ روی گوشی ردیف‌های فشرده
         private bool? _compact;
         protected override void OnSizeAllocated(double width, double height)
         {
@@ -76,101 +90,115 @@ namespace Derafsh.Client
             if (width <= 0) return;
             bool compact = width < 640;
             double side = compact ? 14 : Math.Max(24, (width - 880) / 2);
-            RootGrid.Padding = new Thickness(side, compact ? 14 : 20, side, compact ? 10 : 16);
-            if (_compact != compact) { _compact = compact; ApplyLayout(compact); }
+            ServersView.Padding = new Thickness(side, compact ? 12 : 16, side, 8);
+            if (_compact != compact)
+            {
+                _compact = compact;
+                // ردیف‌هایی که الان نمایش داده می‌شن قالب قبلی رو نگه می‌دارن؛ لیست دوباره وصل می‌شه تا از نو ساخته بشن
+                ServerListView.ItemTemplate = (DataTemplate)Resources[compact ? "CompactRow" : "WideRow"];
+                ServerListView.ItemsSource = null;
+                ServerListView.ItemsSource = ServerGroups;
+            }
         }
 
-        private void ApplyLayout(bool compact)
+        private void OnOpenServersClicked(object sender, EventArgs e) => ShowServers(true);
+        private void OnBackToHomeClicked(object sender, EventArgs e) => ShowServers(false);
+
+        private void ShowServers(bool show)
         {
-            // کارت اتصال: روی گوشی دکمه زیر متن
-            Grid.SetRow(ConnectButton, compact ? 1 : 0);
-            Grid.SetColumn(ConnectButton, compact ? 0 : 1);
-            Grid.SetColumnSpan(ConnectButton, compact ? 2 : 1);
-            ConnectButton.HorizontalOptions = compact ? LayoutOptions.Fill : LayoutOptions.End;
-            ConnectButton.Margin = compact ? new Thickness(0, 12, 0, 0) : new Thickness(0);
-            ConnGrid.ColumnSpacing = compact ? 0 : 20;
+            ServersView.IsVisible = show;
+            HomeView.IsVisible = !show;
+            if (!show) UpdateHome();
+        }
 
-            // نوار ابزار: روی گوشی تب‌ها بالا و چهار دکمه 2×2 زیرش
-            Grid.SetRow(ActionsBar, compact ? 1 : 0);
-            Grid.SetColumn(ActionsBar, compact ? 0 : 2);
-            Grid.SetColumnSpan(ActionsBar, compact ? 3 : 1);
-            ToolbarGrid.RowSpacing = compact ? 10 : 0;
-            ActionsBar.ColumnDefinitions.Clear();
-            ActionsBar.RowDefinitions.Clear();
-            var buttons = new[] { TestAllButton, RefreshButton, SaveListButton, AddConfigButton };
-            if (compact)
-            {
-                ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-                ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-                ActionsBar.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                ActionsBar.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
-                for (int i = 0; i < buttons.Length; i++) { Grid.SetColumn(buttons[i], i % 2); Grid.SetRow(buttons[i], i / 2); buttons[i].HeightRequest = 40; }
-            }
-            else
-            {
-                for (int i = 0; i < buttons.Length; i++) { ActionsBar.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Auto)); Grid.SetColumn(buttons[i], i); Grid.SetRow(buttons[i], 0); buttons[i].HeightRequest = 34; }
-            }
-
-            // rows already on screen keep the old template, so reattach the list to rebuild them
-            ServerListView.ItemTemplate = (DataTemplate)Resources[compact ? "CompactRow" : "WideRow"];
-            ServerListView.ItemsSource = null;
-            ServerListView.ItemsSource = ServerGroups;
+        // دکمه‌ی برگشت اندروید: از صفحه‌ی سرورها به صفحه‌ی اصلی، نه بیرون از برنامه
+        protected override bool OnBackButtonPressed()
+        {
+            if (ServersView.IsVisible) { ShowServers(false); return true; }
+            return base.OnBackButtonPressed();
         }
 
         private static T Res<T>(string key) => Application.Current!.Resources.TryGetValue(key, out var v) && v is T t ? t : default!;
-        private static string Plural(int n) => n == 1 ? "" : "s";
 
-        // --- لود کردن لیست (با استفاده از سرویس) ---
+        // ---------- لیست‌ها ----------
+
+        private void RefreshListPicker()
+        {
+            _pickerKeys.Clear();
+            var titles = new List<string> { "آنلاین — سالم روی همین اینترنت", "شخصی — کانفیگ‌های خودتان" };
+            _pickerKeys.AddRange(new[] { ListOnline, ListPersonal });
+            foreach (var list in ReadSavedLists().OrderByDescending(l => l.Saved))
+            {
+                titles.Add($"لیست {Q(list.Name)}");
+                _pickerKeys.Add(SavedPrefix + list.Name);
+            }
+            if (!_pickerKeys.Contains(_currentList)) _currentList = ListOnline;
+            _pickerUpdating = true;
+            ListPicker.ItemsSource = titles;
+            ListPicker.SelectedIndex = _pickerKeys.IndexOf(_currentList);
+            _pickerUpdating = false;
+            UpdateListActions();
+        }
+        private bool _pickerUpdating;
+
+        private void OnListPicked(object sender, EventArgs e)
+        {
+            if (_pickerUpdating || ListPicker.SelectedIndex < 0) return;
+            _currentList = _pickerKeys[ListPicker.SelectedIndex];
+            UpdateListActions();
+            LoadConfigs();
+            if (_currentList != ListOnline) _ = TestRowsAsync(onlyUntested: true);
+        }
+
+        // هر لیست فقط دکمه‌هایی رو نشون می‌ده که براش معنی دارن
+        private void UpdateListActions()
+        {
+            bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
+            RefreshButton.IsVisible = online;
+            AddConfigButton.IsVisible = personal;
+            SaveListButton.IsVisible = online || personal;
+            DeleteListButton.IsVisible = !online && !personal;
+        }
+
         private void LoadConfigs()
         {
             string? keep = _currentServer?.Config;
             ServerGroups.Clear();
-            int idx = 1;
-            var favs = ReadFavorites();
-
-            // 1. شخصی‌ها
-            if (CurrentTab == "All" || CurrentTab == "Personal")
-            {
-                var list = _configService.ParseFile(UserPath, true);
-                Decorate(list, new(), favs);
-                foreach (var s in list) s.Source = "Personal";
-                list = Ordered(list);
-                if (list.Any())
-                {
-                    foreach (var s in list) s.Index = idx++;
-                    ServerGroups.Add(new ServerGroup($"PERSONAL  ·  {list.Count}", list));
-                }
-            }
-
-            // 2. آنلاین‌ها: فقط کانفیگ‌هایی که روی همین اینترنت جواب دادن (تست خودکار، MainPage.Discovery.cs)،
-            //    به‌علاوه‌ی ستاره‌دارها؛ بی‌جواب‌ها و تست‌نشده‌ها نمایش داده نمی‌شن
             _onlineGroup = null;
-            if (CurrentTab == "All" || CurrentTab == "Online")
+            var favs = ReadFavorites();
+            _cloudSources = ReadJsonDict(CloudSourcesPath);
+
+            if (_currentList == ListPersonal)
             {
-                _cloudSources = ReadJsonDict(CloudSourcesPath);
+                var list = PersonalServers(favs);
+                ServerGroups.Add(new ServerGroup($"شخصی  ·  {Fa(list.Count)} کانفیگ", Ordered(list)));
+            }
+            else if (_currentList == ListOnline)
+            {
+                // فقط کانفیگ‌هایی که روی همین اینترنت جواب دادن (تست خودکار) به‌علاوه‌ی ستاره‌دارها
                 var list = _configService.ParseFile(CloudPath, false).DistinctBy(x => x.Config).ToList();
                 Decorate(list, _cloudSources, favs);
-                var shown = Ordered(list.Where(x => x.IsFavorite || x.Ping is > 0 and < NoReply));
-                foreach (var s in shown) s.Index = idx++;
-                if (shown.Any() || list.Any())
-                {
-                    _onlineGroup = new ServerGroup("", shown);
-                    ServerGroups.Add(_onlineGroup);
-                    UpdateOnlineHeader();
-                }
+                _onlineGroup = new ServerGroup("", Ordered(list.Where(x => x.IsFavorite || x.Ping is > 0 and < NoReply)));
+                ServerGroups.Add(_onlineGroup);
+                UpdateOnlineHeader();
             }
-
-            // 3. لیست‌های ذخیره‌شده (هر کدوم برای یه اینترنت)
-            if (CurrentTab == "Saved") AddSavedGroups(_cloudSources.Count > 0 ? _cloudSources : ReadJsonDict(CloudSourcesPath), favs, ref idx);
+            else AddSavedGroup(_currentList[SavedPrefix.Length..], favs);
 
             ServerListView.ItemsSource = null; ServerListView.ItemsSource = ServerGroups;
 
-            // انتخاب قبلی بعد از لود دوباره حفظ بشه
-            var match = keep == null ? null : AllServers.FirstOrDefault(x => x.Config == keep);
-            if (match != null) SelectServer(match);
-            else if (_currentServer == null && AllServers.Any()) SelectServer(AllServers.First());
+            // سرور انتخابی کاربر بعد از لود دوباره هم علامت‌دار بمونه
+            var match = keep == null || _autoServer ? null : AllServers.FirstOrDefault(x => x.Config == keep);
+            if (match != null) { foreach (var x in AllServers) x.IsSelected = false; match.IsSelected = true; }
 
             UpdateEmptyState();
+        }
+
+        private List<Server> PersonalServers(HashSet<string> favs)
+        {
+            var list = _configService.ParseFile(UserPath, true).DistinctBy(x => x.Config).ToList();
+            Decorate(list, new(), favs);
+            foreach (var s in list) s.Source = "شخصی";
+            return list;
         }
 
         private void UpdateEmptyState()
@@ -178,30 +206,31 @@ namespace Derafsh.Client
             bool empty = ServerGroups.All(g => g.Count == 0);
             EmptyState.IsVisible = empty;
             ServerListView.IsVisible = !empty;
-            EmptyRefreshButton.IsVisible = CurrentTab is "All" or "Online";   // Refresh فقط لیست آنلاین رو پر می‌کنه
-            (EmptyTitle.Text, EmptyText.Text) = CurrentTab switch
+            (EmptyTitle.Text, EmptyText.Text) = _currentList switch
             {
-                "Personal" => ("No configs here yet", "Save a config from the Online list, or add your own links."),
-                "Saved" => ("No saved lists yet", "When configs work on your network, press Save list to keep them under a name, for example your internet provider."),
-                _ when _isUpdating => ("Testing configs on your network…", "Downloading the newest configs first. The ones that answer will appear here, fastest first."),
-                _ when _discovering || (!_discoveryDone && File.Exists(CloudPath)) => ("Testing configs on your network…", "Configs that answer will appear here, fastest first."),
-                _ when !File.Exists(CloudPath) => ("No configs here yet", "Refresh the list to download free configs, or add your own links."),
-                _ => ("Nothing works on this network yet", "None of the tested configs answered. Press Test all to try again, or Refresh list later for new ones."),
+                ListPersonal => ("هنوز کانفیگ شخصی ندارید", "با «افزودن کانفیگ» لینک‌های خودتان را اضافه کنید، یا در لیست آنلاین روی «+ شخصی» بزنید."),
+                ListOnline when _isUpdating => ("در حال تست سرورها روی اینترنت شما…", "اول جدیدترین کانفیگ‌ها دانلود می‌شوند. سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
+                ListOnline when _discovering || (!_discoveryDone && File.Exists(CloudPath)) => ("در حال تست سرورها روی اینترنت شما…", "سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
+                ListOnline when !File.Exists(CloudPath) => ("هنوز لیستی دانلود نشده", "«دریافت لیست تازه» را بزنید."),
+                ListOnline => ("فعلاً هیچ سروری روی این اینترنت جواب نداد", "«تست دوباره» را بزنید، یا کمی بعد «دریافت لیست تازه»."),
+                _ => ("این لیست خالی است", "یک لیست دیگر انتخاب کنید."),
             };
         }
 
-        // --- دکمه‌ها ---
+        // ---------- دکمه‌های لیست ----------
+
         private async void OnUpdateOnlineClicked(object sender, EventArgs e) => await UpdateOnlineConfigs();
         private async Task UpdateOnlineConfigs()
         {
-            // وسط «Test all» لیست عوض نمی‌شه: نتیجه‌ها به ردیف‌هایی می‌رسید که دیگه نمایش داده نمی‌شدن
+            // وسط «تست دوباره» لیست عوض نمی‌شه: نتیجه‌ها به ردیف‌هایی می‌رسید که دیگه نمایش داده نمی‌شدن
             if (_isUpdating || _isTestingAll) return;
             _isUpdating = true;
+            RefreshButton.IsEnabled = false;
             UpdateEmptyState();
-            StatusLabel.Text = "Downloading the latest configs…";
+            StatusLabel.Text = "در حال دانلود جدیدترین کانفیگ‌ها…";
             try
             {
-                // اول از راه پروکسی ویندوز (اگه کاربر به یه VPN وصله)؛ اگه اون پروکسی خراب بود، مستقیم
+                // اول از راه پروکسی سیستم (اگه کاربر به یه VPN وصله)؛ اگه اون پروکسی خراب بود، مستقیم
                 (string list, string? sources) data;
                 try { data = await DownloadListAsync(useSystemProxy: true); }
                 catch { data = await DownloadListAsync(useSystemProxy: false); }
@@ -214,10 +243,10 @@ namespace Derafsh.Client
             }
             catch
             {
-                StatusLabel.Text = "Couldn't download the list. Check your internet connection and press Refresh list again.";
+                StatusLabel.Text = "لیست دانلود نشد. اتصال اینترنت را بررسی کنید و دوباره «دریافت لیست تازه» را بزنید.";
                 return;
             }
-            finally { _isUpdating = false; }
+            finally { _isUpdating = false; RefreshButton.IsEnabled = true; }
             await DiscoverAsync(fresh: false);   // کانفیگ‌هایی که همین الان تست شدن دوباره تست نمی‌شن
         }
 
@@ -242,7 +271,7 @@ namespace Derafsh.Client
                 string clip = await Clipboard.Default.GetTextAsync() ?? "";
                 if (regex.IsMatch(clip)) initial = clip;
             }
-            string input = await DisplayPromptAsync("Add configs", "Paste one or more links (vless, vmess, ss, trojan, hysteria2).", "Add", "Cancel", initialValue: initial);
+            string input = await DisplayPromptAsync("افزودن کانفیگ", "یک یا چند لینک را اینجا بچسبانید (vless، vmess، ss، trojan، hysteria2).", "افزودن", "لغو", initialValue: initial);
             if (string.IsNullOrWhiteSpace(input)) return;
             var existing = File.Exists(UserPath) ? (await File.ReadAllLinesAsync(UserPath)).Select(l => l.Trim()).ToHashSet() : new HashSet<string>();
             var links = regex.Matches(input).Select(m => m.Value.Trim()).Distinct().Where(l => !existing.Contains(l)).ToList();
@@ -251,79 +280,75 @@ namespace Derafsh.Client
             {
                 await File.AppendAllLinesAsync(UserPath, links);
                 LoadConfigs();
-                StatusLabel.Text = $"Added {links.Count} config{Plural(links.Count)} to Personal";
+                StatusLabel.Text = $"{Fa(links.Count)} کانفیگ به لیست شخصی اضافه شد";
+                foreach (var l in links) _ = PingSingle(l);
             }
-            else await DisplayAlertAsync("No new links found", "Links start with vless://, vmess://, ss://, trojan:// or hysteria2://. Links already in Personal are skipped.", "OK");
+            else await DisplayAlertAsync("لینک تازه‌ای پیدا نشد", "لینک‌ها باید با vless://، vmess://، ss://، trojan:// یا hysteria2:// شروع شوند. لینک‌هایی که از قبل در لیست شخصی هستند دوباره اضافه نمی‌شوند.", "باشه");
         }
+
+        // ---------- دکمه‌های هر ردیف ----------
 
         private void OnSaveToPersonalClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = SaveToPersonal(s); }
         private async Task SaveToPersonal(Server s)
         {
             try
             {
-                if (File.Exists(UserPath) && (await File.ReadAllTextAsync(UserPath)).Contains(s.Config)) { StatusLabel.Text = $"Already in Personal: {s.City}"; return; }
+                var lines = File.Exists(UserPath) ? await File.ReadAllLinesAsync(UserPath) : Array.Empty<string>();
+                if (lines.Any(l => l.Trim() == s.Config)) { StatusLabel.Text = $"{Q(s.City)} از قبل در لیست شخصی هست"; return; }
                 await File.AppendAllLinesAsync(UserPath, new[] { s.Config });
-                s.IsRemovable = true; s.Source = "Personal";
-                StatusLabel.Text = $"Saved to Personal: {s.City}";
+                StatusLabel.Text = $"{Q(s.City)} به لیست شخصی اضافه شد";
             }
-            catch { StatusLabel.Text = "Couldn't save this config."; }
+            catch { StatusLabel.Text = "این کانفیگ ذخیره نشد."; }
         }
 
         private void OnDeleteSingleItemClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = DeleteServer(s); }
         private async Task DeleteServer(Server s)
         {
-            if (!await DisplayAlertAsync("Delete this config?", $"“{s.City}” will be removed from your Personal list.", "Delete", "Cancel")) return;
+            if (!await DisplayAlertAsync("این کانفیگ حذف شود؟", $"{Q(s.City)} از لیست شخصی شما حذف می‌شود.", "حذف", "لغو")) return;
             try
             {
                 var lines = (await File.ReadAllLinesAsync(UserPath)).ToList();
                 lines.RemoveAll(l => l.Trim() == s.Config);
                 await File.WriteAllLinesAsync(UserPath, lines);
                 LoadConfigs();
-                StatusLabel.Text = $"Deleted {s.City}";
+                StatusLabel.Text = $"{Q(s.City)} حذف شد";
             }
-            catch { StatusLabel.Text = "Couldn't delete this config."; }
+            catch { StatusLabel.Text = "این کانفیگ حذف نشد."; }
         }
 
+        // زدن روی یه ردیف: همین سرور برای اتصال انتخاب می‌شه (انتخاب دستی)
         private void OnServerSelected(object sender, SelectedItemChangedEventArgs e)
         {
-            if (e.SelectedItem is not Server s || _currentServer == s) return;
-            SelectServer(s);
+            if (e.SelectedItem is not Server s) return;
+            ServerListView.SelectedItem = null;   // انتخاب رو خودمون با حاشیه‌ی طلایی نشون می‌دیم
+            if (!_autoServer && _currentServer?.Config == s.Config) return;
+            ChooseServer(s);
             if (isConnected)
             {
+                StatusLabel.Text = $"در حال رفتن به {Q(s.City)}…";
                 Disconnect();
-                StatusLabel.Text = $"Switching to {s.City}…";
-                Task.Delay(500).ContinueWith(t => MainThread.BeginInvokeOnMainThread(() => OnConnectButtonClicked(sender, EventArgs.Empty)));
+                Task.Delay(500).ContinueWith(_ => MainThread.BeginInvokeOnMainThread(() => OnConnectButtonClicked(this, EventArgs.Empty)));
             }
+            else StatusLabel.Text = $"{Q(s.City)} انتخاب شد. «اتصال» را بزنید.";
         }
 
-        private void SelectServer(Server s)
+        private void ChooseServer(Server s)
         {
+            _autoServer = false;
+            foreach (var item in AllServers) item.IsSelected = item.Config == s.Config;
+            _currentServer = s;
+            UpdateHome();
+        }
+
+        private void OnAutoServerClicked(object sender, EventArgs e)
+        {
+            _autoServer = true;
             foreach (var item in AllServers) item.IsSelected = false;
-            s.IsSelected = true; _currentServer = s;
-            if (!isConnected) SetConnState(ConnState.Disconnected);
+            if (!isConnected) _currentServer = null;
+            UpdateHome();
+            StatusLabel.Text = "سرور خودکار انتخاب می‌شود: سریع‌ترین سروری که روی این اینترنت جواب بدهد.";
         }
 
-        // --- تب‌ها ---
-        private void OnTabClicked(object sender, EventArgs e)
-        {
-            if (sender is not Button btn || btn.CommandParameter is not string tab) return;
-            CurrentTab = tab;
-            HighlightTab(tab);
-            LoadConfigs();
-        }
-
-        private void HighlightTab(string tab)
-        {
-            foreach (var b in new[] { BtnTabAll, BtnTabPersonal, BtnTabOnline, BtnTabSaved })
-            {
-                bool on = (string)b.CommandParameter == tab;
-                b.BackgroundColor = on ? Res<Color>("SurfaceRaised") : Colors.Transparent;
-                b.TextColor = on ? Res<Color>("TextPrimary") : Res<Color>("TextSecondary");
-                b.FontFamily = on ? Res<string>("FontStrong") : Res<string>("FontBody");
-            }
-        }
-
-        // --- امتیاز شخصی (⭐) ---
         private void OnFavoriteClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) ToggleFavorite(s); }
         private void ToggleFavorite(Server s)
         {
@@ -348,325 +373,189 @@ namespace Derafsh.Client
             return new();
         }
 
-        // منبع، امتیاز و نتیجه تست‌های قبلی رو به هر کانفیگ می‌ده
+        // منبع، ستاره و نتیجه تست‌های قبلی رو به هر کانفیگ می‌ده
         private void Decorate(List<Server> list, Dictionary<string, string> sources, HashSet<string> favs)
         {
             foreach (var s in list)
             {
-                s.Source = sources.TryGetValue(s.Config, out var src) ? src : "";
+                if (sources.TryGetValue(s.Config, out var src)) s.Source = src;
                 s.IsFavorite = favs.Contains(s.Config);
                 s.GeminiStatus = _geminiCache.TryGetValue(s.Config, out var g) ? g : "";
                 s.Ping = _pingCache.TryGetValue(s.Config, out var p) ? p : -1;
                 s.IsPinging = _pinging.Contains(s.Config);
+                s.IsSelected = !_autoServer && _currentServer?.Config == s.Config;
             }
         }
 
-        // --- xray موقت برای تست یه کانفیگ (پینگ و جمینی) ---
-        // هر تست پورت آزاد خودش رو از سیستم‌عامل می‌گیره؛ پورت تصادفی بین تست‌های همزمان تکراری می‌شد و
-        // نتیجه‌ی یه کانفیگ به اسم کانفیگ دیگه ثبت می‌شد
-        private static readonly HashSet<int> s_testPorts = new();
-        private static int ReserveTestPort()
+        // ---------- صفحه‌ی اصلی ----------
+
+        private bool RequireGemini => GeminiCheck.IsChecked;
+
+        private void OnGeminiLabelTapped(object sender, TappedEventArgs e) => GeminiCheck.IsChecked = !GeminiCheck.IsChecked;
+        private void OnGeminiOptionChanged(object sender, CheckedChangedEventArgs e)
         {
-            lock (s_testPorts)
-            {
-                for (int i = 0; i < 20; i++)
-                {
-                    var l = new TcpListener(System.Net.IPAddress.Loopback, 0);
-                    l.Start();
-                    int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-                    l.Stop();
-                    if (port != 10809 && s_testPorts.Add(port)) return port;
-                }
-                throw new Exception("No free local port for the test.");
-            }
+            Preferences.Default.Set("require_gemini", e.Value);
+            UpdateHome();
         }
 
-        private async Task<(XrayProc proc, int port, string configPath)> StartTestXray(string link)
+        // متن‌های صفحه‌ی اصلی: کدوم سرور استفاده می‌شه
+        private void UpdateHome()
         {
-            int port = ReserveTestPort();
-            string configPath = Path.Combine(XrayProc.WorkDir, $"test_{port}.json");
-            try
-            {
-                await File.WriteAllTextAsync(configPath, await BuildXrayConfigAsync(link, port));
-                var proc = XrayProc.Start(configPath, isTest: true);
-                // اگه xray پورت رو باز نکرد، کانفیگ خرابه یا موتور بالا نیومد؛ درخواست به پورت بسته معنی نداره
-                if (!await XrayProc.WaitForPortAsync(port, 6000)) { proc.Dispose(); throw new Exception("Xray didn't start with this config."); }
-                return (proc, port, configPath);
-            }
-            catch
-            {
-                StopTestXray(null, port, configPath);
-                throw;
-            }
+            AutoServerButton.IsVisible = !_autoServer;
+            ServerChoiceLabel.Text = _currentServer == null ? "خودکار (سریع‌ترین)"
+                : _autoServer ? (isConnected ? $"خودکار  ·  {Q(_currentServer.City)}" : "خودکار (سریع‌ترین)")
+                : _currentServer.City;
+            if (!isConnected && !_connecting) SetConnState(ConnState.Disconnected);
         }
 
-        private async Task<string> BuildXrayConfigAsync(string link, int port)
-        {
-            string json = _configService.GenerateXrayConfig(link, port);
-#if ANDROID
-            json = await ConfigService.ResolveServerAddressAsync(json);
-#endif
-            return await Task.FromResult(json);
-        }
+        // ---------- اتصال ----------
 
-        // حتماً بعد از هر تست صدا زده بشه، وگرنه xray توی پس‌زمینه باز می‌مونه
-        private static void StopTestXray(XrayProc? proc, int port, string? configPath)
-        {
-            proc?.Dispose();
-            lock (s_testPorts) s_testPorts.Remove(port);
-            if (configPath == null) return;
-            try { File.Delete(configPath); } catch { }
-            try { File.Delete(Path.ChangeExtension(configPath, ".log")); } catch { }
-        }
-
-        // نتیجه‌ی تست به همه‌ی ردیف‌هایی که الان همین کانفیگ رو نشون می‌دن می‌رسه (نه فقط ردیفی که تست ازش شروع شد؛
-        // اگه وسط تست لیست دوباره لود بشه، ردیف‌ها شیءهای تازه‌ان)
-        private IEnumerable<Server> RowsOf(string config) => AllServers.Where(x => x.Config == config);
-
-        // --- تست جمینی (از طریق خود کانفیگ) ---
-        private void OnGeminiTestClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = TestGemini(s.Config); }
-        private async Task TestGemini(string config)
-        {
-            if (_geminiCache.TryGetValue(config, out var now) && now == "testing") return;
-            SetGemini(config, "testing");
-            string result;
-            XrayProc? proc = null; int port = 0; string? configPath = null;
-            try
-            {
-                (proc, port, configPath) = await StartTestXray(config);
-                using var client = XrayProc.SocksClient(port);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                using var res = await client.GetAsync("https://gemini.google.com/app", HttpCompletionOption.ResponseHeadersRead, cts.Token);
-                // اول صفحه کافیه (کد وضعیت و پیام «در کشور شما در دسترس نیست»)؛ دانلود کل صفحه از کانفیگ کند خیلی طول می‌کشه
-                string body = await ReadStartAsync(res.Content, 256 * 1024, cts.Token);
-                result = ClassifyGemini(res.StatusCode, body);
-            }
-            catch (OperationCanceledException) { result = "timeout"; }
-            catch { result = "failed"; }
-            finally { StopTestXray(proc, port, configPath); }
-            SetGemini(config, result);
-        }
-
-        private void SetGemini(string config, string status)
-        {
-            _geminiCache[config] = status;
-            foreach (var x in RowsOf(config)) x.GeminiStatus = status;
-        }
-
-        private static async Task<string> ReadStartAsync(HttpContent content, int maxBytes, CancellationToken ct)
-        {
-            await using var stream = await content.ReadAsStreamAsync(ct);
-            var buffer = new byte[maxBytes];
-            int total = 0, read;
-            while (total < maxBytes && (read = await stream.ReadAsync(buffer.AsMemory(total, maxBytes - total), ct)) > 0) total += read;
-            return System.Text.Encoding.UTF8.GetString(buffer, 0, total);
-        }
-
-        private static string ClassifyGemini(System.Net.HttpStatusCode code, string body)
-        {
-            if (body.Contains("not available in your country", StringComparison.OrdinalIgnoreCase)) return "region";
-            if (code == System.Net.HttpStatusCode.Forbidden) return "blocked";
-            if (code == System.Net.HttpStatusCode.OK) return "ok";
-            return $"http:{(int)code}";
-        }
-
-        // --- پینگ ---
-        private const int NoReply = 9999;
-        private const string PingUrl = "http://www.gstatic.com/generate_204";
-        private readonly HashSet<string> _pinging = new();
-
-        private void OnPingSingleItemClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = PingSingle(s.Config); }
-
-        private async Task PingSingle(string config)
-        {
-            if (!_pinging.Add(config)) return;   // همین کانفیگ همین الان در حال تسته
-            foreach (var x in RowsOf(config)) x.IsPinging = true;
-            int ping = NoReply;
-            try { ping = await MeasurePingAsync(config); }
-            catch { }
-            finally
-            {
-                _pinging.Remove(config);
-                _pingCache[config] = ping;
-                foreach (var x in RowsOf(config)) { x.Ping = ping; x.IsPinging = false; }
-                if (_currentServer?.Config == config && !isConnected) SetConnState(ConnState.Disconnected);
-            }
-        }
-
-        // پینگ واقعی از داخل کانفیگ:
-        //   درخواست اول تونل رو باز می‌کنه (اتصال و TLS تا سرور)، درخواست دوم تأخیر واقعی رو اندازه می‌گیره.
-        //   اگه هیچ درخواستی جواب نداد یه بار دیگه امتحان می‌شه؛ کانفیگ‌های رایگان گاهی یه درخواست رو گم می‌کنن
-        //   و یه بار شکست نباید کانفیگ سالم رو «مرده» نشون بده.
-        private async Task<int> MeasurePingAsync(string config)
-        {
-            if (!await ServerReachableAsync(config)) return NoReply;
-
-            XrayProc? proc = null; int port = 0; string? configPath = null;
-            try
-            {
-                (proc, port, configPath) = await StartTestXray(config);
-                for (int attempt = 0; attempt < 2; attempt++)
-                {
-                    using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(attempt == 0 ? 8 : 10));
-                    int first;
-                    try
-                    {
-                        var sw = Stopwatch.StartNew();
-                        using (var warm = await client.GetAsync(PingUrl)) if (!warm.IsSuccessStatusCode) continue;
-                        first = (int)sw.ElapsedMilliseconds;
-                    }
-                    catch { continue; }
-
-                    try
-                    {
-                        var sw = Stopwatch.StartNew();
-                        using var res = await client.GetAsync(PingUrl);
-                        if (res.IsSuccessStatusCode) return Math.Max(1, (int)sw.ElapsedMilliseconds);
-                    }
-                    catch { }
-                    return Math.Max(1, first);   // درخواست اول جواب داده، پس کانفیگ زنده‌ست
-                }
-                return NoReply;
-            }
-            catch { return NoReply; }
-            finally { StopTestXray(proc, port, configPath); }
-        }
-
-        // تست سریع TCP تا سرور، تا برای سرورهای خاموش یا فیلترشده xray بالا نیاد.
-        // vmess (لینک base64) و hysteria2 (UDP) و لینک‌هایی که آدرسشون خونده نمی‌شه مستقیم با xray تست می‌شن.
-        private static async Task<bool> ServerReachableAsync(string config)
-        {
-            if (config.StartsWith("vmess://") || config.StartsWith("hysteria2://") || config.StartsWith("hy2://")) return true;
-            if (config.StartsWith("ss://") && !config.Split('#')[0].Contains('@')) return true;   // ss قدیمی: آدرس داخل base64
-            if (!Uri.TryCreate(config, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host)) return true;
-            try
-            {
-                using var tcp = new TcpClient();
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                await tcp.ConnectAsync(uri.Host, uri.Port > 0 ? uri.Port : 443, cts.Token);
-                return true;
-            }
-            catch { return false; }
-        }
-
-        // «Test all»: کانفیگ‌های شخصی و لیست‌های ذخیره‌شده‌ی همین تب تست می‌شن؛ توی All و Online لیست آنلاین هم از نو
-        // روی همین اینترنت گشته می‌شه (فقط سالم‌ها نمایش داده می‌شن)
-        private async void OnFindBestServerClicked(object sender, EventArgs e)
-        {
-            if (_isTestingAll) return;
-            _isTestingAll = true;
-            TestAllButton.IsEnabled = RefreshButton.IsEnabled = EmptyRefreshButton.IsEnabled = false;
-            try
-            {
-                // دانلود خودکار لیست موقع باز شدن برنامه اول تموم بشه، بعد تست؛ وگرنه لیست وسط تست عوض می‌شد
-                if (_isUpdating)
-                {
-                    StatusLabel.Text = "Downloading the latest configs first…";
-                    for (int i = 0; _isUpdating && i < 150; i++) await Task.Delay(200);
-                }
-                bool online = CurrentTab is "All" or "Online";
-                var targets = AllServers.Where(s => !online || s.IsRemovable).Select(s => s.Config).Distinct().ToList();
-                int done = 0;
-                using var sem = new SemaphoreSlim(5);
-                var tasks = targets.Select(async config =>
-                {
-                    await sem.WaitAsync();
-                    try { await PingSingle(config); }
-                    finally { sem.Release(); done++; if (!online) StatusLabel.Text = $"Testing {done} of {targets.Count}…"; }
-                }).ToList();
-                if (online) tasks.Add(DiscoverAsync(fresh: true));
-                await Task.WhenAll(tasks);
-
-                // ردیف‌ها فقط یه بار، آخر تست، مرتب می‌شن (وسط تست جابه‌جا نمی‌شن)
-                ResortList();
-                UpdateOnlineHeader();
-                ShowTestSummary();
-            }
-            finally
-            {
-                _isTestingAll = false;
-                TestAllButton.IsEnabled = RefreshButton.IsEnabled = EmptyRefreshButton.IsEnabled = true;
-            }
-        }
-
-        // ترتیب ثابت لیست، همه‌جا یکی: ستاره‌دارها اول، بعد کانفیگ‌هایی که جواب دادن (سریع‌ترین اول)،
-        // بعد تست‌نشده‌ها، آخر سر بی‌جواب‌ها. بین هم‌رتبه‌ها ترتیب خود لیست حفظ می‌شه.
-        private static List<Server> Ordered(IEnumerable<Server> list) => list
-            .OrderByDescending(x => x.IsFavorite)
-            .ThenBy(x => x.Ping is > 0 and < NoReply ? 0 : x.Ping < 0 ? 1 : 2)
-            .ThenBy(x => x.Ping is > 0 and < NoReply ? x.Ping : 0)
-            .ToList();
-
-        private void ResortList()
-        {
-            var groups = ServerGroups.Select(g =>
-            {
-                var sorted = new ServerGroup(g.Name, Ordered(g)) { SavedListName = g.SavedListName };
-                if (g == _onlineGroup) _onlineGroup = sorted;
-                return sorted;
-            }).ToList();
-            ServerGroups.Clear();
-            foreach (var g in groups) ServerGroups.Add(g);
-            ServerListView.ItemsSource = null; ServerListView.ItemsSource = ServerGroups;
-        }
-
-        // --- اتصال ---
-        private enum ConnState { Disconnected, Connecting, Connected }
+        private enum ConnState { Disconnected, Finding, Connecting, Connected }
+        private bool _connecting, _cancelFind;
 
         private void SetConnState(ConnState state, string? detail = null)
         {
+            string text, stateText, mini;
+            bool on = state == ConnState.Connected, busy = state is ConnState.Finding or ConnState.Connecting;
             switch (state)
             {
+                case ConnState.Finding:
+                    text = "لغو"; stateText = "در حال پیدا کردن سرور…";
+                    detail ??= RequireGemini ? "سرورها روی همین اینترنت تست می‌شوند، با جمینی" : "سرورها روی همین اینترنت تست می‌شوند";
+                    mini = stateText;
+                    break;
                 case ConnState.Connecting:
-                    ConnDot.Color = Res<Color>("Warning");
-                    ConnStateLabel.Text = "Connecting…";
-                    ConnDetailLabel.Text = _currentServer?.City ?? "";
-                    ConnectButton.Style = Res<Style>("PrimaryButton");
-                    ConnectButton.Text = "Connecting…";
-                    ConnectButton.IsEnabled = false;
+                    text = "در حال اتصال…"; stateText = "در حال اتصال…";
+                    detail ??= _currentServer?.City ?? "";
+                    mini = $"در حال اتصال به {Q(_currentServer?.City)}…";
                     break;
                 case ConnState.Connected:
-                    ConnDot.Color = Res<Color>("Success");
-                    ConnStateLabel.Text = "Connected";
-                    ConnDetailLabel.Text = detail ?? "";
-                    ConnectButton.Style = Res<Style>("SecondaryButtonLarge");
-                    ConnectButton.Text = "Disconnect";
-                    ConnectButton.IsEnabled = true;
+                    text = "قطع اتصال"; stateText = "وصل هستید";
+                    detail ??= "";
+                    mini = $"وصل به {Q(_currentServer?.City ?? Preferences.Default.Get("connected_name", ""))}";
                     break;
                 default:
-                    ConnDot.Color = Res<Color>("TextMuted");
-                    ConnStateLabel.Text = "Not connected";
-                    ConnDetailLabel.Text = _currentServer == null ? "Choose a server from the list below"
-                        : $"Selected: {_currentServer.City}" + (_currentServer.Ping is > 0 and < 9999 ? $"  ·  {_currentServer.Ping} ms" : "");
-                    ConnectButton.Style = Res<Style>("PrimaryButton");
-                    ConnectButton.Text = "Connect";
-                    ConnectButton.IsEnabled = true;
+                    text = "اتصال"; stateText = "وصل نیستید";
+                    detail ??= DisconnectedDetail();
+                    mini = _autoServer || _currentServer == null ? "وصل نیستید · سرور خودکار" : $"وصل نیستید · {Q(_currentServer.City)}";
                     break;
             }
+
+            ConnectButton.Style = Res<Style>(on ? "ConnectCircleOn" : "ConnectCircle");
+            ConnectButton.Text = text;
+            SemanticProperties.SetDescription(ConnectButton, text);
+            ConnectButton.IsEnabled = state != ConnState.Connecting;
+            ConnRing.Stroke = new SolidColorBrush(Res<Color>(on ? "Success" : busy ? "Warning" : "Hairline"));
+            ConnStateLabel.Text = stateText;
+            ConnDetailLabel.Text = detail;
+
+            MiniDot.Color = Res<Color>(on ? "Success" : busy ? "Warning" : "TextMuted");
+            MiniStateLabel.Text = mini;
+            MiniConnectButton.Style = Res<Style>(on ? "SecondaryButton" : "PrimaryButton");
+            MiniConnectButton.Text = text;
+            MiniConnectButton.IsEnabled = state != ConnState.Connecting;
+        }
+
+        private string DisconnectedDetail()
+        {
+            if (!_autoServer && _currentServer != null)
+                return $"سرور انتخابی شما: {Q(_currentServer.City)}" + (_currentServer.Ping is > 0 and < NoReply ? $"  ·  {Ms(_currentServer.Ping)}" : "");
+            var best = WorkingServers().FirstOrDefault();
+            if (best != null && !RequireGemini) return $"سریع‌ترین سرور الان: {Q(best.City)}  ·  {Ms(best.Ping)}";
+            if (_discovering) return "سرورها روی همین اینترنت تست می‌شوند…";
+            return RequireGemini ? "سریع‌ترین سروری که جمینی را باز کند انتخاب می‌شود" : "سریع‌ترین سروری که روی همین اینترنت جواب بدهد انتخاب می‌شود";
         }
 
         private async void OnConnectButtonClicked(object sender, EventArgs e)
         {
+            if (_connecting) { _cancelFind = true; return; }   // وسط «پیدا کردن سرور» دکمه «لغو» است
             if (isConnected) { Disconnect(); return; }
-            if (_currentServer == null) { StatusLabel.Text = "Choose a server from the list first."; return; }
+            _connecting = true; _cancelFind = false;
+            try
+            {
+                Server? target = _autoServer || _currentServer == null ? await PickBestServerAsync() : _currentServer;
+                if (target != null) await ConnectToAsync(target);
+            }
+            finally
+            {
+                _connecting = false;
+                if (!isConnected) SetConnState(ConnState.Disconnected);
+            }
+        }
+
+        // سریع‌ترین سرور سالم (و اگه گزینه‌ی جمینی روشنه، سریع‌ترینی که جمینی رو باز می‌کنه).
+        // اگه هنوز چیزی پیدا نشده، صبر می‌کنه تا تست خودکار اولین سرورهای سالم رو پیدا کنه.
+        private async Task<Server?> PickBestServerAsync()
+        {
+            SetConnState(ConnState.Finding);
+            var sw = Stopwatch.StartNew();
+            while (!_cancelFind)
+            {
+                var working = WorkingServers();
+                if (working.Any())
+                {
+                    if (!RequireGemini) return working.First();
+                    var withGemini = await FirstWithGeminiAsync(working);
+                    if (withGemini != null) return withGemini;
+                }
+                bool searching = _discovering || _isUpdating;
+                if (!searching && !_discoveryDone) { _ = DiscoverAsync(fresh: false); searching = true; }
+                if (!searching || sw.Elapsed > TimeSpan.FromMinutes(3))
+                {
+                    await DisplayAlertAsync("سرور مناسبی پیدا نشد",
+                        RequireGemini && working.Any()
+                            ? "سرورهایی که روی این اینترنت جواب می‌دهند جمینی را باز نکردند. تیک جمینی را بردارید، یا کمی بعد دوباره امتحان کنید."
+                            : "فعلاً هیچ سروری روی این اینترنت جواب نداد. کمی بعد دوباره «اتصال» را بزنید؛ لیست هر ۴ ساعت تازه می‌شود.",
+                        "باشه");
+                    return null;
+                }
+                await Task.Delay(700);
+            }
+            StatusLabel.Text = "پیدا کردن سرور لغو شد.";
+            return null;
+        }
+
+        // سرورهای سالم روی همین اینترنت از همه‌ی لیست‌ها (آنلاین، شخصی، ذخیره‌شده‌ها)، سریع‌ترین اول
+        private List<Server> WorkingServers()
+        {
+            var configs = new List<string>();
+            try { if (File.Exists(UserPath)) configs.AddRange(File.ReadAllLines(UserPath).Select(l => l.Trim())); } catch { }
+            configs.AddRange(_pingCache.Keys);
+            var shown = AllServers;
+            return configs.Distinct()
+                .Where(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply)
+                .OrderBy(c => _pingCache[c])
+                .Select(c => shown.FirstOrDefault(x => x.Config == c) ?? NewServer(c))
+                .OfType<Server>()
+                .ToList();
+        }
+
+        private Server? NewServer(string config)
+        {
+            var s = _configService.CreateServerObj(config, false);
+            if (s != null) Decorate(new List<Server> { s }, _cloudSources, ReadFavorites());
+            return s;
+        }
+
+        private async Task ConnectToAsync(Server target)
+        {
+            _currentServer = target;
             SetConnState(ConnState.Connecting);
             try
             {
                 if (!XrayProc.EngineExists)
                 {
-                    await DisplayAlertAsync("Xray engine is missing", "Derafsh can't find its Xray engine. Reinstall Derafsh and try again.", "OK");
-                    SetConnState(ConnState.Disconnected);
+                    await DisplayAlertAsync("موتور Xray پیدا نشد", "فایل موتور Xray کنار برنامه نیست. درفش را دوباره نصب کنید.", "باشه");
                     return;
                 }
 
-                // *** استفاده از سرویس برای تولید کانفیگ نهایی ***
                 string configPath = Path.Combine(XrayProc.WorkDir, "config.json");
-                await File.WriteAllTextAsync(configPath, await BuildXrayConfigAsync(_currentServer.Config, 10809));
+                await File.WriteAllTextAsync(configPath, await BuildXrayConfigAsync(target.Config, 10809));
 
 #if ANDROID
                 // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره
                 if (!await VpnController.StartAsync(configPath))
-                    throw new Exception(VpnController.LastError ?? "The VPN didn't start.");
+                    throw new Exception(VpnController.LastError ?? "VPN روشن نشد.");
 #else
                 xrayProcess?.Dispose(); xrayProcess = null;
                 KillXray();
@@ -686,14 +575,17 @@ namespace Derafsh.Client
                 catch { }
 
                 isConnected = true;
-                Preferences.Default.Set("connected_name", _currentServer.City);
+                Preferences.Default.Set("connected_name", target.City);
                 SetConnState(ConnState.Connected, ip != null
-                    ? $"{_currentServer.City}  ·  IP {ip}  ·  {country}"
-                    : $"{_currentServer.City}  ·  couldn't check the IP — try opening a website");
+                    ? $"{Q(target.City)}  ·  IP {ip}  ·  {country}"
+                    : $"{Q(target.City)}  ·  IP بررسی نشد؛ یک سایت را باز کنید تا مطمئن شوید");
+                StatusLabel.Text = "";
+                UpdateHome();
             }
             catch (Exception ex)
             {
-                await DisplayAlertAsync("Couldn't connect", $"{ex.Message}\nTry another config, or press “Test all” to find one that works.", "OK");
+                await DisplayAlertAsync("وصل نشد", $"{ex.Message}\nدوباره «اتصال» را بزنید تا سرور دیگری امتحان شود.", "باشه");
+                if (_pingCache.ContainsKey(target.Config)) _pingCache[target.Config] = NoReply;   // دفعه‌ی بعد سراغ سرور بعدی بره
                 Disconnect();
             }
         }
@@ -705,7 +597,10 @@ namespace Derafsh.Client
 #else
             DisableProxy(); xrayProcess?.Dispose(); xrayProcess = null; KillXray();
 #endif
-            isConnected = false; SetConnState(ConnState.Disconnected);
+            isConnected = false;
+            if (_autoServer) _currentServer = null;
+            SetConnState(ConnState.Disconnected);
+            UpdateHome();
         }
 
         private static void KillXray()
@@ -719,18 +614,71 @@ namespace Derafsh.Client
         public static void CleanupOnExit()
         {
 #if WINDOWS
-            if (!s_proxyEnabled) return;   // پروکسی رو درفش روشن نکرده؛ دستش نمی‌زنیم
-            try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 0); InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); } catch { }
+            RestoreProxy();   // فقط اگه خود درفش پروکسی رو عوض کرده بود
             KillXray();
-            s_proxyEnabled = false;
 #endif
         }
 
 #if WINDOWS
-        private void EnableProxy() { try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 1); key?.SetValue("ProxyServer", "socks=127.0.0.1:10809"); InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); s_proxyEnabled = true; } catch { } }
-        private void DisableProxy() { try { using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true); key?.SetValue("ProxyEnable", 0); InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); s_proxyEnabled = false; } catch { } }
+        // پروکسی ویندوز: موقع اتصال تنظیم قبلی کاربر (مثلاً پروکسی یه VPN دیگه) ذخیره می‌شه و موقع قطع همون برمی‌گرده؛
+        // قبلاً پروکسی کلاً خاموش می‌شد و تنظیم کاربر از دست می‌رفت. اگه برنامه وسط اتصال بسته بشه، دفعه‌ی بعد برمی‌گرده.
+        private const string InternetSettings = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
+        private const string DerafshProxy = "socks=127.0.0.1:10809";
+
+        private static void EnableProxy()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(InternetSettings, true);
+                if (key == null) return;
+                if (!s_proxyEnabled && key.GetValue("ProxyServer") as string != DerafshProxy)
+                {
+                    Preferences.Default.Set("prev_proxy_enable", key.GetValue("ProxyEnable") is int on ? on : 0);
+                    Preferences.Default.Set("prev_proxy_server", key.GetValue("ProxyServer") as string ?? "");
+                    Preferences.Default.Set("prev_proxy_saved", true);
+                }
+                key.SetValue("ProxyEnable", 1);
+                key.SetValue("ProxyServer", DerafshProxy);
+                s_proxyEnabled = true;
+                RefreshProxy();
+            }
+            catch { }
+        }
+
+        private static void DisableProxy() => RestoreProxy();
+
+        private static void RestoreProxy()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(InternetSettings, true);
+                if (key == null) return;
+                // پروکسی الان مال درفش نیست (کاربر یا برنامه‌ی دیگه عوضش کرده): دست نمی‌زنیم
+                if (key.GetValue("ProxyServer") as string != DerafshProxy) { s_proxyEnabled = false; return; }
+                if (Preferences.Default.Get("prev_proxy_saved", false))
+                {
+                    key.SetValue("ProxyEnable", Preferences.Default.Get("prev_proxy_enable", 0));
+                    key.SetValue("ProxyServer", Preferences.Default.Get("prev_proxy_server", ""));
+                }
+                else key.SetValue("ProxyEnable", 0);
+                Preferences.Default.Remove("prev_proxy_saved");
+                s_proxyEnabled = false;
+                RefreshProxy();
+            }
+            catch { }
+        }
+
+        private static void RefreshProxy() { InternetSetOption(IntPtr.Zero, 39, IntPtr.Zero, 0); InternetSetOption(IntPtr.Zero, 37, IntPtr.Zero, 0); }
 #else
-        private void EnableProxy() {} private void DisableProxy() {}
+        private static void EnableProxy() {} private static void DisableProxy() {}
 #endif
+
+        // اسم سرورها و لیست‌ها اغلب لاتینه («@filembad»)؛ داخل جمله‌ی فارسی بدون «جداکننده‌ی جهت» (FSI…PDI)
+        // ترتیب کلمه‌ها به هم می‌ریخت. FSI…PDI برای اندروید، و علامت راست‌به‌چپ (RLM) بعدش برای ویندوز که FSI رو نمی‌شناسه
+        public static string Q(string? name) => $"\u200F«\u2068\u200E{name}\u200E\u2069»\u200F";
+        public static string Ms(int ms) => $"\u200E{ms}\u00A0ms\u200E\u200F";
+
+        // عدد با رقم فارسی، برای جمله‌های فارسی (پینگ‌ها لاتین می‌مونن تا ستونی مرتب باشن)
+        public static string Fa(int n) => string.Concat(n.ToString().Select(c => char.IsAsciiDigit(c) ? (char)('۰' + (c - '0')) : c));
     }
 }

@@ -31,21 +31,23 @@
 
 ### طرز استفاده
 
-با باز شدن برنامه، درفش خودش کانفیگ‌های تازه را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و فقط آن‌هایی را نشان می‌دهد که جواب می‌دهند، سریع‌ترین بالا. سریع‌ترین هم خودکار انتخاب می‌شود؛ کافی است **Connect** را بزنید.
+برنامه دو صفحه دارد:
 
-| دکمه | کار |
-|---|---|
-| **Connect** | به کانفیگ انتخاب‌شده وصل می‌شود (در ویندوز پروکسی سیستم، در اندروید VPN روشن می‌شود و IP و کشور واقعی نمایش داده می‌شود) |
-| **Test all** | دوباره روی همین اینترنت تست می‌کند (مثلاً وقتی از وای‌فای به اینترنت گوشی رفتید) |
-| **Refresh list** | تازه‌ترین کانفیگ‌ها را دانلود و خودکار تست می‌کند |
-| **Save list** | کانفیگ‌هایی را که الان جواب می‌دهند با اسمی که خودتان می‌گذارید ذخیره می‌کند، مثلاً «ایرانسل» یا «وای‌فای خونه». هر اسم یک لیست جداست |
-| **Add config** | لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را به لیست شخصی اضافه می‌کند |
-| **Ping** / **Gemini** | سرعت یک کانفیگ را تست می‌کند / بررسی می‌کند که Gemini از طریق آن باز می‌شود یا نه |
-| **✧** / **Save** | کانفیگ را به علاقه‌مندی‌ها اضافه می‌کند / در لیست شخصی ذخیره می‌کند |
+**صفحه‌ی اصلی** فقط یک دکمه‌ی گرد **اتصال** دارد. درفش خودش سرورها را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و به سریع‌ترین سروری که جواب بدهد وصل می‌شود. اگر تیک **«فقط سروری که جمینی را باز می‌کند»** را بزنید، سریع‌ترین سروری انتخاب می‌شود که جمینی را هم باز کند.
 
-تب **Saved** لیست‌های ذخیره‌شده را نشان می‌دهد (با دکمه‌ی **Delete list** برای پاک کردن). زیر هر کانفیگ آدرس سرور و کانال تلگرامی که از آن آمده نوشته شده است.
+**صفحه‌ی سرورها** (دکمه‌ی «سرورها» بالای صفحه) برای کارهای بیشتر است. از منوی **لیست** یکی را انتخاب کنید:
 
-کانفیگ‌های رایگان زود فیلتر می‌شوند: کانفیگی که چند دقیقه پیش جواب می‌داد ممکن است الان جواب ندهد. این مشکل برنامه نیست؛ **Test all** را دوباره بزنید.
+| لیست | چه چیزی نشان می‌دهد | دکمه‌ها |
+|---|---|---|
+| **آنلاین** | سرورهای رایگانی که روی همین اینترنت جواب می‌دهند، سریع‌ترین بالا | **تست دوباره** · **دریافت لیست تازه** · **ذخیره به‌عنوان لیست** |
+| **شخصی** | کانفیگ‌هایی که خودتان اضافه کرده‌اید | **تست دوباره** · **افزودن کانفیگ** · **ذخیره به‌عنوان لیست** |
+| **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **حذف این لیست** |
+
+روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌های هر سرور: **پینگ** (سرعت)، **جمینی** (آیا جمینی باز می‌شود)، **✧** (علاقه‌مندی) و **+ شخصی** (افزودن به لیست شخصی). زیر هر سرور آدرس آن و کانال تلگرامی که از آن آمده نوشته شده است.
+
+کانفیگ‌های رایگان زود فیلتر می‌شوند: سروری که چند دقیقه پیش جواب می‌داد ممکن است الان جواب ندهد. این مشکل برنامه نیست؛ دوباره **اتصال** یا **تست دوباره** را بزنید.
+
+در ویندوز، درفش موقع اتصال پروکسی سیستم را روی خودش می‌گذارد و موقع قطع، تنظیم قبلی شما را برمی‌گرداند.
 
 ### اندروید
 
@@ -85,7 +87,7 @@
 
 ## English
 
-**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app tests them on the network you're on, shows only the ones that answer (fastest first), lets you save working lists under your own names (e.g. one per internet provider), and connects with one click — through the system proxy on Windows, as a VPN on Android.
+**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on and picks the fastest one that answers, optionally only ones that open Gemini. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 7+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.3.27**. Configs the engine can't start are dropped by the collector.

@@ -1,23 +1,31 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!--
+    Two screens on one page:
+      HomeView     the simple screen: one round Connect button, the "Gemini must open" option, which server is used.
+      ServersView  the detailed screen: pick a list (Online / Personal / a saved list), test, save, add, choose a server.
+    The app is Persian, so the page flows right to left; ping numbers stay Latin (mono) so they line up.
+    SafeAreaEdges=Container: on Android the content stays below the status bar (clock, battery).
+-->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:Derafsh.Client"
              xmlns:models="clr-namespace:Derafsh.Client.Models"
              x:Class="Derafsh.Client.MainPage"
-             BackgroundColor="{StaticResource Bg}" Shell.NavBarIsVisible="False" NavigationPage.HasNavigationBar="False" FlowDirection="LeftToRight">
+             BackgroundColor="{StaticResource Bg}" Shell.NavBarIsVisible="False" NavigationPage.HasNavigationBar="False"
+             FlowDirection="RightToLeft" SafeAreaEdges="Container">
 
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:BoolToColorConverter x:Key="SelectedStroke" TrueColor="{StaticResource Accent}" FalseColor="{StaticResource Hairline}" />
             <!-- The Kaviani four-pointed star -->
             <local:BoolToTextConverter x:Key="StarText" TrueText="✦" FalseText="✧" />
-            <local:BoolToTextConverter x:Key="FavoriteName" TrueText="Remove from favorites" FalseText="Add to favorites" />
+            <local:BoolToTextConverter x:Key="FavoriteName" TrueText="حذف از علاقه‌مندی‌ها" FalseText="افزودن به علاقه‌مندی‌ها" />
             <local:PingToTextConverter x:Key="PingText" />
             <local:PingToColorConverter x:Key="PingColor" Untested="{StaticResource TextMuted}" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
             <local:GeminiTextConverter x:Key="GeminiText" />
             <local:GeminiColorConverter x:Key="GeminiColor" Neutral="{StaticResource TextMuted}" Good="{StaticResource Success}" Warn="{StaticResource Warning}" Bad="{StaticResource Danger}" />
 
-            <!-- Desktop row: results and buttons on the right -->
+            <!-- Desktop row: results and buttons at the end of the row -->
             <DataTemplate x:Key="WideRow" x:DataType="models:Server">
                 <ViewCell>
                     <Border Margin="0,3" Padding="16,10" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
@@ -36,15 +44,12 @@
                         </VisualStateManager.VisualStateGroups>
 
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
-                            <!-- Name (✦ = favorite) -->
                             <Grid ColumnDefinitions="Auto,*">
                                 <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
                                 <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
                             </Grid>
-                            <!-- Protocol · country · source -->
                             <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
 
-                            <!-- Results -->
                             <HorizontalStackLayout Grid.Column="1" Spacing="16" HorizontalOptions="End">
                                 <Label Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
                                        FontSize="12" VerticalOptions="Center" />
@@ -52,33 +57,33 @@
                                        FontFamily="{StaticResource FontMono}" FontSize="13" MinimumWidthRequest="72" HorizontalTextAlignment="End" VerticalOptions="Center">
                                     <Label.Triggers>
                                         <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
-                                            <Setter Property="Text" Value="testing…" />
+                                            <Setter Property="Text" Value="در حال تست…" />
+                                            <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
                                             <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
                                         </DataTrigger>
                                     </Label.Triggers>
                                 </Label>
                             </HorizontalStackLayout>
 
-                            <!-- Actions -->
                             <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6" HorizontalOptions="End">
-                                <Button Text="Ping" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="Test this config's speed" />
-                                <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="Check whether Gemini opens through this config" />
+                                <Button Text="پینگ" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="سرعت همین سرور را تست می‌کند" />
+                                <Button Text="جمینی" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="بررسی می‌کند جمینی از طریق همین سرور باز می‌شود یا نه" />
                                 <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
                                         ToolTipProperties.Text="{Binding IsFavorite, Converter={StaticResource FavoriteName}}"
                                         SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
-                                <Button Text="Save" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="Save to your Personal list" />
-                                <Button Text="Delete" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="Delete from your Personal list" />
+                                <Button Text="+ شخصی" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="این سرور را به لیست شخصی شما اضافه می‌کند" />
+                                <Button Text="حذف" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="این سرور را از لیست شخصی شما حذف می‌کند" />
                             </HorizontalStackLayout>
                         </Grid>
                     </Border>
                 </ViewCell>
             </DataTemplate>
 
-            <!-- Phone row: name and ping, then source and Gemini result, then the buttons on their own line -->
+            <!-- Phone row: name and ping, then details and Gemini result, then the buttons on their own line -->
             <DataTemplate x:Key="CompactRow" x:DataType="models:Server">
                 <ViewCell>
                     <Border Margin="0,4" Padding="14,12" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
@@ -92,7 +97,8 @@
                                    FontFamily="{StaticResource FontMono}" FontSize="13" HorizontalTextAlignment="End" VerticalOptions="Center">
                                 <Label.Triggers>
                                     <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
-                                        <Setter Property="Text" Value="testing…" />
+                                        <Setter Property="Text" Value="در حال تست…" />
+                                        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
                                         <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
                                     </DataTrigger>
                                 </Label.Triggers>
@@ -101,12 +107,12 @@
                             <Label Grid.Row="1" Grid.Column="1" Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
                                    FontSize="12" HorizontalTextAlignment="End" VerticalOptions="Center" />
                             <HorizontalStackLayout Grid.Row="2" Grid.ColumnSpan="2" Spacing="8" Margin="0,4,0,0">
-                                <Button Text="Ping" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}" />
-                                <Button Text="Gemini" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
+                                <Button Text="پینگ" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}" />
+                                <Button Text="جمینی" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
                                 <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
                                         SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
-                                <Button Text="Save" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}" />
-                                <Button Text="Delete" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" HeightRequest="36" Padding="14,0" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}" />
+                                <Button Text="+ شخصی" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}" />
+                                <Button Text="حذف" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" HeightRequest="36" Padding="14,0" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}" />
                             </HorizontalStackLayout>
                         </Grid>
                     </Border>
@@ -115,60 +121,94 @@
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="2,*">
+    <Grid RowDefinitions="2,*,Auto">
         <!-- The banner's crimson frame -->
         <BoxView Color="{StaticResource Crimson}" HeightRequest="2" />
 
-        <Grid x:Name="RootGrid" Grid.Row="1" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="14" Padding="24,20,24,16">
+        <!-- ================= Home: the simple screen ================= -->
+        <Grid x:Name="HomeView" Grid.Row="1" RowDefinitions="Auto,*,Auto" Padding="20,16,20,8" MaximumWidthRequest="480">
 
-            <!-- Brand: Persian wordmark + Latin name -->
-            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="14">
-                <Image Source="derafsh_logo.png" HeightRequest="40" WidthRequest="40" VerticalOptions="Center" SemanticProperties.Description="Derafsh Kaviani banner" />
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
-                    <HorizontalStackLayout Spacing="10">
-                        <Label Text="درفش" FontFamily="{StaticResource FontPersian}" FontSize="22" VerticalOptions="Center" />
-                        <Label x:Name="BrandLabel" Text="DERAFSH" Style="{StaticResource SectionLabel}" VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                    <Label Text="Free configs from Telegram, refreshed every 4 hours" Style="{StaticResource MetaLabel}" />
+            <!-- Brand + way to the detailed screen -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                <Image Source="derafsh_logo.png" HeightRequest="40" WidthRequest="40" VerticalOptions="Center" SemanticProperties.Description="درفش کاویانی" />
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="0">
+                    <Label Text="درفش" FontFamily="{StaticResource FontPersian}" FontSize="22" />
+                    <Label x:Name="BrandLabel" Text="DERAFSH" Style="{StaticResource BrandLatinLabel}" HorizontalOptions="Start" />
                 </VerticalStackLayout>
+                <Button x:Name="OpenServersButton" Grid.Column="2" Text="سرورها" Style="{StaticResource SecondaryButton}" Clicked="OnOpenServersClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="لیست سرورها، تست، لیست‌های ذخیره‌شده و افزودن کانفیگ" />
             </Grid>
 
-            <!-- Connection -->
-            <Border Grid.Row="1" Style="{StaticResource Card}">
-                <Grid x:Name="ConnGrid" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="20">
-                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
-                        <HorizontalStackLayout Spacing="10">
-                            <BoxView x:Name="ConnDot" WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{StaticResource TextMuted}" VerticalOptions="Center" />
-                            <Label x:Name="ConnStateLabel" Text="Not connected" FontFamily="{StaticResource FontStrong}" FontSize="20" VerticalOptions="Center" />
-                        </HorizontalStackLayout>
-                        <Label x:Name="ConnDetailLabel" TextColor="{StaticResource TextSecondary}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="1" />
-                    </VerticalStackLayout>
-                    <Button x:Name="ConnectButton" Grid.Column="1" Text="Connect" Style="{StaticResource PrimaryButton}" Clicked="OnConnectButtonClicked" VerticalOptions="Center" />
-                </Grid>
-            </Border>
+            <!-- The one action -->
+            <VerticalStackLayout Grid.Row="1" VerticalOptions="Center" Spacing="16">
+                <Border x:Name="ConnRing" StrokeShape="Ellipse" StrokeThickness="2" Stroke="{StaticResource Hairline}" Padding="10"
+                        HorizontalOptions="Center" BackgroundColor="Transparent">
+                    <Button x:Name="ConnectButton" Text="اتصال" Style="{StaticResource ConnectCircle}" Clicked="OnConnectButtonClicked"
+                            SemanticProperties.Description="اتصال" />
+                </Border>
+                <VerticalStackLayout Spacing="4">
+                    <Label x:Name="ConnStateLabel" Text="وصل نیستید" Style="{StaticResource TitleLabel}" HorizontalTextAlignment="Center" />
+                    <Label x:Name="ConnDetailLabel" TextColor="{StaticResource TextSecondary}" FontSize="13" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
+                </VerticalStackLayout>
 
-            <!-- Tabs + list actions -->
-            <Grid x:Name="ToolbarGrid" Grid.Row="2" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
-                <Border BackgroundColor="{StaticResource Surface}" Stroke="{StaticResource Hairline}" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="3" VerticalOptions="Center">
-                    <HorizontalStackLayout Spacing="2">
-                        <Button x:Name="BtnTabAll" Text="All" CommandParameter="All" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
-                        <Button x:Name="BtnTabPersonal" Text="Personal" CommandParameter="Personal" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
-                        <Button x:Name="BtnTabOnline" Text="Online" CommandParameter="Online" Clicked="OnTabClicked" Style="{StaticResource TabButton}" />
-                        <Button x:Name="BtnTabSaved" Text="Saved" CommandParameter="Saved" Clicked="OnTabClicked" Style="{StaticResource TabButton}"
-                                ToolTipProperties.Text="Lists you saved, one per network (for example Irancell, Shatel, home Wi-Fi)" />
+                <!-- Gemini option -->
+                <Border Style="{StaticResource Card}" Padding="14,8" HorizontalOptions="Center">
+                    <HorizontalStackLayout Spacing="8">
+                        <CheckBox x:Name="GeminiCheck" Color="{StaticResource Accent}" VerticalOptions="Center" CheckedChanged="OnGeminiOptionChanged"
+                                  SemanticProperties.Description="فقط سروری که جمینی را باز می‌کند" />
+                        <Label Text="فقط سروری که جمینی را باز می‌کند" VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnGeminiLabelTapped" />
+                            </Label.GestureRecognizers>
+                        </Label>
                     </HorizontalStackLayout>
                 </Border>
-                <Grid x:Name="ActionsBar" Grid.Column="2" ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="8" VerticalOptions="Center">
-                    <Button x:Name="TestAllButton" Text="Test all" Style="{StaticResource SecondaryButton}" Clicked="OnFindBestServerClicked"
-                            ToolTipProperties.Text="Test again on this network: online configs that answer are shown, fastest first" />
-                    <Button x:Name="RefreshButton" Grid.Column="1" Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked"
-                            ToolTipProperties.Text="Download the newest free configs (the list is refreshed every 4 hours)" />
-                    <Button x:Name="SaveListButton" Grid.Column="2" Text="Save list" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked"
-                            ToolTipProperties.Text="Save the configs that work on this network under a name (for example your internet provider)" />
-                    <Button x:Name="AddConfigButton" Grid.Column="3" Text="Add config" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked"
-                            ToolTipProperties.Text="Paste your own vless / vmess / ss / trojan / hysteria2 links" />
+            </VerticalStackLayout>
+
+            <!-- Which server Connect uses -->
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16,12">
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <VerticalStackLayout VerticalOptions="Center" Spacing="2">
+                        <Label Text="سرور" Style="{StaticResource MetaLabel}" />
+                        <Label x:Name="ServerChoiceLabel" Text="خودکار (سریع‌ترین)" FontFamily="{StaticResource FontStrong}" LineBreakMode="TailTruncation" MaxLines="1" />
+                    </VerticalStackLayout>
+                    <Button x:Name="AutoServerButton" Grid.Column="1" Text="خودکار" Style="{StaticResource SecondaryButton}" Clicked="OnAutoServerClicked" IsVisible="False"
+                            VerticalOptions="Center" ToolTipProperties.Text="برنامه خودش سریع‌ترین سرور را انتخاب کند" />
+                    <Button Grid.Column="2" Text="انتخاب سرور" Style="{StaticResource SecondaryButton}" Clicked="OnOpenServersClicked" VerticalOptions="Center"
+                            ToolTipProperties.Text="خودتان یک سرور از لیست انتخاب کنید" />
                 </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ================= Servers: the detailed screen ================= -->
+        <Grid x:Name="ServersView" Grid.Row="1" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="12" Padding="24,16,24,8">
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnBackToHomeClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
+                <Label Grid.Column="1" Text="سرورها" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
             </Grid>
+
+            <!-- Which list -->
+            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Label Text="لیست:" VerticalOptions="Center" TextColor="{StaticResource TextSecondary}" />
+                <Picker x:Name="ListPicker" Grid.Column="1" SelectedIndexChanged="OnListPicked" TextColor="{StaticResource TextPrimary}" BackgroundColor="{StaticResource Surface}"
+                        FontFamily="{StaticResource FontBody}" FontSize="14" SemanticProperties.Description="انتخاب لیست سرورها" />
+            </Grid>
+
+            <!-- What this list can do -->
+            <FlexLayout x:Name="ActionsBar" Grid.Row="2" Wrap="Wrap" AlignItems="Center">
+                <Button x:Name="TestAllButton" Text="تست دوباره" Style="{StaticResource SecondaryButton}" Clicked="OnTestAgainClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="سرورهای این لیست را دوباره روی همین اینترنت تست می‌کند" />
+                <Button x:Name="RefreshButton" Text="دریافت لیست تازه" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۴ ساعت تازه می‌شوند)" />
+                <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را اضافه می‌کند" />
+                <Button x:Name="SaveListButton" Text="ذخیره به‌عنوان لیست" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="سرورهایی که الان جواب می‌دهند را با اسمی که خودتان می‌گذارید ذخیره می‌کند" />
+                <Button x:Name="DeleteListButton" Text="حذف این لیست" Style="{StaticResource SecondaryButton}" TextColor="{StaticResource Danger}" Clicked="OnDeleteSavedListClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="این لیست ذخیره‌شده را پاک می‌کند" />
+            </FlexLayout>
 
             <!-- Server list -->
             <ListView x:Name="ServerListView" Grid.Row="3" IsGroupingEnabled="True" HasUnevenRows="True" SeparatorVisibility="None"
@@ -176,11 +216,7 @@
                 <ListView.GroupHeaderTemplate>
                     <DataTemplate x:DataType="local:ServerGroup">
                         <ViewCell>
-                            <Grid ColumnDefinitions="*,Auto" Padding="2,8,0,6">
-                                <Label Text="{Binding Name}" Style="{StaticResource SectionLabel}" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" />
-                                <Button Grid.Column="1" Text="Delete list" IsVisible="{Binding IsSavedList}" Style="{StaticResource RowButtonDanger}" HeightRequest="30" Padding="12,0"
-                                        Clicked="OnDeleteSavedListClicked" CommandParameter="{Binding .}" ToolTipProperties.Text="Delete this saved list" />
-                            </Grid>
+                            <Label Text="{Binding Name}" Style="{StaticResource SectionLabel}" Padding="2,8,0,6" LineBreakMode="TailTruncation" MaxLines="1" />
                         </ViewCell>
                     </DataTemplate>
                 </ListView.GroupHeaderTemplate>
@@ -188,16 +224,22 @@
 
             <!-- Empty list -->
             <VerticalStackLayout x:Name="EmptyState" Grid.Row="3" IsVisible="False" Spacing="8" VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="440">
-                <Label x:Name="EmptyTitle" Text="No configs here yet" FontFamily="{StaticResource FontStrong}" FontSize="16" HorizontalTextAlignment="Center" />
+                <Label x:Name="EmptyTitle" FontFamily="{StaticResource FontStrong}" FontSize="16" HorizontalTextAlignment="Center" />
                 <Label x:Name="EmptyText" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" />
-                <HorizontalStackLayout Spacing="8" HorizontalOptions="Center" Margin="0,8,0,0">
-                    <Button x:Name="EmptyRefreshButton" Text="Refresh list" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" />
-                    <Button Text="Add config" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" />
-                </HorizontalStackLayout>
             </VerticalStackLayout>
 
-            <!-- Status bar: what just happened (refresh, tests, removals) -->
-            <Label x:Name="StatusLabel" Grid.Row="4" TextColor="{StaticResource TextSecondary}" FontSize="13" LineBreakMode="TailTruncation" MaxLines="1" />
+            <!-- Connection, without going back to the home screen -->
+            <Border Grid.Row="4" Style="{StaticResource Card}" Padding="14,10">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <BoxView x:Name="MiniDot" WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{StaticResource TextMuted}" VerticalOptions="Center" />
+                    <Label x:Name="MiniStateLabel" Grid.Column="1" Text="وصل نیستید" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" />
+                    <Button x:Name="MiniConnectButton" Grid.Column="2" Text="اتصال" Style="{StaticResource PrimaryButton}" Clicked="OnConnectButtonClicked" VerticalOptions="Center" />
+                </Grid>
+            </Border>
         </Grid>
+
+        <!-- Status bar: what just happened (tests, downloads, saves) -->
+        <Label x:Name="StatusLabel" Grid.Row="2" TextColor="{StaticResource TextSecondary}" FontSize="13" Padding="24,0,24,10"
+               HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" MaxLines="2" />
     </Grid>
 </ContentPage>

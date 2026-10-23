@@ -13,7 +13,9 @@ namespace Derafsh.Client
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
-                    fonts.AddFont("Vazirmatn-Bold.ttf", "VazirmatnBold");   // واژه‌نشان فارسی «درفش»
+                    fonts.AddFont("Vazirmatn-Regular.ttf", "VazirmatnRegular");   // متن برنامه (فارسی)
+                    fonts.AddFont("Vazirmatn-SemiBold.ttf", "VazirmatnSemiBold");
+                    fonts.AddFont("Vazirmatn-Bold.ttf", "VazirmatnBold");   // واژه‌نشان «درفش»
                 });
 
 #if WINDOWS

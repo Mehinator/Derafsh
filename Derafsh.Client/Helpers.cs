@@ -40,7 +40,7 @@ namespace Derafsh.Client
     public class PingToTextConverter : IValueConverter
     {
         public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
-            v is int ping ? ping switch { < 0 => "—", >= 9999 => "no reply", _ => $"{ping} ms" } : "—";
+            v is int ping ? ping switch { < 0 => "—", >= 9999 => "بی‌پاسخ", _ => $"{ping} ms" } : "—";
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
@@ -61,13 +61,13 @@ namespace Derafsh.Client
         public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v as string) switch
         {
             null or "" => "",
-            "testing" => "Gemini: testing…",
-            "ok" => "Gemini ✓",
-            "region" => "Gemini: region-locked",
-            "blocked" => "Gemini: blocked",
-            "timeout" => "Gemini: no reply",
-            "failed" => "Gemini: failed",
-            var s when s.StartsWith("http:") => $"Gemini: HTTP {s[5..]}",
+            "testing" => "جمینی: در حال تست…",
+            "ok" => "جمینی ✓",
+            "region" => "جمینی: محدودیت منطقه",
+            "blocked" => "جمینی: مسدود",
+            "timeout" => "جمینی: بی‌پاسخ",
+            "failed" => "جمینی: باز نشد",
+            var s when s.StartsWith("http:") => $"جمینی: خطای {s[5..]}",
             var s => s,
         };
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;

@@ -18,7 +18,7 @@ phone's VPN traffic to Xray. Licensed under the MIT License (https://github.com/
 
 ## Vazirmatn font
 
-`Derafsh.Client/Resources/Fonts/Vazirmatn-Bold.ttf` — used for the Persian wordmark «درفش».
+`Derafsh.Client/Resources/Fonts/Vazirmatn-Regular.ttf`, `Vazirmatn-SemiBold.ttf`, `Vazirmatn-Bold.ttf` — the app's text (Persian) and the wordmark «درفش».
 From https://github.com/rastikerdar/vazirmatn (v33.003), licensed under the SIL Open Font License 1.1:
 
 ```text

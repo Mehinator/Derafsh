@@ -13,6 +13,18 @@ namespace Derafsh.Client
         // نتیجه‌ی پنجره‌ی «اجازه‌ی VPN» اندروید
         public static TaskCompletionSource<bool>? VpnPermission;
 
+        // برنامه تیره است: آیکون‌های نوار وضعیت (ساعت، باتری) و نوار پایین روشن باشن، وگرنه روی زمینه‌ی تیره دیده نمی‌شن
+        protected override void OnCreate(Bundle? savedInstanceState)
+        {
+            base.OnCreate(savedInstanceState);
+            if (Window is { } window)
+            {
+                var bars = AndroidX.Core.View.WindowCompat.GetInsetsController(window, window.DecorView);
+                bars.AppearanceLightStatusBars = false;
+                bars.AppearanceLightNavigationBars = false;
+            }
+        }
+
         protected override void OnActivityResult(int requestCode, Result resultCode, Intent? data)
         {
             base.OnActivityResult(requestCode, resultCode, data);

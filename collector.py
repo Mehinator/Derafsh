@@ -19,6 +19,8 @@ CHANNELS = [
     "https://t.me/s/Cook_Vpn",
     "https://t.me/s/filembad",
     "https://t.me/s/chillguy_vpn",
+    "https://t.me/s/Express_freevpn",
+    "https://t.me/s/i10VPN",
 ]
 
 # فایل خروجی

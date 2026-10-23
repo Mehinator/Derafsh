@@ -64,6 +64,7 @@ namespace Derafsh.Client
 #endif
 #if ANDROID
             // اندروید: VPN بعد از بستن صفحه هم روشن می‌مونه؛ با باز شدن دوباره وضعیتش رو نشون بده
+            DerafshVpnService.StateChanged += () => MainThread.BeginInvokeOnMainThread(SyncVpnState);
             if (DerafshVpnService.IsRunning)
             {
                 isConnected = true;
@@ -88,6 +89,9 @@ namespace Derafsh.Client
         {
             base.OnSizeAllocated(width, height);
             if (width <= 0) return;
+#if ANDROID
+            ApplySystemBarInsets();
+#endif
             bool compact = width < 640;
             double side = compact ? 14 : Math.Max(24, (width - 880) / 2);
             ServersView.Padding = new Thickness(side, compact ? 12 : 16, side, 8);
@@ -100,6 +104,22 @@ namespace Derafsh.Client
                 ServerListView.ItemsSource = ServerGroups;
             }
         }
+
+#if ANDROID
+        // نوار وضعیت (ساعت، باتری) و نوار پایین اندروید روی صفحه می‌افتن؛ اندازه‌ی واقعی‌شون از خود اندروید خونده می‌شه
+        private void ApplySystemBarInsets()
+        {
+            var view = Platform.CurrentActivity?.Window?.DecorView;
+            if (view == null) return;
+            var insets = AndroidX.Core.View.ViewCompat.GetRootWindowInsets(view);
+            if (insets == null) return;
+            var bars = insets.GetInsets(AndroidX.Core.View.WindowInsetsCompat.Type.SystemBars() | AndroidX.Core.View.WindowInsetsCompat.Type.DisplayCutout());
+            double d = DeviceDisplay.MainDisplayInfo.Density;
+            if (d <= 0) return;
+            var pad = new Thickness(bars.Left / d, bars.Top / d, bars.Right / d, bars.Bottom / d);
+            if (RootGrid.Padding != pad) RootGrid.Padding = pad;
+        }
+#endif
 
         private void OnOpenServersClicked(object sender, EventArgs e) => ShowServers(true);
         private void OnBackToHomeClicked(object sender, EventArgs e) => ShowServers(false);
@@ -554,7 +574,7 @@ namespace Derafsh.Client
 
 #if ANDROID
                 // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره
-                if (!await VpnController.StartAsync(configPath))
+                if (!await VpnController.StartAsync(configPath, target.City))
                     throw new Exception(VpnController.LastError ?? "VPN روشن نشد.");
 #else
                 xrayProcess?.Dispose(); xrayProcess = null;
@@ -564,20 +584,16 @@ namespace Derafsh.Client
                 EnableProxy();
 #endif
 
-                string? ip = null, country = null;
-                try
-                {
-                    using var client = XrayProc.SocksClient(10809, TimeSpan.FromSeconds(8));
-                    using var doc = JsonDocument.Parse(await client.GetStringAsync("https://api.country.is"));
-                    ip = doc.RootElement.GetProperty("ip").GetString();
-                    country = doc.RootElement.GetProperty("country").GetString();
-                }
-                catch { }
+                // IP و شهرِ سرور، از داخل خود اتصال
+                var (ip, location) = await ExitLocationAsync();
+#if ANDROID
+                DerafshVpnService.SetLocation(location);   // توی اعلان ثابت VPN هم نشون داده می‌شه
+#endif
 
                 isConnected = true;
                 Preferences.Default.Set("connected_name", target.City);
                 SetConnState(ConnState.Connected, ip != null
-                    ? $"{Q(target.City)}  ·  IP {ip}  ·  {country}"
+                    ? $"{Q(target.City)}  ·  {location}  ·  IP {ip}"
                     : $"{Q(target.City)}  ·  IP بررسی نشد؛ یک سایت را باز کنید تا مطمئن شوید");
                 StatusLabel.Text = "";
                 UpdateHome();
@@ -589,6 +605,53 @@ namespace Derafsh.Client
                 Disconnect();
             }
         }
+
+        // IP و «شهر، کشور» سرور از راه خود اتصال؛ اول ipwho.is (شهر هم داره)، اگه جواب نداد api.country.is (فقط کشور)
+        private static async Task<(string? ip, string? location)> ExitLocationAsync()
+        {
+            using var client = XrayProc.SocksClient(10809, TimeSpan.FromSeconds(8));
+            try
+            {
+                using var doc = JsonDocument.Parse(await client.GetStringAsync("https://ipwho.is/"));
+                var r = doc.RootElement;
+                if (r.TryGetProperty("success", out var ok) && ok.ValueKind == JsonValueKind.True)
+                {
+                    string? city = r.TryGetProperty("city", out var c) ? c.GetString() : null;
+                    string? cc = r.TryGetProperty("country_code", out var k) ? k.GetString() : null;
+                    return (r.GetProperty("ip").GetString(), string.IsNullOrEmpty(city) ? cc : $"{city}, {cc}");
+                }
+            }
+            catch { }
+            try
+            {
+                using var doc = JsonDocument.Parse(await client.GetStringAsync("https://api.country.is"));
+                return (doc.RootElement.GetProperty("ip").GetString(), doc.RootElement.GetProperty("country").GetString());
+            }
+            catch { return (null, null); }
+        }
+
+#if ANDROID
+        // VPN از اعلان («قطع اتصال») یا تنظیمات اندروید قطع شده: صفحه هم «وصل نیستید» بشه
+        private void SyncVpnState()
+        {
+            if (isConnected && !_connecting && !DerafshVpnService.IsRunning)
+            {
+                isConnected = false;
+                if (_autoServer) _currentServer = null;
+                SetConnState(ConnState.Disconnected);
+                UpdateHome();
+            }
+        }
+
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            SyncVpnState();
+            // اندازه‌ی نوارهای سیستم گاهی بعد از اولین چیدمان آماده می‌شه
+            ApplySystemBarInsets();
+            Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(400), ApplySystemBarInsets);
+        }
+#endif
 
         private void Disconnect()
         {

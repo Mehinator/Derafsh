@@ -4,7 +4,8 @@
       HomeView     the simple screen: one round Connect button, the "Gemini must open" option, which server is used.
       ServersView  the detailed screen: pick a list (Online / Personal / a saved list), test, save, add, choose a server.
     The app is Persian, so the page flows right to left; ping numbers stay Latin (mono) so they line up.
-    SafeAreaEdges=Container: on Android the content stays below the status bar (clock, battery).
+    Android: the page is drawn edge to edge; the code pads RootGrid by the real status-bar / navigation-bar sizes
+    (SafeAreaEdges=Container didn't keep the content out from under the status bar on a phone).
 -->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
@@ -12,7 +13,7 @@
              xmlns:models="clr-namespace:Derafsh.Client.Models"
              x:Class="Derafsh.Client.MainPage"
              BackgroundColor="{StaticResource Bg}" Shell.NavBarIsVisible="False" NavigationPage.HasNavigationBar="False"
-             FlowDirection="RightToLeft" SafeAreaEdges="Container">
+             FlowDirection="RightToLeft" SafeAreaEdges="None">
 
     <ContentPage.Resources>
         <ResourceDictionary>
@@ -121,7 +122,7 @@
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="2,*,Auto">
+    <Grid x:Name="RootGrid" RowDefinitions="2,*,Auto">
         <!-- The banner's crimson frame -->
         <BoxView Color="{StaticResource Crimson}" HeightRequest="2" />
 

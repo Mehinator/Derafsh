@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 	<!-- hev-socks5-tunnel's AAR says Android 10+, but its native library only uses functions that exist from
-	     Android 7.0 (API 24, the app's minimum); without this override the build refuses Android 7-9 -->
-	<uses-sdk tools:overrideLibrary="hev.socks5.tunnel" />
+	     Android 7.0 (API 24, the app's minimum); without this override the build refuses Android 7-9.
+	     targetSdkVersion is set here because a uses-sdk element without it made the build fall back to an old target. -->
+	<uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" tools:overrideLibrary="hev.socks5.tunnel" />
 	<!-- extractNativeLibs: libxray.so has to be on disk to be executed -->
-	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:extractNativeLibs="true" android:label="Derafsh"></application>
+	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:extractNativeLibs="true" android:label="Derafsh">
+		<!-- The VPN. A foreground service with a notification (speed, city, disconnect), so Android doesn't close it.
+		     specialUse/vpn is the type VPN apps use (a VpnService that isn't the always-on VPN has no type of its own). -->
+		<service android:name="com.derafsh.client.DerafshVpnService" android:exported="false"
+		         android:permission="android.permission.BIND_VPN_SERVICE" android:foregroundServiceType="specialUse">
+			<intent-filter>
+				<action android:name="android.net.VpnService" />
+			</intent-filter>
+			<property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="vpn" />
+		</service>
+	</application>
 	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

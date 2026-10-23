@@ -15,9 +15,9 @@
 
 		<ApplicationTitle>Derafsh</ApplicationTitle>
 		<ApplicationId>com.derafsh.client</ApplicationId>
-		<ApplicationDisplayVersion>1.5.0</ApplicationDisplayVersion>
-		<ApplicationVersion>6</ApplicationVersion>
-		<Version>1.5.0</Version>
+		<ApplicationDisplayVersion>1.5.1</ApplicationDisplayVersion>
+		<ApplicationVersion>7</ApplicationVersion>
+		<Version>1.5.1</Version>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">13.1</SupportedOSPlatformVersion>

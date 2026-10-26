@@ -2,14 +2,26 @@
 
 ## Xray-core
 
-Xray-core v26.3.27, unmodified, from the official releases (https://github.com/XTLS/Xray-core/releases/tag/v26.3.27).
+Xray-core v26.10.22 from the **patterniha fork** (https://github.com/patterniha/Xray-core), the same core PattN ships:
+it keeps unencrypted VLESS/Trojan connections to public addresses working and adds the `dialMode` sockopt.
 The build downloads it and checks its SHA-256:
 
 - Windows: `xray.exe`, `geoip.dat`, `geosite.dat` from `Xray-windows-64.zip`, shipped in the app's `Core/` folder.
 - Android: the `xray` binary from `Xray-android-arm64-v8a.zip` (64-bit) and from `Xray-linux-arm32-v7a.zip` (32-bit phones; Xray has no 32-bit Android build), shipped inside the APK as `libxray.so`.
 
 Licensed under the Mozilla Public License 2.0; the full license ships with the Windows app as `Core/LICENSE-Xray-core.txt`
-and is at https://github.com/XTLS/Xray-core/blob/main/LICENSE. Source code: https://github.com/XTLS/Xray-core
+and is at https://github.com/patterniha/Xray-core/blob/main/LICENSE. Source code: https://github.com/patterniha/Xray-core
+
+## Aether (WARP core)
+
+Aether v2.3.3 from https://github.com/patterniha/Aether (fork of CluvexStudio/Aether), run as a separate process:
+the Windows app ships `aether.exe` plus its `pt/` helpers (lyrebird, psiphon-tunnel-core) and `LICENSES/` folder in `Core/`;
+on Android the same three binaries ship inside the APK as `libaether.so`, `liblyrebird.so` and `libpsiphon-tunnel-core.so`.
+The app talks to the core only over a local SOCKS5 socket. A Rust userspace WARP client for censored networks
+(MASQUE over HTTP/3 & HTTP/2, WireGuard, gool, fragmentation, Psiphon, Tor).
+
+Licensed under the GNU AGPL-3.0; the license texts and third-party notices ship with the binaries in `Core/LICENSES/`
+and are at https://github.com/patterniha/Aether/blob/main/LICENSE. Source code: https://github.com/patterniha/Aether
 
 ## hev-socks5-tunnel (Android only)
 

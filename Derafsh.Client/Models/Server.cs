@@ -27,6 +27,7 @@ namespace Derafsh.Client.Models
             "ss" => "Shadowsocks",
             "trojan" => "Trojan",
             "hysteria2" => "Hysteria2",
+            "aether" => "Aether WARP",
             var p => p.ToUpperInvariant(),
         };
 

@@ -17,5 +17,6 @@
         public string? sni { get; set; }
         public string? alpn { get; set; }
         public string? fp { get; set; }
+        public string? cs { get; set; } // cipherSuites (مثل پترن)؛ با fp=unsafe معنا داره
     }
 }

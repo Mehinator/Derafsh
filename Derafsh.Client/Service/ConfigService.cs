@@ -21,7 +21,7 @@ namespace Derafsh.Client.Services
             try
             {
                 var text = File.ReadAllText(path);
-                var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+                var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?|aether)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
                 var matches = regex.Matches(text);
 
                 foreach (Match match in matches)
@@ -43,7 +43,15 @@ namespace Derafsh.Client.Services
                 string name = "Server", address = "";
                 try
                 {
-                    if (!link.StartsWith("vmess"))
+                    if (link.StartsWith("aether://"))
+                    {
+                        // اسم و نشانی پروفایل ایتر (endpoint اختیاریه؛ لینک بدون نشانی یعنی اسکن)
+                        var al = AetherLink.Parse(link);
+                        name = al?.Name ?? "";
+                        if (!HasVisibleText(name)) name = "Aether WARP";
+                        address = al?.Address ?? "";
+                    }
+                    else if (!link.StartsWith("vmess"))
                     {
                         var uri = new Uri(link);
                         name = HttpUtility.UrlDecode(uri.Fragment.TrimStart('#'));
@@ -83,61 +91,148 @@ namespace Derafsh.Client.Services
         // --- متد تولید کانفیگ Xray (عمومی - حیاتی!) ---
         // کانفیگ با JsonNode ساخته می‌شه، نه با چسباندن رشته: هیچ مقداری از لینک (مسیر، رمز، ...)
         // نمی‌تونه ساختار کانفیگ رو عوض کنه (مثلاً یه inbound اضافه باز کنه)
-        public string GenerateXrayConfig(string link, int localPort = 10809)
+        //
+        // ایتر (WARP): outbound اصلی یه socks به هسته‌ی Aether روی loopback هست؛ اگه exitLink داده بشه
+        // (خروج WARP از سرور)، یه inbound دوم (localPort+1) هم باز می‌شه که ترافیکِ خود هسته‌ی ایتر رو
+        // به outbound سرورِ خروج می‌فرسته — همون زنجیره‌ی WARP over VLESS پترن.
+        public string GenerateXrayConfig(string link, int localPort = 10809, int aetherPort = 0, string? exitLink = null)
         {
             if (string.IsNullOrEmpty(link)) throw new FormatException("Link empty");
             link = link.Trim();
             if (link.Contains('#')) link = link[..link.IndexOf('#')];
             string protocol = link.Contains("://") ? link[..link.IndexOf("://")] : "";
 
-            JsonObject outbound = protocol switch
+            bool isAether = protocol == "aether";
+            JsonObject outbound = isAether
+                ? SocksLoopback(aetherPort)
+                : protocol switch
+                {
+                    "vless" => Vless(link),
+                    "vmess" => Vmess(link),
+                    "ss" => Shadowsocks(link),
+                    "trojan" => Trojan(link),
+                    "hysteria2" => Hysteria2(link),
+                    _ => throw new FormatException($"Unsupported protocol: {protocol}"),
+                };
+
+            var inbounds = new JsonArray(new JsonObject
             {
-                "vless" => Vless(link),
-                "vmess" => Vmess(link),
-                "ss" => Shadowsocks(link),
-                "trojan" => Trojan(link),
-                "hysteria2" => Hysteria2(link),
-                _ => throw new FormatException($"Unsupported protocol: {protocol}"),
-            };
+                ["port"] = localPort,
+                ["listen"] = "127.0.0.1",
+                ["protocol"] = "socks",
+                ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
+                ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
+            });
+
+            var outbounds = new JsonArray(outbound);
+            var rules = new JsonArray();
+            if (isAether && !string.IsNullOrEmpty(exitLink))
+            {
+                // inbound دوم فقط برای هسته‌ی ایتر؛ جلوی همه‌ی قوانین، به خروجی سرور می‌ره
+                ((JsonArray)inbounds).Add(new JsonObject
+                {
+                    ["tag"] = "socks-up",
+                    ["port"] = localPort + 1,
+                    ["listen"] = "127.0.0.1",
+                    ["protocol"] = "socks",
+                    ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = false },
+                });
+                string exitBody = exitLink.Trim();
+                if (exitBody.Contains('#')) exitBody = exitBody[..exitBody.IndexOf('#')];
+                string exitProto = exitBody.Contains("://") ? exitBody[..exitBody.IndexOf("://")] : "";
+                var exitOutbound = exitProto switch
+                {
+                    "vless" => Vless(exitBody),
+                    "vmess" => Vmess(exitBody),
+                    "ss" => Shadowsocks(exitBody),
+                    "trojan" => Trojan(exitBody),
+                    "hysteria2" => Hysteria2(exitBody),
+                    _ => throw new FormatException($"Exit protocol not supported: {exitProto}"),
+                };
+                exitOutbound["tag"] = "exit-node";
+                ApplyFinalmask(exitOutbound, link);
+                ((JsonArray)outbounds).Add(exitOutbound);
+                ((JsonArray)rules).Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("socks-up"), ["outboundTag"] = "exit-node" });
+            }
+            ((JsonArray)outbounds).Add(new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" });
+            ((JsonArray)rules).Add(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" });
 
             var config = new JsonObject
             {
                 ["log"] = new JsonObject { ["loglevel"] = "warning" },
-                ["inbounds"] = new JsonArray(new JsonObject
-                {
-                    ["port"] = localPort,
-                    ["listen"] = "127.0.0.1",
-                    ["protocol"] = "socks",
-                    ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
-                    ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
-                }),
+                ["inbounds"] = inbounds,
                 ["dns"] = new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") },
-                ["outbounds"] = new JsonArray(outbound, new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" }),
+                ["outbounds"] = outbounds,
                 // روتینگ آزاد (AsIs)
                 ["routing"] = new JsonObject
                 {
                     ["domainStrategy"] = "AsIs",
-                    ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" }),
+                    ["rules"] = rules,
                 },
             };
             return config.ToJsonString();
         }
 
+        // گوش‌دهنده‌ی socks روی loopback (برای زنجیره به هسته‌ی ایتر)
+        private static JsonObject SocksLoopback(int port) => new()
+        {
+            ["tag"] = "proxy",
+            ["protocol"] = "socks",
+            ["settings"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = port }) },
+        };
+
+        // fm (finalmask) و dialMode لینک ایتر، به outbound خروج (مثل پترن) اعمال می‌شن
+        private static void ApplyFinalmask(JsonObject outbound, string aetherLinkWithFragment)
+        {
+            var al = AetherLink.Parse(aetherLinkWithFragment);
+            if (al == null) return;
+            try
+            {
+                if (!string.IsNullOrEmpty(al.DialMode))
+                {
+                    var sockopt = outbound["streamSettings"]?["sockopt"] as JsonObject;
+                    if (sockopt == null)
+                    {
+                        outbound["streamSettings"] ??= new JsonObject();
+                        outbound["streamSettings"]!["sockopt"] = sockopt = new JsonObject();
+                    }
+                    sockopt["dialMode"] = al.DialMode;
+                }
+                if (!string.IsNullOrEmpty(al.Fm))
+                {
+                    var fm = JsonNode.Parse(al.Fm) as JsonObject;
+                    if (fm != null)
+                    {
+                        outbound["streamSettings"] ??= new JsonObject();
+                        outbound["streamSettings"]!["finalmask"] = fm;
+                    }
+                }
+            }
+            catch { }
+        }
+
         // اندروید: روی گوشی‌های ۳۲ بیتی xray نسخه‌ی لینوکسیه و DNS گوشی رو پیدا نمی‌کنه، پس آدرس سرور اینجا با DNS
         // خود اندروید به IP تبدیل می‌شه (روی همه‌ی گوشی‌ها، تا رفتار یکی باشه). اسم TLS (serverName) و Host موقع
-        // ساختن کانفیگ از روی دامنه پر شدن و عوض نمی‌شن.
+        // ساختن کانفیگ از روی دامنه پر شدن و عوض نمی‌شن. همه‌ی outboundها (از جمله خروجِ زنجیره‌ی ایتر) حل می‌شن.
         public static async Task<string> ResolveServerAddressAsync(string configJson)
         {
             var root = JsonNode.Parse(configJson)!;
-            var settings = root["outbounds"]![0]!["settings"]!.AsObject();
-            JsonNode target = settings["vnext"]?[0] ?? settings["servers"]?[0] ?? settings;
-            string? address = (string?)target["address"];
-            if (string.IsNullOrEmpty(address) || System.Net.IPAddress.TryParse(address, out _)) return configJson;
+            foreach (var outboundNode in root["outbounds"]!.AsArray())
+            {
+                var outbound = outboundNode!.AsObject();
+                if ((string?)outbound["protocol"] == "freedom") continue;
+                var settings = outbound["settings"]?.AsObject();
+                if (settings == null) continue;
+                // vless/vmess: vnext؛ trojan/ss/socks: servers؛ hysteria2: خود settings
+                JsonNode? target = settings["vnext"]?[0] ?? settings["servers"]?[0] ?? (settings.ContainsKey("address") ? settings : null);
+                string? address = (string?)target?["address"];
+                if (string.IsNullOrEmpty(address) || System.Net.IPAddress.TryParse(address, out _)) continue;
 
-            var ips = await System.Net.Dns.GetHostAddressesAsync(address);
-            var ip = ips.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? ips.FirstOrDefault()
-                     ?? throw new Exception($"Couldn't find the address of {address}.");
-            target["address"] = ip.ToString();
+                var ips = await System.Net.Dns.GetHostAddressesAsync(address);
+                var ip = ips.FirstOrDefault(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) ?? ips.FirstOrDefault()
+                         ?? throw new Exception($"Couldn't find the address of {address}.");
+                target!["address"] = ip.ToString();
+            }
             return root.ToJsonString();
         }
 
@@ -152,7 +247,7 @@ namespace Derafsh.Client.Services
                 ["tag"] = "proxy",
                 ["protocol"] = "vless",
                 ["settings"] = new JsonObject { ["vnext"] = new JsonArray(new JsonObject { ["address"] = uri.Host, ["port"] = PortOf(uri), ["users"] = new JsonArray(user) }) },
-                ["streamSettings"] = Stream(q, uri.Host, defaultSecurity: "none"),
+                ["streamSettings"] = Stream(q, uri.Host, defaultSecurity: "none", network: q["type"]),
             };
         }
 
@@ -166,7 +261,8 @@ namespace Derafsh.Client.Services
 
             // در vmess فیلد type همون headerType هست، و برای grpc مسیر = serviceName
             var stream = Transport(net, host, path, v.type, serviceName: v.path, mode: null);
-            Secure(stream, v.tls == "tls" ? "tls" : "none", string.IsNullOrEmpty(v.sni) ? host : v.sni, v.fp, null, null, null);
+            Secure(stream, v.tls == "tls" ? "tls" : "none", string.IsNullOrEmpty(v.sni) ? host : v.sni, v.fp, null, null, null,
+                cs: v.cs, alpn: v.alpn, network: net);
             return new JsonObject
             {
                 ["tag"] = "proxy",
@@ -209,7 +305,7 @@ namespace Derafsh.Client.Services
                 ["tag"] = "proxy",
                 ["protocol"] = "trojan",
                 ["settings"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = uri.Host, ["port"] = PortOf(uri), ["password"] = Uri.UnescapeDataString(uri.UserInfo) }) },
-                ["streamSettings"] = Stream(q, uri.Host, defaultSecurity: "tls"),
+                ["streamSettings"] = Stream(q, uri.Host, defaultSecurity: "tls", network: q["type"]),
             };
         }
 
@@ -243,11 +339,14 @@ namespace Derafsh.Client.Services
         }
 
         // انتقال (tcp, ws, grpc, xhttp, ...) و امنیت (tls / reality) از پارامترهای لینک
-        private static JsonObject Stream(NameValueCollection q, string address, string defaultSecurity)
+        // مثل پترن: cs (cipherSuites) و alpn هم خونده می‌شن — بدون اون‌ها DPI ایران ClientHello رو می‌بنده
+        // و کانفیگ سالم «مرده» نشون داده می‌شه.
+        private static JsonObject Stream(NameValueCollection q, string address, string defaultSecurity, string? network = null)
         {
             string host = q["host"] ?? q["sni"] ?? address;
             var stream = Transport(q["type"] ?? "tcp", host, q["path"] ?? "/", q["headerType"], q["serviceName"], q["mode"]);
-            Secure(stream, q["security"] ?? defaultSecurity, q["sni"] ?? host, q["fp"], q["pbk"], q["sid"], q["spx"], q["pcs"], q["vcn"]);
+            Secure(stream, q["security"] ?? defaultSecurity, q["sni"] ?? host, q["fp"], q["pbk"], q["sid"], q["spx"], q["pcs"], q["vcn"],
+                cs: q["cs"], alpn: q["alpn"], network: network);
             return stream;
         }
 
@@ -296,19 +395,38 @@ namespace Derafsh.Client.Services
         }
 
         // Xray 26 دیگه allowInsecure نداره: گواهی سرور همیشه بررسی می‌شه، مگه اینکه لینک اثرانگشت گواهی (pcs) یا اسم مجاز (vcn) داده باشه
-        private static void Secure(JsonObject s, string security, string serverName, string? fp, string? pbk, string? sid, string? spx, string? pcs = null, string? vcn = null)
+        //
+        // cs (cipherSuites) و alpn (مثل پترن):
+        //   • cs فقط با fp=unsafe اعمال می‌شه (فورک پترن با ClientHello سازنده‌ی uTLS لیست سیفر رو نمی‌فرسته؛
+        //     اونجا cs عملاً بی‌اثره) — ما هر دو مقدار رو عیناً پاس می‌دیم، انتخاب با لینک سازنده‌ست.
+        //   • ws/httpupgrade بعد از دست‌دادن فقط HTTP/1.1 حرف می‌زنن؛ اگه لینک alpn دیگه‌ای بده (مثلاً h2,http/1.1)
+        //     کلادفلر h2 رو برمی‌داره و اتصال می‌شکنه → مثل FixImportedAlpn پترن، به http/1.1 اصلاح می‌شه.
+        private static void Secure(JsonObject s, string security, string serverName, string? fp, string? pbk, string? sid, string? spx, string? pcs = null, string? vcn = null,
+            string? cs = null, string? alpn = null, string? network = null)
         {
             s["security"] = security;
             string fingerprint = string.IsNullOrEmpty(fp) ? "chrome" : fp;
+            bool isUpgrade = network is "ws" or "httpupgrade";
             if (security == "tls")
             {
                 var tls = new JsonObject { ["serverName"] = serverName, ["fingerprint"] = fingerprint };
+                if (!string.IsNullOrEmpty(cs)) tls["cipherSuites"] = cs;
+                if (FixedAlpn(alpn, isUpgrade) is string a) tls["alpn"] = new JsonArray(a.Split(',').Where(x => x.Length > 0).Select(x => JsonValue.Create(x)!).ToArray());
                 if (!string.IsNullOrEmpty(pcs)) tls["pinnedPeerCertSha256"] = pcs;
                 if (!string.IsNullOrEmpty(vcn)) tls["verifyPeerCertByName"] = vcn;
                 s["tlsSettings"] = tls;
             }
             else if (security == "reality")
                 s["realitySettings"] = new JsonObject { ["show"] = false, ["fingerprint"] = fingerprint, ["serverName"] = serverName, ["publicKey"] = pbk ?? "", ["shortId"] = sid ?? "", ["spiderX"] = spx ?? "" };
+        }
+
+        // alpn لینک، با اصلاح ws/httpupgrade مثل پترن: هر چیز دیگه‌ای جز http/1.1 → http/1.1
+        private static string? FixedAlpn(string? alpn, bool isUpgrade)
+        {
+            if (string.IsNullOrWhiteSpace(alpn)) return null;
+            var names = alpn.Split(',').Select(x => x.Trim()).Where(x => x.Length > 0).ToList();
+            if (isUpgrade && (names.Count != 1 || names[0] != "http/1.1")) return "http/1.1";
+            return names.Count > 0 ? string.Join(",", names) : null;
         }
 
         private static ConfigDto DecodeVmess(string link)

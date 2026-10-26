@@ -30,6 +30,7 @@ namespace Derafsh.Client
         private List<Server> AllServers => ServerGroups.SelectMany(g => g).ToList();
 
         private XrayProc? xrayProcess;
+        private AetherProc? aetherProcess;   // هسته‌ی WARP (فقط برای کانفیگ‌های aether://)، تا قطع اتصال زنده می‌مونه
         private bool isConnected = false;
         // فقط وقتی خود درفش پروکسی ویندوز رو روشن کرده، موقع بستن برنامه خاموشش می‌کنیم
         private static bool s_proxyEnabled;
@@ -57,6 +58,7 @@ namespace Derafsh.Client
             ServerListView.ItemsSource = ServerGroups;
             BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
             GeminiCheck.IsChecked = Preferences.Default.Get("require_gemini", false);
+            AetherExitCheck.IsChecked = Preferences.Default.Get("aether_exit", false);
             RefreshListPicker();
             SetConnState(ConnState.Disconnected);
 #if WINDOWS
@@ -282,7 +284,7 @@ namespace Derafsh.Client
 
         private async void OnAddCustomConfigClicked(object sender, EventArgs e)
         {
-            var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+            var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?|aether)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
 
             // فقط اگه توی کلیپ‌بورد لینک کانفیگ هست، از قبل پرش کن (متن‌های دیگه کاربر نمایش داده نشه)
             string initial = "";
@@ -291,7 +293,7 @@ namespace Derafsh.Client
                 string clip = await Clipboard.Default.GetTextAsync() ?? "";
                 if (regex.IsMatch(clip)) initial = clip;
             }
-            string input = await DisplayPromptAsync("افزودن کانفیگ", "یک یا چند لینک را اینجا بچسبانید (vless، vmess، ss، trojan، hysteria2).", "افزودن", "لغو", initialValue: initial);
+            string input = await DisplayPromptAsync("افزودن کانفیگ", "یک یا چند لینک را اینجا بچسبانید (vless، vmess، ss، trojan، hysteria2، aether/WARP).", "افزودن", "لغو", initialValue: initial);
             if (string.IsNullOrWhiteSpace(input)) return;
             var existing = File.Exists(UserPath) ? (await File.ReadAllLinesAsync(UserPath)).Select(l => l.Trim()).ToHashSet() : new HashSet<string>();
             var links = regex.Matches(input).Select(m => m.Value.Trim()).Distinct().Where(l => !existing.Contains(l)).ToList();
@@ -303,7 +305,42 @@ namespace Derafsh.Client
                 StatusLabel.Text = $"{Fa(links.Count)} کانفیگ به لیست شخصی اضافه شد";
                 foreach (var l in links) _ = PingSingle(l);
             }
-            else await DisplayAlertAsync("لینک تازه‌ای پیدا نشد", "لینک‌ها باید با vless://، vmess://، ss://، trojan:// یا hysteria2:// شروع شوند. لینک‌هایی که از قبل در لیست شخصی هستند دوباره اضافه نمی‌شوند.", "باشه");
+            else await DisplayAlertAsync("لینک تازه‌ای پیدا نشد", "لینک‌ها باید با vless://، vmess://، ss://، trojan://، hysteria2:// یا aether:// شروع شوند. لینک‌هایی که از قبل در لیست شخصی هستند دوباره اضافه نمی‌شوند.", "باشه");
+        }
+
+        // ---------- اشتراک‌گذاری کانفیگ‌ها ----------
+
+        // اشتراک لینک خام یک کانفیگ (با سیستم‌عامل؛ در اندروید برگه‌ی اشتراک، در ویندوز پنجره‌ی Share)
+        private async void OnShareClicked(object sender, EventArgs e)
+        {
+            if (sender is not Button btn || btn.CommandParameter is not Server s) return;
+            try
+            {
+                await Share.Default.RequestAsync(new ShareTextRequest { Text = s.Config, Title = string.IsNullOrEmpty(s.City) ? "Derafsh config" : s.City });
+                StatusLabel.Text = $"لینک {Q(s.City)} برای اشتراک آماده شد";
+            }
+            catch { StatusLabel.Text = "اشتراک‌گذاری انجام نشد."; }
+        }
+
+        // اشتراک همه‌ی سرورهایی که الان جواب می‌دن، یکجا (هر لینک در یک خط)
+        private async void OnShareWorkingClicked(object sender, EventArgs e)
+        {
+            var working = WorkingServers().Select(s => s.Config).Distinct().ToList();
+            if (!working.Any())
+            {
+                await DisplayAlertAsync("هنوز سرور سالمی نیست", "فقط سرورهایی اشتراک گذاشته می‌شوند که در تست جواب داده‌اند. صبر کنید تست تمام شود، یا «تست دوباره» را بزنید.", "باشه");
+                return;
+            }
+            try
+            {
+                await Share.Default.RequestAsync(new ShareTextRequest
+                {
+                    Text = string.Join("\n", working),
+                    Title = $"Derafsh — {working.Count} working server(s)",
+                });
+                StatusLabel.Text = $"{Fa(working.Count)} سرور سالم برای اشتراک آماده شد";
+            }
+            catch { StatusLabel.Text = "اشتراک‌گذاری انجام نشد."; }
         }
 
         // ---------- دکمه‌های هر ردیف ----------
@@ -411,6 +448,10 @@ namespace Derafsh.Client
 
         private bool RequireGemini => GeminiCheck.IsChecked;
 
+        // گزینه‌ی «خروج WARP از سرور»: برای کانفیگ‌های aether:// ترافیک خود هسته‌ی WARP از داخل
+        // سریع‌ترین سرور سالم رد می‌شه (WARP over VLESS مثل پترن)، نه مستقیم از اینترنت ایران
+        private bool AetherExitViaServer => AetherExitCheck.IsChecked;
+
         private void OnGeminiLabelTapped(object sender, TappedEventArgs e) => GeminiCheck.IsChecked = !GeminiCheck.IsChecked;
         private void OnGeminiOptionChanged(object sender, CheckedChangedEventArgs e)
         {
@@ -418,9 +459,26 @@ namespace Derafsh.Client
             UpdateHome();
         }
 
+        private void OnAetherExitLabelTapped(object sender, TappedEventArgs e) => AetherExitCheck.IsChecked = !AetherExitCheck.IsChecked;
+        private void OnAetherExitOptionChanged(object sender, CheckedChangedEventArgs e) => Preferences.Default.Set("aether_exit", e.Value);
+
         // متن‌های صفحه‌ی اصلی: کدوم سرور استفاده می‌شه
+        // گزینه‌ی WARP فقط وقتی معنی داره که کاربر کانفیگ aether:// داشته باشه (لیست آنلاین، شخصی یا ذخیره‌شده)؛
+        // وگرنه صفحه‌ی اصلی ساده می‌مونه
+        private bool HasAetherConfigs()
+        {
+            try
+            {
+                foreach (var path in new[] { CloudPath, UserPath, SavedListsPath })
+                    if (File.Exists(path) && File.ReadAllText(path).Contains("aether://", StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            catch { }
+            return false;
+        }
+
         private void UpdateHome()
         {
+            AetherExitCard.IsVisible = HasAetherConfigs();
             AutoServerButton.IsVisible = !_autoServer;
             ServerChoiceLabel.Text = _currentServer == null ? "خودکار (سریع‌ترین)"
                 : _autoServer ? (isConnected ? $"خودکار  ·  {Q(_currentServer.City)}" : "خودکار (سریع‌ترین)")
@@ -568,19 +626,33 @@ namespace Derafsh.Client
                     await DisplayAlertAsync("موتور Xray پیدا نشد", "فایل موتور Xray کنار برنامه نیست. درفش را دوباره نصب کنید.", "باشه");
                     return;
                 }
+                if (target.Config.StartsWith("aether://", StringComparison.OrdinalIgnoreCase) && !AetherProc.EngineExists)
+                {
+                    await DisplayAlertAsync("هسته‌ی Aether پیدا نشد", "فایل هسته‌ی Aether (WARP) کنار برنامه نیست. نسخه‌ی تازه‌ی درفش را نصب کنید.", "باشه");
+                    return;
+                }
 
                 string configPath = Path.Combine(XrayProc.WorkDir, "config.json");
-                await File.WriteAllTextAsync(configPath, await BuildXrayConfigAsync(target.Config, 10809));
 
 #if ANDROID
-                // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره
+                if (aetherProcess != null) { aetherProcess.Dispose(); aetherProcess = null; }   // پروسه‌ی قدیمی اپ؛ سرویس نسخه‌ی خودش رو می‌سازه
+#else
+                // اول پروسه‌های قدیمی بسته بشن (شامل هسته‌ی ایتر اتصال قبلی)، بعد هسته‌ی تازه بالا بیاد
+                xrayProcess?.Dispose(); xrayProcess = null;
+                KillXray();
+#endif
+
+                string json = await BuildSessionConfigAsync(target.Config, XrayProc.SessionPortConst);
+                await File.WriteAllTextAsync(configPath, json);
+
+#if ANDROID
+                // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره؛ اگه کانفیگ ایتر باشه،
+                // سرویس از فایل هم‌نام (config.json.aether) هسته‌ی ایتر رو هم بالا میاره و می‌بنده
                 if (!await VpnController.StartAsync(configPath, target.City))
                     throw new Exception(VpnController.LastError ?? "VPN روشن نشد.");
 #else
-                xrayProcess?.Dispose(); xrayProcess = null;
-                KillXray();
                 xrayProcess = XrayProc.Start(configPath);
-                await XrayProc.WaitForPortAsync(10809, 5000);
+                await XrayProc.WaitForPortAsync(XrayProc.SessionPortConst, 5000);
                 EnableProxy();
 #endif
 
@@ -606,10 +678,48 @@ namespace Derafsh.Client
             }
         }
 
+        // کانفیگ جلسه‌ی اتصال. برای aether:// هسته‌ی WARP پورت ثابت AetherProc.SessionPort رو گوش می‌ده؛
+        // اگه گزینه‌ی «خروج WARP از سرور» روشنه و سرور سالمی هست، ترافیک خود هسته از داخل اون سرور می‌ره.
+        // ویندوز: هسته اینجا (اپ) بالا میاد؛ اندروید: آرگومان‌هاش در فایل sidecar می‌ره و سرویس VPN بالا میاره.
+        private async Task<string> BuildSessionConfigAsync(string link, int localPort)
+        {
+            if (!link.StartsWith("aether://", StringComparison.OrdinalIgnoreCase))
+            {
+                try { File.Delete(Path.Combine(XrayProc.WorkDir, "config.json.aether")); } catch { }
+                return await BuildXrayConfigAsync(link, localPort);
+            }
+
+            string? exit = null;
+            if (AetherExitViaServer)
+            {
+                exit = WorkingServers()
+                    .FirstOrDefault(s => !s.Config.StartsWith("aether://", StringComparison.OrdinalIgnoreCase))?.Config;
+                if (exit != null) StatusLabel.Text = "WARP از داخل سریع‌ترین سرور سالم خارج می‌شود…";
+            }
+
+            var parsed = AetherLink.Parse(link) ?? throw new Exception("لینک aether نامعتبر است.");
+            string sidecarPath = Path.Combine(XrayProc.WorkDir, "config.json.aether");
+            string json = _configService.GenerateXrayConfig(link, localPort, AetherProc.SessionPort, exit);
+#if ANDROID
+            aetherProcess?.Dispose(); aetherProcess = null;   // سرویس VPN نسخه‌ی خودش رو می‌سازه
+            json = await ConfigService.ResolveServerAddressAsync(json);
+            // سرویس VPN از این فایل می‌فهمه که باید هسته‌ی ایتر رو هم بالا بیاره (آرگومان‌های کاملش داخلشه)
+            await File.WriteAllTextAsync(sidecarPath,
+                JsonSerializer.Serialize(new AetherSidecar { Args = AetherProc.BuildSessionArgs(parsed, AetherProc.SessionPort, exit != null ? localPort + 1 : null) }));
+#else
+            aetherProcess?.Dispose();
+            aetherProcess = AetherProc.StartArgs(AetherProc.BuildSessionArgs(parsed, AetherProc.SessionPort, exit != null ? localPort + 1 : null));
+            if (!await XrayProc.WaitForPortAsync(AetherProc.SessionPort, 30000))
+                throw new Exception("هسته‌ی Aether روشن نشد. دوباره امتحان کنید.");
+            try { File.Delete(sidecarPath); } catch { }
+#endif
+            return json;
+        }
+
         // IP و «شهر، کشور» سرور از راه خود اتصال؛ اول ipwho.is (شهر هم داره)، اگه جواب نداد api.country.is (فقط کشور)
         private static async Task<(string? ip, string? location)> ExitLocationAsync()
         {
-            using var client = XrayProc.SocksClient(10809, TimeSpan.FromSeconds(8));
+            using var client = XrayProc.SocksClient(XrayProc.SessionPortConst, TimeSpan.FromSeconds(8));
             try
             {
                 using var doc = JsonDocument.Parse(await client.GetStringAsync("https://ipwho.is/"));
@@ -660,6 +770,8 @@ namespace Derafsh.Client
 #else
             DisableProxy(); xrayProcess?.Dispose(); xrayProcess = null; KillXray();
 #endif
+            aetherProcess?.Dispose(); aetherProcess = null;   // هسته‌ی WARP (ویندوز)؛ در اندروید سرویس خودش می‌بنده
+            try { File.Delete(Path.Combine(XrayProc.WorkDir, "config.json.aether")); } catch { }
             isConnected = false;
             if (_autoServer) _currentServer = null;
             SetConnState(ConnState.Disconnected);
@@ -671,6 +783,8 @@ namespace Derafsh.Client
 #if WINDOWS
             // xray‌هایی که از اجرای قبلی مونده‌ن؛ xray‌های تستِ همین الان دست نمی‌خورن
             foreach (var p in Process.GetProcessesByName("xray")) try { if (!XrayProc.IsTestProcess(p.Id)) p.Kill(); } catch { }
+            // هسته‌های ایتر قدیمی (اتصال قبلی)؛ هسته‌های تست همین الان دست نمی‌خورن
+            foreach (var p in Process.GetProcessesByName("aether")) try { if (!AetherProc.IsTestProcess(p.Id)) p.Kill(); } catch { }
 #endif
         }
 

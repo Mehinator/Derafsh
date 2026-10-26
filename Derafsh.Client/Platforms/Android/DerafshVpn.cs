@@ -5,6 +5,7 @@ using Android.Net;
 using Android.OS;
 using Android.Runtime;
 using AndroidX.Core.App;
+using System.Text.Json;
 
 namespace Derafsh.Client
 {
@@ -26,6 +27,7 @@ namespace Derafsh.Client
 
         private ParcelFileDescriptor? _tun;
         private XrayProc? _xray;
+        private AetherProc? _aether;   // هسته‌ی WARP؛ فقط وقتی کانفیگ aether:// باشه (از فایل sidecar خونده می‌شه)
 
         public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
         {
@@ -47,8 +49,29 @@ namespace Derafsh.Client
         {
             try
             {
+                // کانفیگ ایتر: آرگومان‌های هسته‌ی WARP از فایل sidecar کنار کانفیگ. اول خونده و پاک می‌شه، بعد اتصال
+                // قبلی بسته می‌شه (قبلاً StopVpn این فایل رو پیش از خونده شدن پاک می‌کرد و WARP هیچ‌وقت روشن نمی‌شد)
+                string sidecarPath = configPath + ".aether";
+                AetherSidecar? sidecar = null;
+                if (File.Exists(sidecarPath))
+                {
+                    try { sidecar = JsonSerializer.Deserialize<AetherSidecar>(File.ReadAllText(sidecarPath)); } catch { }
+                    try { File.Delete(sidecarPath); } catch { }
+                }
+
                 // switching servers: stop the old tunnel quietly, the controller is waiting for the new result
                 StopVpn(notify: false);
+
+                // اول هسته‌ی WARP، بعد xray که بهش زنجیر می‌شه
+                {
+                    if (sidecar?.Args is { Count: > 0 })
+                    {
+                        _aether = AetherProc.StartArgs(sidecar.Args);
+                        if (!await XrayProc.WaitForPortAsync(AetherProc.SessionPort, 30000))
+                            throw new Exception("هسته‌ی Aether روشن نشد.");
+                    }
+                }
+
                 _xray = XrayProc.Start(configPath);
                 if (!await XrayProc.WaitForPortAsync(SocksPort, 6000))
                     throw new Exception("موتور Xray با این کانفیگ روشن نشد.");
@@ -92,6 +115,8 @@ namespace Derafsh.Client
             Hev.Stop();
             _xray?.Dispose();
             _xray = null;
+            _aether?.Dispose();   // هسته‌ی WARP هم با VPN بسته می‌شه
+            _aether = null;
             try { _tun?.Close(); } catch { }
             _tun = null;
             bool was = IsRunning;

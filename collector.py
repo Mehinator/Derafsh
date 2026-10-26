@@ -35,10 +35,10 @@ SUB_FILE = "derafsh_sub.txt"
 # سقف تعداد کانفیگ (که سنگین نشه)
 MAX_CONFIGS = 2000
 
-# فقط پروتکل‌هایی که برنامه درفش می‌تونه باهاشون وصل بشه
+# فقط پروتکل‌هایی که برنامه درفش می‌تونه باهاشون وصل بشه (شامل aether/WARP)
 # مهم: (?:...) لازمه. با پرانتز معمولی، re.findall فقط اسم پروتکل (مثلاً "vless") رو برمی‌گردوند
 # نه کل لینک رو؛ برای همین تا حالا هیچ کانفیگی از تلگرام جمع نمی‌شد
-LINK_PATTERN = re.compile(r'(?:vmess|vless|ss|trojan|hysteria2)://[^\s<>"]+')
+LINK_PATTERN = re.compile(r'(?:vmess|vless|ss|trojan|hysteria2|aether)://[^\s<>"]+')
 
 # کاراکترهایی که Regex برنامه (ConfigService.cs) قبول می‌کنه؛ بقیه percent-encode می‌شن
 # تا برنامه دقیقاً همون لینکی رو بخونه که اینجا ذخیره شده
@@ -76,6 +76,12 @@ def clean_link(link):
             if not info.get("add") or not info.get("port") or bad_uuid(str(info.get("id", ""))):
                 return None
             body = "vmess://" + base64.b64encode(text.encode('utf-8')).decode()
+        elif body.startswith("aether://"):
+            # لینک ایتر: endpoint اختیاریه (لینک بدون نشانی یعنی اسکن)؛ فقط باید پارامتر یا نشانی داشته باشه
+            body = ''.join(c if c in APP_SAFE_CHARS else quote(c) for c in body)
+            parts = urlsplit(body)
+            if not parts.hostname and not parts.query:
+                return None
         else:
             body = ''.join(c if c in APP_SAFE_CHARS else quote(c) for c in body)
             parts = urlsplit(body)

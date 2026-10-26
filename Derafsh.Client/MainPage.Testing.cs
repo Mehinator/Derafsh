@@ -5,7 +5,8 @@ using Derafsh.Client.Services;
 
 namespace Derafsh.Client
 {
-    // تست سرورها: پینگ واقعی و جمینی از داخل هر کانفیگ (با یه xray موقت)، و تست خودکار لیست آنلاین روی همین اینترنت
+    // تست سرورها: پینگ واقعی و جمینی از داخل هر کانفیگ (با یه xray موقت، یا برای WARP با یه هسته‌ی ایتر موقت)،
+    // و تست خودکار لیست آنلاین روی همین اینترنت
     public partial class MainPage
     {
         // ---------- xray موقت برای تست یه کانفیگ ----------
@@ -22,14 +23,40 @@ namespace Derafsh.Client
                     l.Start();
                     int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
                     l.Stop();
-                    if (port != 10809 && s_testPorts.Add(port)) return port;
+                    if (port != XrayProc.SessionPortConst && port != AetherProc.SessionPort && s_testPorts.Add(port)) return port;
                 }
                 throw new Exception("No free local port for the test.");
             }
         }
 
-        private async Task<(XrayProc proc, int port, string configPath)> StartTestXray(string link)
+        // موتور تست: برای کانفیگ‌های معمولی یه xray موقته؛ برای aether:// یه هسته‌ی ایتر موقته (پورت خودش = موتور تست)
+        private sealed class TestEngine : IDisposable
         {
+            public int Port;                  // پورت SOCKS موتور
+            public bool AetherMode;           // پورت، رزرو ایتره (در هر حالت آزاد می‌شه)
+            public XrayProc? Xray;
+            public AetherProc? Aether;
+            public string? ConfigPath;
+
+            public void Dispose()
+            {
+                Xray?.Dispose();
+                Aether?.Dispose();
+                if (ConfigPath != null)
+                {
+                    try { File.Delete(ConfigPath); } catch { }
+                    try { File.Delete(Path.ChangeExtension(ConfigPath, ".log")); } catch { }
+                }
+                if (AetherMode) AetherProc.ReleasePort(Port);
+                lock (s_testPorts) s_testPorts.Remove(Port);
+            }
+        }
+
+        private static bool IsAether(string config) => config.StartsWith("aether://", StringComparison.OrdinalIgnoreCase);
+
+        private async Task<TestEngine> StartTestEngine(string link)
+        {
+            if (IsAether(link)) return await StartTestAether(link);
             int port = ReserveTestPort();
             string configPath = Path.Combine(XrayProc.WorkDir, $"test_{port}.json");
             try
@@ -38,13 +65,49 @@ namespace Derafsh.Client
                 var proc = XrayProc.Start(configPath, isTest: true);
                 // اگه xray پورت رو باز نکرد، کانفیگ خرابه یا موتور بالا نیومد؛ درخواست به پورت بسته معنی نداره
                 if (!await XrayProc.WaitForPortAsync(port, 6000)) { proc.Dispose(); throw new Exception("Xray didn't start with this config."); }
-                return (proc, port, configPath);
+                return new TestEngine { Port = port, Xray = proc, ConfigPath = configPath };
             }
             catch
             {
-                StopTestXray(null, port, configPath);
+                var d = new TestEngine { Port = port, ConfigPath = configPath };
+                d.Dispose();
                 throw;
             }
+        }
+
+        // هسته‌ی ایتر موقت برای تست یه پروفایل WARP. اسکن و تونل زمان می‌بره؛ صبر بلندتر از xray.
+        // روی اینترنت فیلترشده اسکن‌های همزمان سنگین‌ان؛ هم‌زمان حداکثر ۲ تا.
+        private static readonly SemaphoreSlim AetherTestGate = new(2);
+        private async Task<TestEngine> StartTestAether(string link)
+        {
+            var parsed = AetherLink.Parse(link) ?? throw new Exception("Invalid aether link.");
+            int port = AetherProc.ReservePort();
+            var engine = new TestEngine { Port = port, AetherMode = true };
+            try
+            {
+                await AetherTestGate.WaitAsync();
+                engine.Aether = AetherProc.Start(parsed, port, isTest: true, upstreamPort: null);
+                // اسکن و تونل WARP زمان می‌بره؛ صبر ۴۰ ثانیه‌ای
+                if (!await XrayProc.WaitForPortAsync(port, 40000))
+                    throw new Exception("Aether didn't start with this profile.");
+                return engine;
+            }
+            catch
+            {
+                AetherTestGate.Release();
+                engine.Aether = null;
+                engine.Dispose();
+                throw;
+            }
+            // قفل تا پایان تست نگه داشته می‌شه؛ StopTestEngine در پایان آزادش می‌کنه
+        }
+
+        private void StopTestEngine(TestEngine? engine)
+        {
+            if (engine == null) return;
+            bool wasAether = engine.AetherMode;
+            engine.Dispose();
+            if (wasAether) AetherTestGate.Release();
         }
 
         private async Task<string> BuildXrayConfigAsync(string link, int port)
@@ -54,16 +117,6 @@ namespace Derafsh.Client
             json = await ConfigService.ResolveServerAddressAsync(json);
 #endif
             return await Task.FromResult(json);
-        }
-
-        // حتماً بعد از هر تست صدا زده بشه، وگرنه xray توی پس‌زمینه باز می‌مونه
-        private static void StopTestXray(XrayProc? proc, int port, string? configPath)
-        {
-            proc?.Dispose();
-            lock (s_testPorts) s_testPorts.Remove(port);
-            if (configPath == null) return;
-            try { File.Delete(configPath); } catch { }
-            try { File.Delete(Path.ChangeExtension(configPath, ".log")); } catch { }
         }
 
         // نتیجه‌ی تست به همه‌ی ردیف‌هایی که الان همین کانفیگ رو نشون می‌دن می‌رسه (اگه وسط تست لیست دوباره لود بشه،
@@ -77,12 +130,13 @@ namespace Derafsh.Client
             if (_geminiCache.TryGetValue(config, out var now) && now == "testing") return;
             SetGemini(config, "testing");
             string result;
-            XrayProc? proc = null; int port = 0; string? configPath = null;
+            TestEngine? engine = null;
             try
             {
-                (proc, port, configPath) = await StartTestXray(config);
-                using var client = XrayProc.SocksClient(port);
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+                engine = await StartTestEngine(config);
+                using var client = XrayProc.SocksClient(engine.Port);
+                // ایتر تازه تونل رو بالا میاره؛ جمینی صبورتر
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(IsAether(config) ? 60 : 15));
                 using var res = await client.GetAsync("https://gemini.google.com/app", HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 // اول صفحه کافیه (کد وضعیت و پیام «در کشور شما در دسترس نیست»)؛ دانلود کل صفحه از کانفیگ کند خیلی طول می‌کشه
                 string body = await ReadStartAsync(res.Content, 256 * 1024, cts.Token);
@@ -90,7 +144,7 @@ namespace Derafsh.Client
             }
             catch (OperationCanceledException) { result = "timeout"; }
             catch { result = "failed"; }
-            finally { StopTestXray(proc, port, configPath); }
+            finally { StopTestEngine(engine); }
             SetGemini(config, result);
         }
 
@@ -162,17 +216,19 @@ namespace Derafsh.Client
         //   درخواست اول تونل رو باز می‌کنه (اتصال و TLS تا سرور)، درخواست دوم تأخیر واقعی رو اندازه می‌گیره.
         //   اگه هیچ درخواستی جواب نداد یه بار دیگه امتحان می‌شه؛ کانفیگ‌های رایگان گاهی یه درخواست رو گم می‌کنن
         //   و یه بار شکست نباید کانفیگ سالم رو «مرده» نشون بده.
+        // ایتر: تونل WARP با اسکن بالا میاد؛ درخواست اول صبر ۴۰ ثانیه‌ای داره.
         private async Task<int> MeasurePingAsync(string config)
         {
             if (!await ServerReachableAsync(config)) return NoReply;
 
-            XrayProc? proc = null; int port = 0; string? configPath = null;
+            bool aether = IsAether(config);
+            TestEngine? engine = null;
             try
             {
-                (proc, port, configPath) = await StartTestXray(config);
+                engine = await StartTestEngine(config);
                 for (int attempt = 0; attempt < 2; attempt++)
                 {
-                    using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(attempt == 0 ? 8 : 10));
+                    using var client = XrayProc.SocksClient(engine.Port, TimeSpan.FromSeconds(attempt == 0 ? (aether ? 40 : 8) : (aether ? 20 : 10)));
                     int first;
                     try
                     {
@@ -194,14 +250,15 @@ namespace Derafsh.Client
                 return NoReply;
             }
             catch { return NoReply; }
-            finally { StopTestXray(proc, port, configPath); }
+            finally { StopTestEngine(engine); }
         }
 
         // تست سریع TCP تا سرور، تا برای سرورهای خاموش یا فیلترشده xray بالا نیاد.
         // vmess (لینک base64) و hysteria2 (UDP) و لینک‌هایی که آدرسشون خونده نمی‌شه مستقیم با xray تست می‌شن.
+        // ایتر: نشانی می‌تونه نداشته باشه (اسکن) و UDP/QUIC هست؛ مستقیم با هسته‌ی ایتر تست می‌شه.
         private static async Task<bool> ServerReachableAsync(string config)
         {
-            if (config.StartsWith("vmess://") || config.StartsWith("hysteria2://") || config.StartsWith("hy2://")) return true;
+            if (IsAether(config) || config.StartsWith("vmess://") || config.StartsWith("hysteria2://") || config.StartsWith("hy2://")) return true;
             if (config.StartsWith("ss://") && !config.Split('#')[0].Contains('@')) return true;   // ss قدیمی: آدرس داخل base64
             if (!Uri.TryCreate(config, UriKind.Absolute, out var uri) || string.IsNullOrEmpty(uri.Host)) return true;
             try

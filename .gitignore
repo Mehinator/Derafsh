@@ -34,11 +34,5 @@ Derafsh.Client/Core/xray.exe
 Derafsh.Client/Core/geoip.dat
 Derafsh.Client/Core/geosite.dat
 Derafsh.Client/Core/xray.version
-# Aether (WARP core) for Windows: downloaded and SHA-256 checked by the build, like xray.exe
-Derafsh.Client/Core/aether.exe
-Derafsh.Client/Core/aether.version
-Derafsh.Client/Core/run-aether.bat
-Derafsh.Client/Core/pt/
-Derafsh.Client/Core/LICENSES/
 # local patch files
 *.patch

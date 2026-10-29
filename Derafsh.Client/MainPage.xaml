@@ -125,12 +125,24 @@
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <Grid x:Name="RootGrid" RowDefinitions="2,*,Auto">
+    <Grid x:Name="RootGrid" RowDefinitions="2,Auto,*,Auto">
         <!-- The banner's crimson frame -->
         <BoxView Color="{StaticResource Crimson}" HeightRequest="2" />
 
         <!-- ================= Home: the simple screen ================= -->
-        <Grid x:Name="HomeView" Grid.Row="1" RowDefinitions="Auto,*,Auto" Padding="20,16,20,8" MaximumWidthRequest="480">
+        <!-- A new version is on GitHub: one quiet line, the gold stays on Connect -->
+        <Border x:Name="UpdateBanner" Grid.Row="1" IsVisible="False" Style="{StaticResource Card}" Stroke="{StaticResource Accent}"
+                Margin="16,10,16,0" Padding="14,8" MaximumWidthRequest="880">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <Label x:Name="UpdateText" VerticalOptions="Center" LineBreakMode="WordWrap" MaxLines="2" />
+                <Button Grid.Column="1" Text="دانلود" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateDownloadClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="فایل نسخه‌ی تازه‌ی مخصوص همین دستگاه را از گیت‌هاب دانلود می‌کند" />
+                <Button Grid.Column="2" Text="بعداً" Style="{StaticResource SecondaryButton}" BorderColor="Transparent" Clicked="OnUpdateLaterClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="این نسخه را دیگر یادآوری نکن" />
+            </Grid>
+        </Border>
+
+        <Grid x:Name="HomeView" Grid.Row="2" RowDefinitions="Auto,*,Auto" Padding="20,16,20,8" MaximumWidthRequest="480">
 
             <!-- Brand + way to the detailed screen -->
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
@@ -153,6 +165,8 @@
                 <VerticalStackLayout Spacing="4">
                     <Label x:Name="ConnStateLabel" Text="وصل نیستید" Style="{StaticResource TitleLabel}" HorizontalTextAlignment="Center" />
                     <Label x:Name="ConnDetailLabel" TextColor="{StaticResource TextSecondary}" FontSize="13" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
+                    <!-- While connected: the spare that takes over if this server drops -->
+                    <Label x:Name="SpareLabel" IsVisible="False" Style="{StaticResource MetaLabel}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
                 </VerticalStackLayout>
 
                 <!-- Gemini option -->
@@ -163,19 +177,6 @@
                         <Label Text="فقط سروری که جمینی را باز می‌کند" VerticalOptions="Center">
                             <Label.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnGeminiLabelTapped" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                    </HorizontalStackLayout>
-                </Border>
-
-                <!-- WARP (Aether) option: خروج از سرور -->
-                <Border x:Name="AetherExitCard" Style="{StaticResource Card}" Padding="14,8" HorizontalOptions="Center" IsVisible="False">
-                    <HorizontalStackLayout Spacing="8">
-                        <CheckBox x:Name="AetherExitCheck" Color="{StaticResource Accent}" VerticalOptions="Center" CheckedChanged="OnAetherExitOptionChanged"
-                                  SemanticProperties.Description="خروج WARP از سرور" />
-                        <Label Text="خروج WARP از سرور (Aether)" VerticalOptions="Center">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnAetherExitLabelTapped" />
                             </Label.GestureRecognizers>
                         </Label>
                     </HorizontalStackLayout>
@@ -198,7 +199,7 @@
         </Grid>
 
         <!-- ================= Servers: the detailed screen ================= -->
-        <Grid x:Name="ServersView" Grid.Row="1" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="12" Padding="24,16,24,8">
+        <Grid x:Name="ServersView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="12" Padding="24,16,24,8">
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnBackToHomeClicked" VerticalOptions="Center"
@@ -220,7 +221,7 @@
                 <Button x:Name="RefreshButton" Text="دریافت لیست تازه" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۴ ساعت تازه می‌شوند)" />
                 <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2 / aether) را اضافه می‌کند" />
+                        ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را اضافه می‌کند" />
                 <Button x:Name="SaveListButton" Text="ذخیره به‌عنوان لیست" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="سرورهایی که الان جواب می‌دهند را با اسمی که خودتان می‌گذارید ذخیره می‌کند" />
                 <Button x:Name="ShareWorkingButton" Text="اشتراک سالم‌ها" Style="{StaticResource SecondaryButton}" Clicked="OnShareWorkingClicked" Margin="0,0,8,8"
@@ -258,7 +259,7 @@
         </Grid>
 
         <!-- Status bar: what just happened (tests, downloads, saves) -->
-        <Label x:Name="StatusLabel" Grid.Row="2" TextColor="{StaticResource TextSecondary}" FontSize="13" Padding="24,0,24,10"
+        <Label x:Name="StatusLabel" Grid.Row="3" TextColor="{StaticResource TextSecondary}" FontSize="13" Padding="24,0,24,10"
                HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" MaxLines="2" />
     </Grid>
 </ContentPage>

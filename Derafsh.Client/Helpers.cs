@@ -63,7 +63,10 @@ namespace Derafsh.Client
             null or "" => "",
             "testing" => "جمینی: در حال تست…",
             "ok" => "جمینی ✓",
+            var s when s.StartsWith("ok:") => $"جمینی ✓ · {s[3..]}",
             "region" => "جمینی: محدودیت منطقه",
+            var s when s.StartsWith("region:") => $"جمینی ✗ · {s[7..]}",
+            "unknown" => "جمینی: نامشخص",
             "blocked" => "جمینی: مسدود",
             "timeout" => "جمینی: بی‌پاسخ",
             "failed" => "جمینی: باز نشد",
@@ -82,7 +85,9 @@ namespace Derafsh.Client
         public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v as string) switch
         {
             "ok" => Good,
+            var s when s != null && s.StartsWith("ok:") => Good,
             "region" => Warn,
+            var s when s != null && s.StartsWith("region:") => Bad,
             "blocked" or "timeout" or "failed" => Bad,
             var s when s != null && s.StartsWith("http:") => Warn,
             _ => Neutral,

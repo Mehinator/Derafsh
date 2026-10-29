@@ -113,7 +113,7 @@ jobs:
           -o publish/android
 
       # A VPN app without its engine would install fine and then never connect; check before attaching
-      - name: Check the APK has Xray, Aether and the tunnel for each ABI
+      - name: Check the APK has Xray and the tunnel for each ABI
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -121,7 +121,7 @@ jobs:
           if (-not $apk) { throw "No signed APK was produced" }
           $names = [IO.Compression.ZipFile]::OpenRead($apk.FullName).Entries.FullName
           foreach ($abi in "${{ matrix.abis }}".Split(' ')) {
-            foreach ($lib in "libxray.so", "libaether.so", "liblyrebird.so", "libpsiphon-tunnel-core.so", "libhev-socks5-tunnel.so", "libmonodroid.so") {
+            foreach ($lib in "libxray.so", "libhev-socks5-tunnel.so", "libmonodroid.so") {
               if ("lib/$abi/$lib" -notin $names) { throw "lib/$abi/$lib is missing from the APK" }
             }
           }

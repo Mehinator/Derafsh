@@ -5,7 +5,6 @@ using Android.Net;
 using Android.OS;
 using Android.Runtime;
 using AndroidX.Core.App;
-using System.Text.Json;
 
 namespace Derafsh.Client
 {
@@ -13,6 +12,8 @@ namespace Derafsh.Client
     //   همه‌ی ترافیک گوشی → رابط TUN → تونل hev-socks5-tunnel (داخل همین برنامه) → SOCKS محلی xray (127.0.0.1:10809) → سرور کانفیگ
     // خود برنامه از VPN مستثناست، تا ترافیک xray دوباره وارد تونل نشه.
     // تا وقتی وصله، یه اعلان ثابت داره (سرور، شهر، سرعت، دکمه‌ی «قطع اتصال») و سرویس پیش‌زمینه است تا اندروید نبندتش.
+    // نگهبان اتصال (ConnectionGuard) هم همین‌جاست: اگه سرور قطع بشه، موتور xray به سرور زاپاس عوض می‌شه و VPN روشن می‌مونه،
+    // حتی وقتی برنامه بسته‌ست.
     // تعریفش توی AndroidManifest.xml است (نوع پیش‌زمینه‌ی specialUse/vpn با property، که با attribute نمی‌شه نوشت).
     [Register("com.derafsh.client.DerafshVpnService")]
     public class DerafshVpnService : VpnService
@@ -25,9 +26,15 @@ namespace Derafsh.Client
         public static string? LastError { get; private set; }
         public static event Action? StateChanged;
 
+        // لینک کانفیگی که الان وصله (بعد از رفتن به زاپاس عوض می‌شه)
+        public static string? CurrentLink { get; private set; }
+        public static event Action<ConnectionGuard.Spare>? ServerSwitched;
+        public static event Action? ConnectionLost;
+
         private ParcelFileDescriptor? _tun;
         private XrayProc? _xray;
-        private AetherProc? _aether;   // هسته‌ی WARP؛ فقط وقتی کانفیگ aether:// باشه (از فایل sidecar خونده می‌شه)
+        private ConnectionGuard? _guard;
+        private readonly SemaphoreSlim _engineLock = new(1, 1);
 
         public override StartCommandResult OnStartCommand(Intent? intent, StartCommandFlags flags, int startId)
         {
@@ -40,6 +47,7 @@ namespace Derafsh.Client
             string? config = intent?.GetStringExtra("config");
             if (config == null) return StartCommandResult.NotSticky;
             s_server = intent?.GetStringExtra("name");
+            CurrentLink = intent?.GetStringExtra("link");
             s_location = null;
             Task.Run(() => StartVpn(config));
             return StartCommandResult.NotSticky;
@@ -49,29 +57,8 @@ namespace Derafsh.Client
         {
             try
             {
-                // کانفیگ ایتر: آرگومان‌های هسته‌ی WARP از فایل sidecar کنار کانفیگ. اول خونده و پاک می‌شه، بعد اتصال
-                // قبلی بسته می‌شه (قبلاً StopVpn این فایل رو پیش از خونده شدن پاک می‌کرد و WARP هیچ‌وقت روشن نمی‌شد)
-                string sidecarPath = configPath + ".aether";
-                AetherSidecar? sidecar = null;
-                if (File.Exists(sidecarPath))
-                {
-                    try { sidecar = JsonSerializer.Deserialize<AetherSidecar>(File.ReadAllText(sidecarPath)); } catch { }
-                    try { File.Delete(sidecarPath); } catch { }
-                }
-
                 // switching servers: stop the old tunnel quietly, the controller is waiting for the new result
                 StopVpn(notify: false);
-
-                // اول هسته‌ی WARP، بعد xray که بهش زنجیر می‌شه
-                {
-                    if (sidecar?.Args is { Count: > 0 })
-                    {
-                        _aether = AetherProc.StartArgs(sidecar.Args);
-                        if (!await XrayProc.WaitForPortAsync(AetherProc.SessionPort, 30000))
-                            throw new Exception("هسته‌ی Aether روشن نشد.");
-                    }
-                }
-
                 _xray = XrayProc.Start(configPath);
                 if (!await XrayProc.WaitForPortAsync(SocksPort, 6000))
                     throw new Exception("موتور Xray با این کانفیگ روشن نشد.");
@@ -98,6 +85,7 @@ namespace Derafsh.Client
                 IsRunning = true;
                 LastError = null;
                 ShowForeground();
+                StartGuard();
             }
             catch (Exception ex)
             {
@@ -110,19 +98,57 @@ namespace Derafsh.Client
 
         private void StopVpn(bool notify = true)
         {
+            _guard?.Dispose();
+            _guard = null;
             _statsTimer?.Dispose();
             _statsTimer = null;
             Hev.Stop();
             _xray?.Dispose();
             _xray = null;
-            _aether?.Dispose();   // هسته‌ی WARP هم با VPN بسته می‌شه
-            _aether = null;
             try { _tun?.Close(); } catch { }
             _tun = null;
             bool was = IsRunning;
             IsRunning = false;
             try { StopForeground(StopForegroundFlags.Remove); } catch { }
             if (was && notify) StateChanged?.Invoke();
+        }
+
+        // ---------- نگهبان اتصال ----------
+        private void StartGuard()
+        {
+            _guard = new ConnectionGuard(SwitchEngineAsync, () => ConnectionGuard.ReadSpares().Where(x => x.Link != CurrentLink).ToList());
+            _guard.Switched += spare =>
+            {
+                CurrentLink = spare.Link;
+                s_server = spare.Name;
+                s_location = null;
+                UpdateNotification();
+                ServerSwitched?.Invoke(spare);
+                // شهر سرور تازه، برای اعلان (اگه صفحه باز باشه خودش هم می‌گیره)
+                _ = Task.Run(async () => { var (_, loc) = await ConnectionGuard.ExitLocationAsync(); if (CurrentLink == spare.Link) SetLocation(loc); });
+            };
+            _guard.Lost += () =>
+            {
+                s_location = "سرور جواب نمی‌دهد؛ دنبال سرور سالم…";
+                UpdateNotification();
+                ConnectionLost?.Invoke();
+            };
+        }
+
+        // فقط موتور xray عوض می‌شه؛ رابط TUN و تونل hev سر جاشون می‌مونن (همون پورت SOCKS)، پس VPN قطع نمی‌شه
+        private async Task<bool> SwitchEngineAsync(ConnectionGuard.Spare spare)
+        {
+            if (!File.Exists(spare.ConfigPath)) return false;
+            await _engineLock.WaitAsync();
+            try
+            {
+                if (!IsRunning) return false;
+                _xray?.Dispose();
+                _xray = XrayProc.Start(spare.ConfigPath);
+                return await XrayProc.WaitForPortAsync(SocksPort, 6000);
+            }
+            catch { return false; }
+            finally { _engineLock.Release(); }
         }
 
         // کاربر VPN رو از تنظیمات اندروید قطع کرده
@@ -263,7 +289,7 @@ namespace Derafsh.Client
     {
         public static string? LastError { get; private set; }
 
-        public static async Task<bool> StartAsync(string configPath, string serverName)
+        public static async Task<bool> StartAsync(string configPath, string serverName, string link)
         {
             var activity = Platform.CurrentActivity ?? throw new Exception("پنجره‌ی برنامه هنوز آماده نیست.");
 
@@ -290,7 +316,7 @@ namespace Derafsh.Client
             try
             {
                 var intent = new Intent(activity, typeof(DerafshVpnService)).SetAction(DerafshVpnService.ActionStart)!
-                    .PutExtra("config", configPath)!.PutExtra("name", serverName);
+                    .PutExtra("config", configPath)!.PutExtra("name", serverName)!.PutExtra("link", link);
                 activity.StartService(intent);
                 var finished = await Task.WhenAny(done.Task, Task.Delay(15000));
                 bool ok = finished == done.Task && done.Task.Result;

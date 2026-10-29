@@ -8,7 +8,7 @@ namespace Derafsh.Client
     // (اندروید فقط اجازه‌ی اجرای فایل‌های همون پوشه رو می‌ده)
     public sealed class XrayProc : IDisposable
     {
-        public const int SessionPortConst = 10809;   // پورت ثابت اتصال (اندروید و ویندوز یکی)
+        public const int SessionPort = 10809;   // پورت SOCKS اتصال اصلی (اندروید و ویندوز یکی)
 
 #if ANDROID
         private readonly Java.Lang.Process _p;

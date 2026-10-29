@@ -6,7 +6,7 @@ import json
 import html
 import base64
 from itertools import zip_longest
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
 # لیست کانال‌ها (اصلاح شده و استاندارد)
 # نکته: لینک آخر رو درست کردم چون https و /s/ نداشت
@@ -35,10 +35,10 @@ SUB_FILE = "derafsh_sub.txt"
 # سقف تعداد کانفیگ (که سنگین نشه)
 MAX_CONFIGS = 2000
 
-# فقط پروتکل‌هایی که برنامه درفش می‌تونه باهاشون وصل بشه (شامل aether/WARP)
+# فقط پروتکل‌هایی که برنامه درفش می‌تونه باهاشون وصل بشه
 # مهم: (?:...) لازمه. با پرانتز معمولی، re.findall فقط اسم پروتکل (مثلاً "vless") رو برمی‌گردوند
 # نه کل لینک رو؛ برای همین تا حالا هیچ کانفیگی از تلگرام جمع نمی‌شد
-LINK_PATTERN = re.compile(r'(?:vmess|vless|ss|trojan|hysteria2|aether)://[^\s<>"]+')
+LINK_PATTERN = re.compile(r'(?:vmess|vless|ss|trojan|hysteria2)://[^\s<>"]+')
 
 # کاراکترهایی که Regex برنامه (ConfigService.cs) قبول می‌کنه؛ بقیه percent-encode می‌شن
 # تا برنامه دقیقاً همون لینکی رو بخونه که اینجا ذخیره شده
@@ -76,12 +76,6 @@ def clean_link(link):
             if not info.get("add") or not info.get("port") or bad_uuid(str(info.get("id", ""))):
                 return None
             body = "vmess://" + base64.b64encode(text.encode('utf-8')).decode()
-        elif body.startswith("aether://"):
-            # لینک ایتر: endpoint اختیاریه (لینک بدون نشانی یعنی اسکن)؛ فقط باید پارامتر یا نشانی داشته باشه
-            body = ''.join(c if c in APP_SAFE_CHARS else quote(c) for c in body)
-            parts = urlsplit(body)
-            if not parts.hostname and not parts.query:
-                return None
         else:
             body = ''.join(c if c in APP_SAFE_CHARS else quote(c) for c in body)
             parts = urlsplit(body)
@@ -97,6 +91,48 @@ def clean_link(link):
         if not name:
             sep = ''  # لینکی که با # خالی تموم شده
     return body + sep + name
+
+
+# پارامترهایی که تعیین می‌کنن «کدوم سرور» و «از چه راهی»؛ بقیه (اسم، fp، alpn، ترتیب پارامترها، کدگذاری) فرقی نمی‌سازن
+KEY_PARAMS = ("type", "security", "sni", "host", "path", "servicename", "mode", "pbk", "sid", "flow",
+              "headertype", "obfs", "obfs-password", "encryption")
+
+
+def server_key(link):
+    """هویت خود سرور پشت یه لینک، مستقل از اسم و ترتیب پارامترها و کدگذاری.
+    یه سرور که چند کانال هر کدوم با اسم خودشون گذاشتن، فقط یه بار حساب می‌شه."""
+    body = link.split("#", 1)[0].strip()
+    scheme = body.split("://", 1)[0].lower()
+    try:
+        if scheme == "vmess":
+            # اسم vmess (ps) داخل خود base64 هست؛ برای همین لینک‌های هم‌سرور متن متفاوت دارن
+            data = body[8:].replace("-", "+").replace("_", "/")
+            info = json.loads(base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8-sig"))
+            g = lambda k: str(info.get(k) or "").strip().lower()
+            return ("vmess", g("add"), g("port"), g("id"), g("net") or "tcp", g("type") or "none",
+                    g("host"), g("path") or "/", g("tls"), g("sni"))
+        parts = urlsplit(body)
+        q = {k.lower(): unquote(v).strip() for k, v in parse_qsl(parts.query)}
+        user = unquote(parts.username or "")
+        if scheme == "ss":
+            # روش:رمز یا به شکل base64 یا خام؛ هر دو یکی حساب می‌شن
+            try:
+                raw = user.replace("-", "+").replace("_", "/")
+                decoded = base64.b64decode(raw + "=" * (-len(raw) % 4)).decode("utf-8")
+                if ":" in decoded:
+                    user = decoded
+            except Exception:
+                pass
+        elif scheme == "vless":
+            user = user.lower()
+        q.setdefault("type", "tcp")
+        if q.get("type") in ("ws", "httpupgrade", "xhttp", "splithttp") and not q.get("path"):
+            q["path"] = "/"
+        key = [scheme, user, (parts.hostname or "").lower(), parts.port]
+        key += [q.get(k, "") if k in ("path", "pbk", "sid", "obfs-password") else q.get(k, "").lower() for k in KEY_PARAMS]
+        return tuple(key)
+    except Exception:
+        return body
 
 
 def get_new_configs(sources):
@@ -118,8 +154,11 @@ def get_new_configs(sources):
                 continue
 
             links = [c for c in (clean_link(m) for m in LINK_PATTERN.findall(page)) if c]
-            # پیام‌های جدیدتر پایین صفحه‌ان؛ برعکس می‌کنیم که جدیدترها اول باشن (و تکراری‌ها حذف)
-            links = list(dict.fromkeys(reversed(links)))
+            # پیام‌های جدیدتر پایین صفحه‌ان؛ برعکس می‌کنیم که جدیدترها اول باشن، و هر سرور فقط یه بار
+            unique = {}
+            for link in reversed(links):
+                unique.setdefault(server_key(link), link)
+            links = list(unique.values())
             for link in links:
                 sources[link] = name
             per_channel.append(links)
@@ -167,11 +206,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # 3. ترکیب هوشمند (جدیدها اول، قدیمی‌ها بعد)
-    # یک سرور با اسم‌های (#...) مختلف هم تکراری حساب می‌شه
+    # یه سرور تکراری حساب می‌شه حتی با اسم دیگه، کانال دیگه، ترتیب پارامتر دیگه یا vmess با اسم داخلی دیگه
     combined = []
     seen = set()
     for config in new_configs + old_configs:
-        key = config.split('#')[0]
+        key = server_key(config)
         if key not in seen:
             seen.add(key)
             combined.append(config)

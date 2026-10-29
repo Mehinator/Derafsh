@@ -15,9 +15,9 @@
 
 		<ApplicationTitle>Derafsh</ApplicationTitle>
 		<ApplicationId>com.derafsh.client</ApplicationId>
-		<ApplicationDisplayVersion>1.6.0</ApplicationDisplayVersion>
-		<ApplicationVersion>8</ApplicationVersion>
-		<Version>1.6.0</Version>
+		<ApplicationDisplayVersion>1.7.0</ApplicationDisplayVersion>
+		<ApplicationVersion>9</ApplicationVersion>
+		<Version>1.7.0</Version>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">13.1</SupportedOSPlatformVersion>
@@ -58,8 +58,7 @@
 		<AndroidPackageFormat>apk</AndroidPackageFormat>
 	</PropertyGroup>
 
-	<!-- Android engine: Xray (run as a process) + hev-socks5-tunnel (in-process VPN tunnel)
-	     + Aether (the WARP core, also run as a process).
+	<!-- Android engine: Xray (run as a process) + hev-socks5-tunnel (in-process VPN tunnel).
 	     Not stored in git; downloaded and SHA-256 checked on first build.
 	     The Xray core is the patterniha fork (as in PattN): it keeps unencrypted VLESS/Trojan to public
 	     addresses working and adds dialMode; its release assets keep the official naming.
@@ -69,9 +68,6 @@
 		<XrayAndroidVersion>v26.10.22</XrayAndroidVersion>
 		<XrayAndroidSha256>06707f14642255b223ef10560a011190d4bd95b6d02dfd5c183f9c022c70a1c0</XrayAndroidSha256>
 		<XrayArm32Sha256>b424c44d5a181d7e7cc73d57a34d79933e4aafca5e271b5a2168579fa192daaf</XrayArm32Sha256>
-		<AetherVersion>v2.3.3</AetherVersion>
-		<AetherAndroidArm64Sha256>29d0cf8b57368d59d710eb77f664a173b3624a54a5da28e40c0b199e4cdb959f</AetherAndroidArm64Sha256>
-		<AetherAndroidArm32Sha256>d076a75ef1c889a04d7fc4618ff088c18a89765259906344e966af765942a815</AetherAndroidArm32Sha256>
 		<HevVersion>2.19.1</HevVersion>
 		<HevSha256>107958f7a07051386248ba8dba778b63d8dcefdfb2c3665b0ee9a8c93de5f6ca</HevSha256>
 		<AndroidEngineDir>$(MSBuildProjectDirectory)\Platforms\Android</AndroidEngineDir>
@@ -79,14 +75,6 @@
 	<ItemGroup Condition="'$(TargetFramework)'=='net10.0-android'">
 		<AndroidNativeLibrary Include="Platforms\Android\native\arm64-v8a\libxray.so" Abi="arm64-v8a" Condition="'$(DerafshAndroidAbis)'!='armv7'" />
 		<AndroidNativeLibrary Include="Platforms\Android\native\armeabi-v7a\libxray.so" Abi="armeabi-v7a" Condition="'$(DerafshAndroidAbis)'!='arm64'" />
-		<!-- Aether (WARP core) and its two helpers (Psiphon client, Tor pluggable transport), the same
-		     trick as xray: plain binaries shipped as lib*.so, run as processes from nativeLibraryDir -->
-		<AndroidNativeLibrary Include="Platforms\Android\native\arm64-v8a\libaether.so" Abi="arm64-v8a" Condition="'$(DerafshAndroidAbis)'!='armv7'" />
-		<AndroidNativeLibrary Include="Platforms\Android\native\arm64-v8a\liblyrebird.so" Abi="arm64-v8a" Condition="'$(DerafshAndroidAbis)'!='armv7'" />
-		<AndroidNativeLibrary Include="Platforms\Android\native\arm64-v8a\libpsiphon-tunnel-core.so" Abi="arm64-v8a" Condition="'$(DerafshAndroidAbis)'!='armv7'" />
-		<AndroidNativeLibrary Include="Platforms\Android\native\armeabi-v7a\libaether.so" Abi="armeabi-v7a" Condition="'$(DerafshAndroidAbis)'!='arm64'" />
-		<AndroidNativeLibrary Include="Platforms\Android\native\armeabi-v7a\liblyrebird.so" Abi="armeabi-v7a" Condition="'$(DerafshAndroidAbis)'!='arm64'" />
-		<AndroidNativeLibrary Include="Platforms\Android\native\armeabi-v7a\libpsiphon-tunnel-core.so" Abi="armeabi-v7a" Condition="'$(DerafshAndroidAbis)'!='arm64'" />
 		<AndroidLibrary Include="Platforms\Android\libs\hev-socks5-tunnel.aar" />
 	</ItemGroup>
 	<Target Name="FetchAndroidEngine" BeforeTargets="_CheckForInvalidConfigurationAndPlatform;PrepareForBuild;_ResolveLibraryProjectImports" Condition="'$(TargetFramework)'=='net10.0-android'">
@@ -104,23 +92,6 @@
 		<Unzip Condition="'@(_EngineMissing)'!=''" SourceFiles="$(IntermediateOutputPath)xray-%(_EngineMissing.Identity)\%(_EngineMissing.Zip)" DestinationFolder="$(IntermediateOutputPath)xray-%(_EngineMissing.Identity)\x" />
 		<Copy Condition="'@(_EngineMissing)'!=''" SourceFiles="$(IntermediateOutputPath)xray-%(_EngineMissing.Identity)\x\xray" DestinationFiles="$(AndroidEngineDir)\native\%(_EngineMissing.Identity)\libxray.so" />
 
-		<!-- Aether (WARP core) per ABI: the release tarball holds aether, pt/lyrebird, pt/psiphon-tunnel-core.
-		     They ship as lib*.so so Android extracts them into the executable nativeLibraryDir. -->
-		<ItemGroup>
-			<_Aether Include="arm64-v8a" Tar="aether-android-arm64.tar.gz" Sha="$(AetherAndroidArm64Sha256)" />
-			<_Aether Include="armeabi-v7a" Tar="aether-android-armv7.tar.gz" Sha="$(AetherAndroidArm32Sha256)" />
-			<_AetherNeeded Include="@(_Aether)" Condition="!Exists('$(AndroidEngineDir)\native\%(Identity)\libaether.so')" />
-		</ItemGroup>
-		<DownloadFile Condition="'@(_AetherNeeded)'!=''" SourceUrl="https://github.com/patterniha/Aether/releases/download/$(AetherVersion)/%(_AetherNeeded.Tar)" DestinationFolder="$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)" />
-		<GetFileHash Condition="'@(_AetherNeeded)'!=''" Files="@(_AetherNeeded->'$(IntermediateOutputPath)aether-%(Identity)\%(Tar)')" Algorithm="SHA256">
-			<Output TaskParameter="Items" ItemName="_AetherTar" />
-		</GetFileHash>
-		<Error Condition="'@(_AetherTar)'!='' And '%(_AetherTar.FileHash)' != '%(_AetherTar.Sha)'" Text="%(_AetherTar.Tar) failed its SHA-256 check." />
-		<Exec Condition="'@(_AetherNeeded)'!=''" Command="tar -xzf &quot;$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)\%(_AetherNeeded.Tar)&quot; -C &quot;$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)&quot;" />
-		<Copy Condition="'@(_AetherNeeded)'!=''" SourceFiles="$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)\aether" DestinationFiles="$(AndroidEngineDir)\native\%(_AetherNeeded.Identity)\libaether.so" />
-		<Copy Condition="'@(_AetherNeeded)'!=''" SourceFiles="$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)\pt\lyrebird" DestinationFiles="$(AndroidEngineDir)\native\%(_AetherNeeded.Identity)\liblyrebird.so" />
-		<Copy Condition="'@(_AetherNeeded)'!=''" SourceFiles="$(IntermediateOutputPath)aether-%(_AetherNeeded.Identity)\pt\psiphon-tunnel-core" DestinationFiles="$(AndroidEngineDir)\native\%(_AetherNeeded.Identity)\libpsiphon-tunnel-core.so" />
-
 		<DownloadFile Condition="!Exists('$(AndroidEngineDir)\libs\hev-socks5-tunnel.aar')" SourceUrl="https://github.com/heiher/hev-socks5-tunnel/releases/download/$(HevVersion)/hev-socks5-tunnel.aar" DestinationFolder="$(AndroidEngineDir)\libs" />
 		<GetFileHash Files="$(AndroidEngineDir)\libs\hev-socks5-tunnel.aar" Algorithm="SHA256">
 			<Output TaskParameter="Hash" PropertyName="_HevSha" />
@@ -128,14 +99,12 @@
 		<Error Condition="'$(_HevSha.ToLower())' != '$(HevSha256)'" Text="hev-socks5-tunnel.aar failed its SHA-256 check." />
 	</Target>
 
-	<!-- Windows engine: Xray-core (patterniha fork, see the Android note) + the Aether WARP core in Core/.
-	     Not stored in git; downloaded and SHA-256 checked when missing or when the .version marker doesn't match. -->
+	<!-- Windows engine: Xray-core (patterniha fork, see the Android note) in Core/.
+	     Not stored in git; downloaded and SHA-256 checked when missing or when Core/xray.version doesn't match. -->
 	<PropertyGroup>
 		<XrayWindowsVersion>v26.10.22</XrayWindowsVersion>
 		<XrayWindowsSha256>750d2fd6a70c569c4fd64f2769d1a4b7c278184e0f10c49fa7965cd0a69c0398</XrayWindowsSha256>
 		<XrayCoreDir>$(MSBuildProjectDirectory)\Core</XrayCoreDir>
-		<AetherVersion Condition="'$(AetherVersion)'==''">v2.3.3</AetherVersion>
-		<AetherWindowsSha256>c4a826a230c4dac19be8ec60e32d22a2daa6760235455f3b616ae204df7c97f5</AetherWindowsSha256>
 	</PropertyGroup>
 	<Target Name="FetchWindowsEngine" BeforeTargets="PrepareForBuild" Condition="'$(TargetFramework)'=='net10.0-windows10.0.19041.0'">
 		<ReadLinesFromFile File="$(XrayCoreDir)\xray.version" Condition="Exists('$(XrayCoreDir)\xray.version')">
@@ -154,25 +123,9 @@
 		<Copy Condition="'$(_XrayNeeded)'=='true'" SourceFiles="$(IntermediateOutputPath)xray-windows\x\LICENSE" DestinationFiles="$(XrayCoreDir)\LICENSE-Xray-core.txt" />
 		<WriteLinesToFile Condition="'$(_XrayNeeded)'=='true'" File="$(XrayCoreDir)\xray.version" Lines="$(XrayWindowsVersion)" Overwrite="true" />
 
-		<!-- Aether (WARP core) + pt/ helpers + its LICENSES folder, next to xray.exe -->
-		<ReadLinesFromFile File="$(XrayCoreDir)\aether.version" Condition="Exists('$(XrayCoreDir)\aether.version')">
-			<Output TaskParameter="Lines" PropertyName="_AetherInstalled" />
-		</ReadLinesFromFile>
-		<PropertyGroup>
-			<_AetherWinNeeded Condition="!Exists('$(XrayCoreDir)\aether.exe') Or '$(_AetherInstalled)' != '$(AetherVersion)'">true</_AetherWinNeeded>
-		</PropertyGroup>
-		<DownloadFile Condition="'$(_AetherWinNeeded)'=='true'" SourceUrl="https://github.com/patterniha/Aether/releases/download/$(AetherVersion)/aether-windows-x86_64.zip" DestinationFolder="$(IntermediateOutputPath)aether-windows" />
-		<GetFileHash Condition="'$(_AetherWinNeeded)'=='true'" Files="$(IntermediateOutputPath)aether-windows\aether-windows-x86_64.zip" Algorithm="SHA256">
-			<Output TaskParameter="Hash" PropertyName="_AetherWinSha" />
-		</GetFileHash>
-		<Error Condition="'$(_AetherWinNeeded)'=='true' And '$(_AetherWinSha.ToLower())' != '$(AetherWindowsSha256)'" Text="Aether Windows download failed its SHA-256 check." />
-		<Unzip Condition="'$(_AetherWinNeeded)'=='true'" SourceFiles="$(IntermediateOutputPath)aether-windows\aether-windows-x86_64.zip" DestinationFolder="$(XrayCoreDir)" />
-		<WriteLinesToFile Condition="'$(_AetherWinNeeded)'=='true'" File="$(XrayCoreDir)\aether.version" Lines="$(AetherVersion)" Overwrite="true" />
-
 		<!-- Added here, not statically: on a fresh clone these files only exist after the download above -->
 		<ItemGroup>
-			<_XrayCoreFiles Include="Core\xray.exe;Core\geoip.dat;Core\geosite.dat;Core\LICENSE-Xray-core.txt;Core\aether.exe" />
-			<_XrayCoreFiles Include="Core\pt\**\*;Core\LICENSES\**\*" />
+			<_XrayCoreFiles Include="Core\xray.exe;Core\geoip.dat;Core\geosite.dat;Core\LICENSE-Xray-core.txt" />
 			<None Remove="@(_XrayCoreFiles)" />
 			<None Include="@(_XrayCoreFiles)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 		</ItemGroup>

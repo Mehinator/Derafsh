@@ -12,17 +12,6 @@ The build downloads it and checks its SHA-256:
 Licensed under the Mozilla Public License 2.0; the full license ships with the Windows app as `Core/LICENSE-Xray-core.txt`
 and is at https://github.com/patterniha/Xray-core/blob/main/LICENSE. Source code: https://github.com/patterniha/Xray-core
 
-## Aether (WARP core)
-
-Aether v2.3.3 from https://github.com/patterniha/Aether (fork of CluvexStudio/Aether), run as a separate process:
-the Windows app ships `aether.exe` plus its `pt/` helpers (lyrebird, psiphon-tunnel-core) and `LICENSES/` folder in `Core/`;
-on Android the same three binaries ship inside the APK as `libaether.so`, `liblyrebird.so` and `libpsiphon-tunnel-core.so`.
-The app talks to the core only over a local SOCKS5 socket. A Rust userspace WARP client for censored networks
-(MASQUE over HTTP/3 & HTTP/2, WireGuard, gool, fragmentation, Psiphon, Tor).
-
-Licensed under the GNU AGPL-3.0; the license texts and third-party notices ship with the binaries in `Core/LICENSES/`
-and are at https://github.com/patterniha/Aether/blob/main/LICENSE. Source code: https://github.com/patterniha/Aether
-
 ## hev-socks5-tunnel (Android only)
 
 `hev-socks5-tunnel.aar` v2.19.1 by hev (https://github.com/heiher/hev-socks5-tunnel), unmodified, used to pass the

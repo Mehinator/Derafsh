@@ -21,7 +21,7 @@ namespace Derafsh.Client.Services
             try
             {
                 var text = File.ReadAllText(path);
-                var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?|aether)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+                var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
                 var matches = regex.Matches(text);
 
                 foreach (Match match in matches)
@@ -43,15 +43,7 @@ namespace Derafsh.Client.Services
                 string name = "Server", address = "";
                 try
                 {
-                    if (link.StartsWith("aether://"))
-                    {
-                        // اسم و نشانی پروفایل ایتر (endpoint اختیاریه؛ لینک بدون نشانی یعنی اسکن)
-                        var al = AetherLink.Parse(link);
-                        name = al?.Name ?? "";
-                        if (!HasVisibleText(name)) name = "Aether WARP";
-                        address = al?.Address ?? "";
-                    }
-                    else if (!link.StartsWith("vmess"))
+                    if (!link.StartsWith("vmess"))
                     {
                         var uri = new Uri(link);
                         name = HttpUtility.UrlDecode(uri.Fragment.TrimStart('#'));
@@ -91,124 +83,44 @@ namespace Derafsh.Client.Services
         // --- متد تولید کانفیگ Xray (عمومی - حیاتی!) ---
         // کانفیگ با JsonNode ساخته می‌شه، نه با چسباندن رشته: هیچ مقداری از لینک (مسیر، رمز، ...)
         // نمی‌تونه ساختار کانفیگ رو عوض کنه (مثلاً یه inbound اضافه باز کنه)
-        //
-        // ایتر (WARP): outbound اصلی یه socks به هسته‌ی Aether روی loopback هست؛ اگه exitLink داده بشه
-        // (خروج WARP از سرور)، یه inbound دوم (localPort+1) هم باز می‌شه که ترافیکِ خود هسته‌ی ایتر رو
-        // به outbound سرورِ خروج می‌فرسته — همون زنجیره‌ی WARP over VLESS پترن.
-        public string GenerateXrayConfig(string link, int localPort = 10809, int aetherPort = 0, string? exitLink = null)
+        public string GenerateXrayConfig(string link, int localPort = 10809)
         {
             if (string.IsNullOrEmpty(link)) throw new FormatException("Link empty");
             link = link.Trim();
             if (link.Contains('#')) link = link[..link.IndexOf('#')];
             string protocol = link.Contains("://") ? link[..link.IndexOf("://")] : "";
 
-            bool isAether = protocol == "aether";
-            JsonObject outbound = isAether
-                ? SocksLoopback(aetherPort)
-                : protocol switch
-                {
-                    "vless" => Vless(link),
-                    "vmess" => Vmess(link),
-                    "ss" => Shadowsocks(link),
-                    "trojan" => Trojan(link),
-                    "hysteria2" => Hysteria2(link),
-                    _ => throw new FormatException($"Unsupported protocol: {protocol}"),
-                };
-
-            var inbounds = new JsonArray(new JsonObject
+            JsonObject outbound = protocol switch
             {
-                ["port"] = localPort,
-                ["listen"] = "127.0.0.1",
-                ["protocol"] = "socks",
-                ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
-                ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
-            });
-
-            var outbounds = new JsonArray(outbound);
-            var rules = new JsonArray();
-            if (isAether && !string.IsNullOrEmpty(exitLink))
-            {
-                // inbound دوم فقط برای هسته‌ی ایتر؛ جلوی همه‌ی قوانین، به خروجی سرور می‌ره
-                ((JsonArray)inbounds).Add(new JsonObject
-                {
-                    ["tag"] = "socks-up",
-                    ["port"] = localPort + 1,
-                    ["listen"] = "127.0.0.1",
-                    ["protocol"] = "socks",
-                    ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = false },
-                });
-                string exitBody = exitLink.Trim();
-                if (exitBody.Contains('#')) exitBody = exitBody[..exitBody.IndexOf('#')];
-                string exitProto = exitBody.Contains("://") ? exitBody[..exitBody.IndexOf("://")] : "";
-                var exitOutbound = exitProto switch
-                {
-                    "vless" => Vless(exitBody),
-                    "vmess" => Vmess(exitBody),
-                    "ss" => Shadowsocks(exitBody),
-                    "trojan" => Trojan(exitBody),
-                    "hysteria2" => Hysteria2(exitBody),
-                    _ => throw new FormatException($"Exit protocol not supported: {exitProto}"),
-                };
-                exitOutbound["tag"] = "exit-node";
-                ApplyFinalmask(exitOutbound, link);
-                ((JsonArray)outbounds).Add(exitOutbound);
-                ((JsonArray)rules).Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray("socks-up"), ["outboundTag"] = "exit-node" });
-            }
-            ((JsonArray)outbounds).Add(new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" });
-            ((JsonArray)rules).Add(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" });
+                "vless" => Vless(link),
+                "vmess" => Vmess(link),
+                "ss" => Shadowsocks(link),
+                "trojan" => Trojan(link),
+                "hysteria2" => Hysteria2(link),
+                _ => throw new FormatException($"Unsupported protocol: {protocol}"),
+            };
 
             var config = new JsonObject
             {
                 ["log"] = new JsonObject { ["loglevel"] = "warning" },
-                ["inbounds"] = inbounds,
+                ["inbounds"] = new JsonArray(new JsonObject
+                {
+                    ["port"] = localPort,
+                    ["listen"] = "127.0.0.1",
+                    ["protocol"] = "socks",
+                    ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
+                    ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
+                }),
                 ["dns"] = new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") },
-                ["outbounds"] = outbounds,
+                ["outbounds"] = new JsonArray(outbound, new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" }),
                 // روتینگ آزاد (AsIs)
                 ["routing"] = new JsonObject
                 {
                     ["domainStrategy"] = "AsIs",
-                    ["rules"] = rules,
+                    ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" }),
                 },
             };
             return config.ToJsonString();
-        }
-
-        // گوش‌دهنده‌ی socks روی loopback (برای زنجیره به هسته‌ی ایتر)
-        private static JsonObject SocksLoopback(int port) => new()
-        {
-            ["tag"] = "proxy",
-            ["protocol"] = "socks",
-            ["settings"] = new JsonObject { ["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = port }) },
-        };
-
-        // fm (finalmask) و dialMode لینک ایتر، به outbound خروج (مثل پترن) اعمال می‌شن
-        private static void ApplyFinalmask(JsonObject outbound, string aetherLinkWithFragment)
-        {
-            var al = AetherLink.Parse(aetherLinkWithFragment);
-            if (al == null) return;
-            try
-            {
-                if (!string.IsNullOrEmpty(al.DialMode))
-                {
-                    var sockopt = outbound["streamSettings"]?["sockopt"] as JsonObject;
-                    if (sockopt == null)
-                    {
-                        outbound["streamSettings"] ??= new JsonObject();
-                        outbound["streamSettings"]!["sockopt"] = sockopt = new JsonObject();
-                    }
-                    sockopt["dialMode"] = al.DialMode;
-                }
-                if (!string.IsNullOrEmpty(al.Fm))
-                {
-                    var fm = JsonNode.Parse(al.Fm) as JsonObject;
-                    if (fm != null)
-                    {
-                        outbound["streamSettings"] ??= new JsonObject();
-                        outbound["streamSettings"]!["finalmask"] = fm;
-                    }
-                }
-            }
-            catch { }
         }
 
         // اندروید: روی گوشی‌های ۳۲ بیتی xray نسخه‌ی لینوکسیه و DNS گوشی رو پیدا نمی‌کنه، پس آدرس سرور اینجا با DNS

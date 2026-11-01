@@ -44,6 +44,24 @@ namespace Derafsh.Client
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 
+    // سرعت دانلود: خالی (اندازه گرفته نشده)، «۱۲۰ KB/s»؛ رنگ: کافی برای ویدیو / متوسط / کند
+    public class SpeedToTextConverter : IValueConverter
+    {
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
+            v is int s && s >= 0 ? (s >= 1024 ? $"{s / 1024.0:0.0} MB/s" : $"{s} KB/s") : "";
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
+    }
+
+    public class SpeedToColorConverter : IValueConverter
+    {
+        public Color Good { get; set; } = Colors.LightGreen;
+        public Color Slow { get; set; } = Colors.Orange;
+        public Color Bad { get; set; } = Colors.Red;
+        public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
+            v is int s ? (s >= 150 ? Good : s >= 60 ? Slow : Bad) : Slow;
+        public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
+    }
+
     public class PingToColorConverter : IValueConverter
     {
         public Color Untested { get; set; } = Colors.Gray;

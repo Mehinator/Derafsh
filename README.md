@@ -47,7 +47,11 @@
 
 با دکمه‌ی **«اشتراک سالم‌ها»** در صفحه‌ی سرورها، لینک همه‌ی سرورهایی که الان جواب می‌دهند یکجا برای دیگران فرستاده می‌شود.
 
-**وصل ماندن:** کانفیگ‌های رایگان زود قطع می‌شوند. تا وقتی وصل هستید، درفش دو سرور سالم دیگر را به‌عنوان **زاپاس** آماده نگه می‌دارد (هر ۴ دقیقه دوباره تست می‌شوند) و هر ۱۰ ثانیه اتصال را از داخل خودش امتحان می‌کند. اگر سرور جواب ندهد، خودکار به زاپاس می‌رود و وصل می‌مانید؛ در اندروید VPN روشن می‌ماند، حتی وقتی برنامه بسته است. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود و اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
+**وصل ماندن:** کانفیگ‌های رایگان زود قطع یا کند می‌شوند. تا وقتی وصل هستید، درفش دو سرور سالم دیگر را به‌عنوان **زاپاس** آماده نگه می‌دارد (هر ۴ دقیقه دوباره تست می‌شوند) و هر ۱۰ ثانیه اتصال را از داخل خودش امتحان می‌کند. اگر سرور جواب ندهد، یا **کند شود** (مثلاً ویدیو وسط پخش بایستد: سرعت دو بار پشت سر هم زیر ۲۰ کیلوبایت بر ثانیه و زاپاس سریع‌تر باشد)، خودکار به زاپاس می‌رود و وصل می‌مانید؛ در اندروید VPN روشن می‌ماند، حتی وقتی برنامه بسته است. هر وقت خودتان خواستید، دکمه‌ی **«تعویض سرور»** زیر اسم زاپاس همین الان به آن می‌رود. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود و اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
+
+**سرعت، نه فقط پینگ:** پینگ خوب یعنی سرور جواب می‌دهد، نه اینکه ویدیو را روان پخش کند. درفش سرعت دانلود هر سرور را هم اندازه می‌گیرد (کنار هر سرور، مثلاً «۲۴۰ KB/s») و سرورهایی را که برای ویدیو سریع‌اند (۱۵۰ KB/s به بالا) اول انتخاب می‌کند. QUIC (UDP 443) بسته می‌شود تا اینستاگرام و یوتیوب از راه پایدارتر TCP بروند؛ روی سرورهای رایگان QUIC معمولاً همان چیزی است که ویدیو را وسط پخش نگه می‌دارد.
+
+**حافظه‌ی هر اینترنت:** درفش به خاطر می‌سپارد کدام سرورها روی همین اینترنت (ایرانسل، همراه اول، وای‌فای خانه و …) جواب داده‌اند و کدام نه، و دفعه‌ی بعد اول همان‌ها را تست می‌کند. برای همین تست بعدی خیلی سریع‌تر جواب می‌دهد. این اطلاعات فقط روی همین دستگاه می‌ماند.
 
 **تست دقیق:** هر سرور بعد از باز شدن تونل، سه بار دیگر با HTTPS امتحان می‌شود و فقط وقتی «سالم» حساب می‌شود که دست‌کم دو بار جواب بدهد (پینگ = میانه). تست جمینی کشوری را می‌خواند که گوگل شما را در آن می‌بیند؛ بعضی سرورهای رایگان IP خارجی دارند ولی ترافیک گوگل را از ایران رد می‌کنند و جمینی با آن‌ها باز نمی‌شود — این‌ها حالا «جمینی ✗ · IRN» نشان داده می‌شوند.
 
@@ -95,7 +99,7 @@
 
 ## English
 
-**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on and picks the fastest one that answers, optionally only ones that open Gemini. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
+**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 7+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.3.27**. Configs the engine can't start are dropped by the collector.

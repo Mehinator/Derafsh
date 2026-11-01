@@ -20,6 +20,7 @@ namespace Derafsh.Client
     {
         public const string ActionStart = "com.derafsh.client.START";
         public const string ActionStop = "com.derafsh.client.STOP";
+        public const string ActionSwitch = "com.derafsh.client.SWITCH";   // دکمه‌ی «تعویض سرور»: همین الان برو روی زاپاس
         public const int SocksPort = 10809;
 
         public static bool IsRunning { get; private set; }
@@ -28,8 +29,8 @@ namespace Derafsh.Client
 
         // لینک کانفیگی که الان وصله (بعد از رفتن به زاپاس عوض می‌شه)
         public static string? CurrentLink { get; private set; }
-        public static event Action<ConnectionGuard.Spare>? ServerSwitched;
-        public static event Action? ConnectionLost;
+        public static event Action<ConnectionGuard.Spare, string>? ServerSwitched;   // (زاپاس، دلیل)
+        public static event Action<string>? ConnectionLost;                          // باید عوض می‌شد ولی زاپاسی جواب نداد
 
         private ParcelFileDescriptor? _tun;
         private XrayProc? _xray;
@@ -42,6 +43,12 @@ namespace Derafsh.Client
             {
                 StopVpn();
                 StopSelf();
+                return StartCommandResult.NotSticky;
+            }
+            if (intent?.Action == ActionSwitch)
+            {
+                if (_guard != null) _ = _guard.SwitchToNextAsync(ConnectionGuard.ReasonManual);
+                else ConnectionLost?.Invoke(ConnectionGuard.ReasonManual);
                 return StartCommandResult.NotSticky;
             }
             string? config = intent?.GetStringExtra("config");
@@ -116,22 +123,23 @@ namespace Derafsh.Client
         // ---------- نگهبان اتصال ----------
         private void StartGuard()
         {
-            _guard = new ConnectionGuard(SwitchEngineAsync, () => ConnectionGuard.ReadSpares().Where(x => x.Link != CurrentLink).ToList());
-            _guard.Switched += spare =>
+            // سرعت دانلود ترافیک خود کاربر (از آمار تونل)، تا وقتی تند رد می‌شه تست سرعت زده نشه
+            _guard = new ConnectionGuard(SwitchEngineAsync, () => ConnectionGuard.ReadSpares().Where(x => x.Link != CurrentLink).ToList(),
+                                         () => (int)_downKbps);
+            _guard.Switched += (spare, reason) =>
             {
                 CurrentLink = spare.Link;
                 s_server = spare.Name;
                 s_location = null;
                 UpdateNotification();
-                ServerSwitched?.Invoke(spare);
+                ServerSwitched?.Invoke(spare, reason);
                 // شهر سرور تازه، برای اعلان (اگه صفحه باز باشه خودش هم می‌گیره)
                 _ = Task.Run(async () => { var (_, loc) = await ConnectionGuard.ExitLocationAsync(); if (CurrentLink == spare.Link) SetLocation(loc); });
             };
-            _guard.Lost += () =>
+            _guard.Lost += reason =>
             {
-                s_location = "سرور جواب نمی‌دهد؛ دنبال سرور سالم…";
-                UpdateNotification();
-                ConnectionLost?.Invoke();
+                if (reason != ConnectionGuard.ReasonManual) { s_location = "سرور جواب نمی‌دهد؛ دنبال سرور سالم…"; UpdateNotification(); }
+                ConnectionLost?.Invoke(reason);
             };
         }
 
@@ -170,6 +178,7 @@ namespace Derafsh.Client
         private static string? s_server, s_location;
         private Timer? _statsTimer;
         private long _lastDown, _lastUp;
+        private double _downKbps;
         private DateTime _lastAt;
         private static DerafshVpnService? s_current;
 
@@ -205,6 +214,7 @@ namespace Derafsh.Client
                 var (down, up) = Hev.Stats();
                 var now = DateTime.UtcNow;
                 double secs = Math.Max(0.2, (now - _lastAt).TotalSeconds);
+                _downKbps = _downKbps * 0.7 + (down - _lastDown) / secs / 1024 * 0.3;   // میانگین نرم چند ثانیه‌ی اخیر
                 string speed = $"↓ {Speed((down - _lastDown) / secs)}   ↑ {Speed((up - _lastUp) / secs)}";
                 (_lastDown, _lastUp, _lastAt) = (down, up, now);
                 NotificationManagerCompat.From(this).Notify(NotificationId, BuildNotification(speed));
@@ -330,6 +340,14 @@ namespace Derafsh.Client
         {
             var context = Android.App.Application.Context;
             var intent = new Intent(context, typeof(DerafshVpnService)).SetAction(DerafshVpnService.ActionStop);
+            context.StartService(intent);
+        }
+
+        // «تعویض سرور»: سرویس از لیست زاپاس‌ها (spares.json) اولین سالم رو انتخاب می‌کنه
+        public static void SwitchNow()
+        {
+            var context = Android.App.Application.Context;
+            var intent = new Intent(context, typeof(DerafshVpnService)).SetAction(DerafshVpnService.ActionSwitch);
             context.StartService(intent);
         }
     }

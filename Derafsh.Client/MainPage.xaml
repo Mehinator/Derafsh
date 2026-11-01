@@ -23,6 +23,8 @@
             <local:BoolToTextConverter x:Key="FavoriteName" TrueText="حذف از علاقه‌مندی‌ها" FalseText="افزودن به علاقه‌مندی‌ها" />
             <local:PingToTextConverter x:Key="PingText" />
             <local:PingToColorConverter x:Key="PingColor" Untested="{StaticResource TextMuted}" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
+            <local:SpeedToTextConverter x:Key="SpeedText" />
+            <local:SpeedToColorConverter x:Key="SpeedColor" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
             <local:GeminiTextConverter x:Key="GeminiText" />
             <local:GeminiColorConverter x:Key="GeminiColor" Neutral="{StaticResource TextMuted}" Good="{StaticResource Success}" Warn="{StaticResource Warning}" Bad="{StaticResource Danger}" />
 
@@ -54,6 +56,9 @@
                             <HorizontalStackLayout Grid.Column="1" Spacing="16" HorizontalOptions="End">
                                 <Label Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
                                        FontSize="12" VerticalOptions="Center" />
+                                <Label Text="{Binding Speed, Converter={StaticResource SpeedText}}" TextColor="{Binding Speed, Converter={StaticResource SpeedColor}}"
+                                       FontFamily="{StaticResource FontMono}" FontSize="13" VerticalOptions="Center"
+                                       ToolTipProperties.Text="سرعت دانلود از داخل این سرور؛ برای ویدیو دست‌کم ۱۵۰ کیلوبایت بر ثانیه لازم است" />
                                 <Label Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
                                        FontFamily="{StaticResource FontMono}" FontSize="13" MinimumWidthRequest="72" HorizontalTextAlignment="End" VerticalOptions="Center">
                                     <Label.Triggers>
@@ -96,16 +101,21 @@
                                 <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
                                 <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
                             </Grid>
-                            <Label Grid.Column="1" Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
-                                   FontFamily="{StaticResource FontMono}" FontSize="13" HorizontalTextAlignment="End" VerticalOptions="Center">
-                                <Label.Triggers>
-                                    <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
-                                        <Setter Property="Text" Value="در حال تست…" />
-                                        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
-                                        <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
-                                    </DataTrigger>
-                                </Label.Triggers>
-                            </Label>
+                            <HorizontalStackLayout Grid.Column="1" Spacing="10" HorizontalOptions="End">
+                                <Label Text="{Binding Speed, Converter={StaticResource SpeedText}}" TextColor="{Binding Speed, Converter={StaticResource SpeedColor}}"
+                                       FontFamily="{StaticResource FontMono}" FontSize="13" VerticalOptions="Center"
+                                       ToolTipProperties.Text="سرعت دانلود از داخل این سرور؛ برای ویدیو دست‌کم ۱۵۰ کیلوبایت بر ثانیه لازم است" />
+                                <Label Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
+                                       FontFamily="{StaticResource FontMono}" FontSize="13" HorizontalTextAlignment="End" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsPinging}" Value="True">
+                                            <Setter Property="Text" Value="در حال تست…" />
+                                            <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+                                            <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </HorizontalStackLayout>
                             <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
                             <Label Grid.Row="1" Grid.Column="1" Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
                                    FontSize="12" HorizontalTextAlignment="End" VerticalOptions="Center" />
@@ -167,6 +177,9 @@
                     <Label x:Name="ConnDetailLabel" TextColor="{StaticResource TextSecondary}" FontSize="13" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
                     <!-- While connected: the spare that takes over if this server drops -->
                     <Label x:Name="SpareLabel" IsVisible="False" Style="{StaticResource MetaLabel}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
+                    <Button x:Name="ManualSwitchButton" IsVisible="False" Text="تعویض سرور" Style="{StaticResource SecondaryButton}" HorizontalOptions="Center"
+                            Clicked="OnManualSwitchClicked" Margin="0,6,0,0"
+                            ToolTipProperties.Text="همین الان به سرور زاپاس برو (مثلاً وقتی ویدیو پخش نمی‌شود)" />
                 </VerticalStackLayout>
 
                 <!-- Gemini option -->

@@ -112,12 +112,18 @@ namespace Derafsh.Client.Services
                     ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
                 }),
                 ["dns"] = new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") },
-                ["outbounds"] = new JsonArray(outbound, new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" }),
-                // روتینگ آزاد (AsIs)
+                ["outbounds"] = new JsonArray(outbound,
+                    new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" },
+                    new JsonObject { ["protocol"] = "blackhole", ["tag"] = "block" }),
+                // روتینگ آزاد (AsIs)، با یه استثنا: QUIC (UDP پورت 443) بسته می‌شه.
+                // اینستاگرام و یوتیوب اول QUIC امتحان می‌کنن؛ خیلی از کانفیگ‌های رایگان UDP رو بد رد می‌کنن و ویدیو وسطش
+                // می‌ایسته تا برنامه دیر به TCP برگرده. با بستنش، برنامه‌ها همون اول از TCP می‌رن (کاری که v2rayNG هم می‌کنه).
                 ["routing"] = new JsonObject
                 {
                     ["domainStrategy"] = "AsIs",
-                    ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" }),
+                    ["rules"] = new JsonArray(
+                        new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = "443", ["outboundTag"] = "block" },
+                        new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" }),
                 },
             };
             return config.ToJsonString();

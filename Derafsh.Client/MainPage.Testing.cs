@@ -161,41 +161,45 @@ namespace Derafsh.Client
 
         private void OnPingSingleItemClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = PingSingle(s.Config); }
 
-        private async Task PingSingle(string config)
+        // quick: تست سریع خودکار (یه بار امتحان با صبر کوتاه)؛ وگرنه کامل (دو بار امتحان)
+        private async Task PingSingle(string config, bool quick = false)
         {
             if (!_pinging.Add(config)) return;   // همین کانفیگ همین الان در حال تسته
             foreach (var x in RowsOf(config)) x.IsPinging = true;
-            int ping = NoReply;
-            try { ping = await MeasurePingAsync(config); }
+            int ping = NoReply, speed = -1;
+            try { (ping, speed) = await MeasureAsync(config, quick); }
             catch { }
             finally
             {
                 _pinging.Remove(config);
                 _pingCache[config] = ping;
-                foreach (var x in RowsOf(config)) { x.Ping = ping; x.IsPinging = false; }
+                if (speed >= 0) _speedCache[config] = speed; else _speedCache.Remove(config);
+                foreach (var x in RowsOf(config)) { x.Ping = ping; x.Speed = speed; x.IsPinging = false; }
+                NetworkHistory.Record(config, ping is > 0 and < NoReply, Math.Max(0, speed));
             }
         }
 
-        // پینگ واقعی و پایداری از داخل کانفیگ:
-        //   درخواست اول تونل رو باز می‌کنه، بعد سه درخواست روی همون اتصال. سرور فقط وقتی «سالم» حساب می‌شه که دست‌کم
-        //   دوتاشون جواب بدن، و پینگ میانه‌ی اون‌هاست. سرورهای رایگانی که یه در میون جواب می‌دن دیگه سالم نشون داده نمی‌شن.
-        //   اگه درخواست اول جواب نداد، یه بار دیگه از اول امتحان می‌شه.
-        private async Task<int> MeasurePingAsync(string config)
+        // تست واقعی از داخل کانفیگ:
+        //   ۱. درخواست اول تونل رو باز می‌کنه (اتصال و TLS تا سرور، و TLS تا سایت).
+        //   ۲. سه درخواست روی همون اتصال؛ دست‌کم دوتاشون باید جواب بدن (پایداری). پینگ = میانه.
+        //   ۳. سرعت دانلود: تا ۶ ثانیه یا ۳۰۰ کیلوبایت. ویدیو (اینستاگرام، یوتیوب) با سرعت کم وسطش می‌ایسته، حتی وقتی
+        //      پینگ خوبه؛ در تست، سرورهای «سالم» بین ۷ تا ۱۲۰ کیلوبایت بر ثانیه بودن و پینگ ربطی به سرعت نداشت.
+        // quick: یه بار امتحان با صبر ۶ ثانیه (سرور مرده زود کنار می‌ره)؛ کامل: دو بار با صبر بیشتر.
+        private async Task<(int ping, int speed)> MeasureAsync(string config, bool quick)
         {
-            if (!await ServerReachableAsync(config)) return NoReply;
+            if (!await ServerReachableAsync(config, quick ? 3 : 4)) return (NoReply, -1);
 
             XrayProc? proc = null; int port = 0; string? configPath = null;
             try
             {
                 (proc, port, configPath) = await StartTestXray(config);
-                for (int attempt = 0; attempt < 2; attempt++)
+                int attempts = quick ? 1 : 2;
+                for (int attempt = 0; attempt < attempts; attempt++)
                 {
-                    using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(attempt == 0 ? 10 : 12));
-                    // درخواست اول: باز کردن تونل (اتصال و TLS تا سرور، و TLS تا سایت)
+                    using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(quick ? 6 : attempt == 0 ? 10 : 12));
                     try { using var warm = await client.GetAsync(PingUrl); if (warm.StatusCode != System.Net.HttpStatusCode.NoContent) continue; }
                     catch { continue; }
 
-                    // سه درخواست روی همون اتصال؛ دست‌کم دوتاشون باید جواب بدن
                     var samples = new List<int>();
                     for (int i = 0; i < 3; i++)
                     {
@@ -208,20 +212,26 @@ namespace Derafsh.Client
                         }
                         catch { }
                     }
-                    if (samples.Count < 2) return NoReply;   // یه در میون جواب می‌ده: برای اتصال قابل اعتماد نیست
+                    if (samples.Count < 2) return (NoReply, -1);   // یه در میون جواب می‌ده: برای اتصال قابل اعتماد نیست
                     samples.Sort();
-                    int ping = samples.Count == 3 ? samples[1] : (samples[0] + samples[1]) / 2;   // میانه
-                    return Math.Max(1, ping);
+                    int ping = Math.Max(1, samples.Count == 3 ? samples[1] : (samples[0] + samples[1]) / 2);
+                    int speed = await MeasureSpeedAsync(port);
+                    return (ping, speed);
                 }
-                return NoReply;
+                return (NoReply, -1);
             }
-            catch { return NoReply; }
+            catch { return (NoReply, -1); }
             finally { StopTestXray(proc, port, configPath); }
         }
 
+        private static Task<int> MeasureSpeedAsync(int socksPort) => ConnectionGuard.MeasureSpeedAsync(socksPort);
+
+        // سرعت لازم برای ویدیو؛ کمتر از این، ویدیو وسطش می‌ایسته
+        public const int VideoSpeed = 150, OkSpeed = 60;
+
         // تست سریع TCP تا سرور، تا برای سرورهای خاموش یا فیلترشده xray بالا نیاد.
         // vmess (لینک base64) و hysteria2 (UDP) و لینک‌هایی که آدرسشون خونده نمی‌شه مستقیم با xray تست می‌شن.
-        private static async Task<bool> ServerReachableAsync(string config)
+        private static async Task<bool> ServerReachableAsync(string config, int timeoutSeconds = 4)
         {
             if (config.StartsWith("vmess://") || config.StartsWith("hysteria2://") || config.StartsWith("hy2://")) return true;
             if (config.StartsWith("ss://") && !config.Split('#')[0].Contains('@')) return true;   // ss قدیمی: آدرس داخل base64
@@ -229,7 +239,7 @@ namespace Derafsh.Client
             try
             {
                 using var tcp = new TcpClient();
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(4));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
                 await tcp.ConnectAsync(uri.Host, uri.Port > 0 ? uri.Port : 443, cts.Token);
                 return true;
             }
@@ -291,9 +301,9 @@ namespace Derafsh.Client
         // از جدیدترین‌ها (ستاره‌دارها اول) تست می‌شه تا TargetWorking تا سرور سالم پیدا بشه یا MaxTested تا تست بشه.
         private const int TargetWorking = 20;
 #if ANDROID
-        private const int MaxTested = 120, DiscoverParallel = 5;
+        private const int MaxTested = 120, DiscoverParallel = 8;
 #else
-        private const int MaxTested = 200, DiscoverParallel = 8;
+        private const int MaxTested = 200, DiscoverParallel = 12;
 #endif
         private bool _discovering, _discoveryDone;   // _discoveryDone: یه بار تست تا آخر رفته (قبلش «هیچی جواب نداد» نشون داده نمی‌شه)
         private int _discoverGen;
@@ -312,8 +322,15 @@ namespace Derafsh.Client
                 LoadConfigs();
             }
 
+            // کدوم اینترنت؟ تا سرورهایی که روی همین اینترنت خوب بودن اول تست بشن
+            await NetworkHistory.DetectAsync();
             var favs = ReadFavorites();
-            var queue = cloud.OrderByDescending(favs.Contains).Where(c => !_pingCache.ContainsKey(c)).ToList();   // لیست از جدید به قدیمه
+            // ستاره‌دارها، بعد اون‌هایی که روی همین اینترنت قبلاً کار کردن، بعد بقیه (لیست از جدید به قدیمه)؛
+            // اون‌هایی که اخیراً روی همین اینترنت جواب ندادن آخر صف
+            var queue = cloud.Where(c => !_pingCache.ContainsKey(c))
+                             .OrderByDescending(favs.Contains)
+                             .ThenByDescending(c => Math.Round(NetworkHistory.Score(c)))
+                             .ToList();
             int found = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);
             int planned = Math.Min(queue.Count, MaxTested), done = 0, started = 0;
 
@@ -338,7 +355,7 @@ namespace Derafsh.Client
 
                 async Task TestOne(string config)
                 {
-                    try { await PingSingle(config); }
+                    try { await PingSingle(config, quick: true); }
                     finally { sem.Release(); }
                     done++;
                     if (gen != _discoverGen) return;
@@ -357,6 +374,7 @@ namespace Derafsh.Client
                 {
                     _discovering = false;
                     _discoveryDone = true;
+                    NetworkHistory.Save();
                     ResortList();
                     UpdateOnlineHeader();
                     UpdateEmptyState();
@@ -385,7 +403,7 @@ namespace Derafsh.Client
 
         private void ShowTestSummary()
         {
-            var working = AllServers.Where(s => s.Ping is > 0 and < NoReply).OrderBy(s => s.Ping).ToList();
+            var working = AllServers.Where(s => s.Ping is > 0 and < NoReply).ToList();
             if (!working.Any())
             {
                 StatusLabel.Text = _currentList == ListOnline
@@ -393,17 +411,25 @@ namespace Derafsh.Client
                     : "هیچ سروری از این لیست روی این اینترنت جواب نداد.";
                 return;
             }
-            var best = working.First();
-            StatusLabel.Text = $"{Fa(working.Count)} سرور روی این اینترنت جواب می‌دهند · سریع‌ترین: {Q(best.City)} · {Ms(best.Ping)}";
+            var best = Ordered(working).First();
+            int video = working.Count(s => s.Speed >= VideoSpeed);
+            StatusLabel.Text = $"{Fa(working.Count)} سرور جواب می‌دهند · {Fa(video)} تا برای ویدیو سریع‌اند · بهترین: {Q(best.City)}"
+                               + (best.Speed > 0 ? $" · {Kbs(best.Speed)}" : "");
         }
 
-        // ترتیب ثابت لیست، همه‌جا یکی: ستاره‌دارها اول، بعد سرورهایی که جواب دادن (سریع‌ترین اول)،
-        // بعد تست‌نشده‌ها، آخر سر بی‌جواب‌ها. بین هم‌رتبه‌ها ترتیب خود لیست حفظ می‌شه.
+        // ترتیب ثابت لیست، همه‌جا یکی: ستاره‌دارها اول؛ بعد سرورهای سالم، به ترتیب «سرعت کافی برای ویدیو، سرعت متوسط،
+        // کند» و توی هر دسته پینگ کمتر اول؛ بعد تست‌نشده‌ها؛ آخر سر بی‌جواب‌ها. هم‌رتبه‌ها ترتیب خود لیست رو نگه می‌دارن.
         private static List<Server> Ordered(IEnumerable<Server> list) => list
             .OrderByDescending(x => x.IsFavorite)
             .ThenBy(x => x.Ping is > 0 and < NoReply ? 0 : x.Ping < 0 ? 1 : 2)
+            .ThenBy(x => x.Ping is > 0 and < NoReply ? SpeedBucket(x.Speed) : 0)
             .ThenBy(x => x.Ping is > 0 and < NoReply ? x.Ping : 0)
             .ToList();
+
+        // ۰: برای ویدیو کافی، ۱: متوسط (یا هنوز اندازه نگرفته)، ۲: کند
+        public static int SpeedBucket(int speed) => speed >= VideoSpeed ? 0 : speed >= OkSpeed || speed < 0 ? 1 : 2;
+
+        public static string Kbs(int speed) => speed >= 1024 ? $"\u200E{speed / 1024.0:0.0}\u00A0MB/s\u200E" : $"\u200E{speed}\u00A0KB/s\u200E";
 
         private void ResortList()
         {

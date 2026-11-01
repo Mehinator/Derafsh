@@ -49,6 +49,7 @@ namespace Derafsh.Client
         // نتیجه تست‌ها در همین اجرای برنامه (با دانلود لیست یا عوض کردن لیست پاک نمی‌شن)
         private readonly Dictionary<string, string> _geminiCache = new();
         private readonly Dictionary<string, int> _pingCache = new();
+        private readonly Dictionary<string, int> _speedCache = new();   // سرعت دانلود، کیلوبایت بر ثانیه
 
         public MainPage()
         {
@@ -66,8 +67,8 @@ namespace Derafsh.Client
             // اندروید: VPN بعد از بستن صفحه هم روشن می‌مونه؛ با باز شدن دوباره وضعیتش رو نشون بده
             DerafshVpnService.StateChanged += () => MainThread.BeginInvokeOnMainThread(SyncVpnState);
             // نگهبان اتصالِ سرویس VPN به زاپاس رفته یا هیچ زاپاسی جواب نداده: صفحه هم بدونه
-            DerafshVpnService.ServerSwitched += spare => MainThread.BeginInvokeOnMainThread(() => OnServerSwitched(spare));
-            DerafshVpnService.ConnectionLost += () => MainThread.BeginInvokeOnMainThread(OnConnectionLost);
+            DerafshVpnService.ServerSwitched += (spare, reason) => MainThread.BeginInvokeOnMainThread(() => OnServerSwitched(spare, reason));
+            DerafshVpnService.ConnectionLost += reason => MainThread.BeginInvokeOnMainThread(() => OnConnectionLost(reason));
             if (DerafshVpnService.IsRunning)
             {
                 isConnected = true;
@@ -441,6 +442,7 @@ namespace Derafsh.Client
                 s.IsFavorite = favs.Contains(s.Config);
                 s.GeminiStatus = _geminiCache.TryGetValue(s.Config, out var g) ? g : "";
                 s.Ping = _pingCache.TryGetValue(s.Config, out var p) ? p : -1;
+                s.Speed = _speedCache.TryGetValue(s.Config, out var sp) ? sp : -1;
                 s.IsPinging = _pinging.Contains(s.Config);
                 s.IsSelected = !_autoServer && _currentServer?.Config == s.Config;
             }
@@ -507,7 +509,7 @@ namespace Derafsh.Client
             ConnRing.Stroke = new SolidColorBrush(Res<Color>(on ? "Success" : busy ? "Warning" : "Hairline"));
             ConnStateLabel.Text = stateText;
             ConnDetailLabel.Text = detail;
-            SpareLabel.IsVisible = on;
+            SpareLabel.IsVisible = ManualSwitchButton.IsVisible = on;
 
             MiniDot.Color = Res<Color>(on ? "Success" : busy ? "Warning" : "TextMuted");
             MiniStateLabel.Text = mini;
@@ -521,7 +523,7 @@ namespace Derafsh.Client
             if (!_autoServer && _currentServer != null)
                 return $"سرور انتخابی شما: {Q(_currentServer.City)}" + (_currentServer.Ping is > 0 and < NoReply ? $"  ·  {Ms(_currentServer.Ping)}" : "");
             var best = WorkingServers().FirstOrDefault();
-            if (best != null && !RequireGemini) return $"سریع‌ترین سرور الان: {Q(best.City)}  ·  {Ms(best.Ping)}";
+            if (best != null && !RequireGemini) return $"بهترین سرور الان: {Q(best.City)}  ·  " + (best.Speed > 0 ? $"{Kbs(best.Speed)}  ·  " : "") + Ms(best.Ping);
             if (_discovering) return "سرورها روی همین اینترنت تست می‌شوند…";
             return RequireGemini ? "سریع‌ترین سروری که جمینی را باز کند انتخاب می‌شود" : "سریع‌ترین سروری که روی همین اینترنت جواب بدهد انتخاب می‌شود";
         }
@@ -590,9 +592,12 @@ namespace Derafsh.Client
             try { if (File.Exists(UserPath)) configs.AddRange(File.ReadAllLines(UserPath).Select(l => l.Trim())); } catch { }
             configs.AddRange(_pingCache.Keys);
             var shown = AllServers;
+            // سرعت مهم‌تر از پینگه (ویدیو با سرعت کم وسطش می‌ایسته)؛ بعد اون‌هایی که روی همین اینترنت قبلاً خوب بودن؛ بعد پینگ
             return configs.Distinct()
                 .Where(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply)
-                .OrderBy(c => _pingCache[c])
+                .OrderBy(c => SpeedBucket(_speedCache.GetValueOrDefault(c, -1)))
+                .ThenByDescending(c => NetworkHistory.Score(c) > 0.5)
+                .ThenBy(c => _pingCache[c])
                 .Select(c => shown.FirstOrDefault(x => x.Config == c) ?? NewServer(c))
                 .OfType<Server>()
                 .ToList();

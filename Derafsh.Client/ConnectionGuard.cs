@@ -2,62 +2,133 @@ using System.Text.Json;
 
 namespace Derafsh.Client
 {
-    // نگهبان اتصال: کانفیگ‌های رایگان زود قطع می‌شن. تا وقتی وصلیم، هر چند ثانیه از داخل خود اتصال (SOCKS محلی)
-    // یه درخواست خیلی کوچک (جواب خالی 204) فرستاده می‌شه؛ اگه دو بار پشت سر هم جواب نیومد، اتصال به سرور زاپاسی
-    // که از قبل تست شده می‌ره و کاربر وصل می‌مونه.
+    // نگهبان اتصال: کانفیگ‌های رایگان زود قطع یا کند می‌شن. تا وقتی وصلیم:
+    //   • هر ۱۰ ثانیه یه درخواست خیلی کوچک (جواب خالی 204) از داخل خود اتصال؛ دو بار بی‌جواب = قطع → زاپاس.
+    //   • هر ۴۰ ثانیه یه تست سرعت کوچک (۶۴ کیلوبایت)؛ دو بار کمتر از ۲۰ کیلوبایت بر ثانیه = گیر کرده (ویدیو وسطش
+    //     می‌ایسته ولی درخواست کوچک هنوز جواب می‌ده) → زاپاس، اگه زاپاس موقع تست سریع‌تر بوده.
+    //     اگه ترافیک خودش داره تند رد می‌شه (مثلاً ویدیو خوب پخش می‌شه)، تست سرعت زده نمی‌شه تا اینترنت هدر نره.
+    //   • دکمه‌ی «تعویض سرور» همین مسیر رو دستی صدا می‌زنه.
     //   اندروید: داخل سرویس VPN، تا با بسته بودن برنامه هم کار کنه؛ فقط موتور xray عوض می‌شه، VPN روشن می‌مونه.
     //   ویندوز: داخل صفحه‌ی اصلی؛ پروکسی سیستم دست نمی‌خوره.
     public sealed class ConnectionGuard : IDisposable
     {
         // سرور زاپاس: کانفیگ xray از قبل ساخته شده (ConfigPath) تا موقع قطعی معطل نشیم
-        public sealed record Spare(string Name, string Link, string ConfigPath);
+        public sealed record Spare(string Name, string Link, string ConfigPath, int Speed = 0);
+
+        // دلیل رفتن به زاپاس (برای پیغام به کاربر)
+        public const string ReasonDown = "down", ReasonSlow = "slow", ReasonManual = "manual";
 
         private const int CheckEverySeconds = 10, RecheckSeconds = 3, FailuresBeforeSwitch = 2;
+        private const int SpeedCheckEvery = 4, StuckSpeed = 20, FlowingSpeed = 100;   // ۴ × ۱۰ ثانیه؛ کیلوبایت بر ثانیه
 
         private readonly Func<Spare, Task<bool>> _switchTo;
         private readonly Func<IReadOnlyList<Spare>> _spares;
+        private readonly Func<int>? _currentDownload;   // سرعت دانلود فعلی ترافیک خود کاربر، اگه معلومه (اندروید)
         private readonly CancellationTokenSource _cts = new();
+        private readonly SemaphoreSlim _switchLock = new(1, 1);
 
-        public event Action<Spare>? Switched;   // به این زاپاس رفت و جواب داد
-        public event Action? Lost;              // اتصال قطعه و هیچ زاپاسی جواب نداد (نگهبان به کارش ادامه می‌ده)
+        public event Action<Spare, string>? Switched;   // به این زاپاس رفت و جواب داد (دلیل)
+        public event Action<string>? Lost;              // باید عوض می‌شد ولی هیچ زاپاسی جواب نداد (نگهبان به کارش ادامه می‌ده)
 
-        public ConnectionGuard(Func<Spare, Task<bool>> switchTo, Func<IReadOnlyList<Spare>> spares)
+        public ConnectionGuard(Func<Spare, Task<bool>> switchTo, Func<IReadOnlyList<Spare>> spares, Func<int>? currentDownloadKbps = null)
         {
             _switchTo = switchTo;
             _spares = spares;
+            _currentDownload = currentDownloadKbps;
             _ = Task.Run(LoopAsync);
         }
 
         private async Task LoopAsync()
         {
-            int failures = 0;
+            int failures = 0, slow = 0, tick = 0;
             var token = _cts.Token;
             while (!token.IsCancellationRequested)
             {
                 try { await Task.Delay(TimeSpan.FromSeconds(failures == 0 ? CheckEverySeconds : RecheckSeconds), token); }
                 catch (OperationCanceledException) { return; }
 
-                if (await ProbeAsync()) { failures = 0; continue; }
-                if (++failures < FailuresBeforeSwitch) continue;
+                if (!await ProbeAsync(8))   // سرورهای دور گاهی چند ثانیه طول می‌کشن؛ «کند» با تست سرعت جدا سنجیده می‌شه
+                {
+                    if (++failures < FailuresBeforeSwitch) continue;
+                    await SwitchToNextAsync(ReasonDown);
+                    failures = slow = 0;
+                    continue;
+                }
+                failures = 0;
+                if (++tick % SpeedCheckEvery != 0) continue;
 
-                bool switched = false;
+                // ترافیک خود کاربر تند رد می‌شه: سالمه، تست سرعت لازم نیست
+                if (_currentDownload?.Invoke() >= FlowingSpeed) { slow = 0; continue; }
+                int kbps = await MeasureSpeedAsync(XrayProc.SessionPort, maxSeconds: 5, maxBytes: 65536);
+                if (kbps >= StuckSpeed) { slow = 0; continue; }
+                if (++slow < 2) continue;
+                // دو بار پشت سر هم گیر کرده: فقط اگه زاپاسی هست که موقع تست ازش سریع‌تر بوده
+                if (_spares().Any(x => x.Speed == 0 || x.Speed > Math.Max(kbps * 2, StuckSpeed))) await SwitchToNextAsync(ReasonSlow);
+                slow = 0;
+            }
+        }
+
+        // کانفیگ سروری که الان وصله؛ بعد از هر تعویض موفق، کانفیگ زاپاس اینجا کپی می‌شه
+        public static string CurrentConfigPath => Path.Combine(XrayProc.WorkDir, "config.json");
+
+        // رفتن به اولین زاپاسی که جواب بده (قطعی، کندی، یا دکمه‌ی «تعویض سرور»).
+        // اگه هیچ‌کدوم جواب نداد، موتور به همون سرور قبلی برمی‌گرده تا کاربر روی یه زاپاس مرده نمونه.
+        public async Task<bool> SwitchToNextAsync(string reason)
+        {
+            if (!await _switchLock.WaitAsync(0)) return false;   // همین الان داره عوض می‌کنه
+            try
+            {
+                bool engineChanged = false;
                 foreach (var spare in _spares())
                 {
-                    if (token.IsCancellationRequested) return;
+                    if (_cts.IsCancellationRequested) return false;
                     try
                     {
+                        engineChanged = true;
                         if (await _switchTo(spare) && (await ProbeAsync(8) || await ProbeAsync(8)))
                         {
-                            Switched?.Invoke(spare);
-                            switched = true;
-                            break;
+                            try { File.Copy(spare.ConfigPath, CurrentConfigPath, overwrite: true); } catch { }
+                            Switched?.Invoke(spare, reason);
+                            return true;
                         }
                     }
                     catch { }
                 }
-                if (!switched) Lost?.Invoke();
-                failures = 0;
+                if (engineChanged && File.Exists(CurrentConfigPath))
+                    try { await _switchTo(new Spare("", "", CurrentConfigPath)); } catch { }
+                Lost?.Invoke(reason);
+                return false;
             }
+            finally { _switchLock.Release(); }
+        }
+
+        // سرعت دانلود از راه یه پورت SOCKS (تست سرور یا خود اتصال)، به کیلوبایت بر ثانیه. زمان از اولین بایت حساب می‌شه، تا
+        // معطلی شروع اتصال سرعت رو کم نشون نده. ۰ یعنی هیچی نیومد.
+        public static async Task<int> MeasureSpeedAsync(int socksPort, int maxSeconds = 6, int maxBytes = 300_000)
+        {
+            const string SpeedUrl = "https://speed.cloudflare.com/__down?bytes=";
+            long total = 0;
+            System.Diagnostics.Stopwatch? sw = null;
+            try
+            {
+                using var client = XrayProc.SocksClient(socksPort, TimeSpan.FromSeconds(maxSeconds + 8));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(maxSeconds + 6));
+                using var res = await client.GetAsync(SpeedUrl + maxBytes, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                if (!res.IsSuccessStatusCode) return 0;
+                await using var stream = await res.Content.ReadAsStreamAsync(cts.Token);
+                var buf = new byte[16384];
+                while (total < maxBytes)
+                {
+                    int n = await stream.ReadAsync(buf, cts.Token);
+                    if (n <= 0) break;
+                    if (sw == null) sw = System.Diagnostics.Stopwatch.StartNew();   // اولین تیکه فقط زمان‌سنج رو راه می‌اندازه
+                    else total += n;
+                    if (sw.Elapsed.TotalSeconds >= maxSeconds) break;
+                }
+            }
+            catch { }
+            if (sw == null) return 0;
+            return (int)(total / 1024.0 / Math.Max(0.05, sw.Elapsed.TotalSeconds));
         }
 
         // یه درخواست کوچک از داخل اتصال؛ فقط جواب 204 قبوله

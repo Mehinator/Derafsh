@@ -64,6 +64,10 @@ namespace Derafsh.Client.Models
         private int _ping = -1;
         public int Ping { get => _ping; set { _ping = value; OnPropertyChanged(); } }
 
+        // سرعت دانلود از داخل همین سرور، کیلوبایت بر ثانیه (-1: اندازه گرفته نشده)
+        private int _speed = -1;
+        public int Speed { get => _speed; set { _speed = value; OnPropertyChanged(); } }
+
         private bool _isPinging;
         public bool IsPinging { get => _isPinging; set { _isPinging = value; OnPropertyChanged(); } }
 

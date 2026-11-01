@@ -15,8 +15,8 @@
 
 		<ApplicationTitle>Derafsh</ApplicationTitle>
 		<ApplicationId>com.derafsh.client</ApplicationId>
-		<ApplicationDisplayVersion>1.7.0</ApplicationDisplayVersion>
-		<ApplicationVersion>9</ApplicationVersion>
+		<ApplicationDisplayVersion>1.8.0</ApplicationDisplayVersion>
+		<ApplicationVersion>10</ApplicationVersion>
 		<Version>1.7.0</Version>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">12.0</SupportedOSPlatformVersion>

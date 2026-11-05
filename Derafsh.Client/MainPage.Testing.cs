@@ -47,13 +47,29 @@ namespace Derafsh.Client
             }
         }
 
+        // اتصال اصلی و زاپاس‌ها (پورت SessionPort) سایت‌های ایرانی رو مستقیم می‌فرستن، اگه گزینه‌اش روشنه؛ تست‌ها نه
         private async Task<string> BuildXrayConfigAsync(string link, int port)
         {
-            string json = _configService.GenerateXrayConfig(link, port);
+            bool iranDirect = port == XrayProc.SessionPort && AppBypass.IranDirect;
+            if (iranDirect) await LoadIranRangesAsync();
+            string json = _configService.GenerateXrayConfig(link, port, iranDirect);
 #if ANDROID
             json = await ConfigService.ResolveServerAddressAsync(json);
 #endif
-            return await Task.FromResult(json);
+            return json;
+        }
+
+        // IPهای ایران (Resources/Raw/iran_ip.txt، از geoip.dat خود xray)
+        private static async Task LoadIranRangesAsync()
+        {
+            if (ConfigService.IranIpRanges.Count > 0) return;
+            try
+            {
+                using var stream = await FileSystem.OpenAppPackageFileAsync("iran_ip.txt");
+                using var reader = new StreamReader(stream);
+                ConfigService.IranIpRanges = (await reader.ReadToEndAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+            }
+            catch { }
         }
 
         // حتماً بعد از هر تست صدا زده بشه، وگرنه xray توی پس‌زمینه باز می‌مونه
@@ -143,7 +159,7 @@ namespace Derafsh.Client
                 var untested = batch.Where(s => !_geminiCache.ContainsKey(s.Config) || _geminiCache[s.Config] == "testing").ToList();
                 if (untested.Any())
                 {
-                    StatusLabel.Text = $"بررسی جمینی روی {Fa(untested.Count)} سرور…";
+                    StatusLabel.Text = $"بررسی Gemini روی {Fa(untested.Count)} سرور…";
                     await Task.WhenAll(untested.Select(s => TestGemini(s.Config)));
                 }
                 var ok = batch.FirstOrDefault(s => _geminiCache.TryGetValue(s.Config, out var g) && IsGeminiOk(g));
@@ -216,6 +232,9 @@ namespace Derafsh.Client
                     samples.Sort();
                     int ping = Math.Max(1, samples.Count == 3 ? samples[1] : (samples[0] + samples[1]) / 2);
                     int speed = await MeasureSpeedAsync(port);
+                    // درخواست کوچک جواب می‌ده ولی دانلود نمی‌کنه: ویدیو و سایت‌ها باهاش باز نمی‌شن، پس سالم حساب نمی‌شه
+                    // (در تست، نصف سرورهایی که پینگ داشتن توی ۳۰ ثانیه هیچی دانلود نکردن)
+                    if (speed == 0) return (NoReply, -1);
                     return (ping, speed);
                 }
                 return (NoReply, -1);

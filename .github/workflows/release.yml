@@ -51,8 +51,51 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload $env:TAG "Derafsh-$env:TAG-Windows-x64.zip" --clobber
 
+  # Android 6: hev-socks5-tunnel's released AAR uses FORTIFY functions that only exist from Android 7 (API 24), so its
+  # native library is rebuilt here from the same pinned source for API 21 with FORTIFY off. The Android jobs repack the
+  # AAR with it (-p:HevNativeDir); the AAR's Java classes stay as released.
+  hev:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEV_VERSION: '2.19.1'
+      HEV_COMMIT: 107a5083cb33d729a476c8282745dfc2f12e48e2
+      NDK_VERSION: '27.2.12479018'   # r27c
+    steps:
+      - name: Get the hev-socks5-tunnel source (pinned commit)
+        run: |
+          git clone --depth 1 --branch "$HEV_VERSION" --recurse-submodules https://github.com/heiher/hev-socks5-tunnel hev
+          test "$(git -C hev rev-parse HEAD)" = "$HEV_COMMIT"
+
+      - name: Install NDK r27c
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+
+      - name: Build for Android 6+ (API 21, no FORTIFY)
+        working-directory: hev
+        run: >
+          "$ANDROID_HOME/ndk/$NDK_VERSION/ndk-build" NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=./Android.mk NDK_APPLICATION_MK=./Application.mk
+          APP_PLATFORM=android-21 "APP_ABI=arm64-v8a armeabi-v7a" "APP_CFLAGS=-O3 -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0" -j4
+
+      # A FORTIFY import (__read_chk, __write_chk, ...) would make the tunnel fail to load on Android 6
+      - name: Check it only needs functions Android 6 has
+        run: |
+          nm="$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          for abi in arm64-v8a armeabi-v7a; do
+            so="hev/libs/$abi/libhev-socks5-tunnel.so"
+            test -f "$so"
+            if "$nm" -D --undefined-only "$so" | grep -E '__[a-z0-9_]+_chk(@|$)'; then echo "$so imports FORTIFY functions"; exit 1; fi
+          done
+          mkdir -p hev-android && for abi in arm64-v8a armeabi-v7a; do mkdir -p hev-android/$abi && cp hev/libs/$abi/libhev-socks5-tunnel.so hev-android/$abi/; done
+          sha256sum hev-android/*/libhev-socks5-tunnel.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hev-android
+          path: hev-android
+
   # Three APKs: arm64 (most phones), armv7 (32-bit phones) and universal (both, for people who don't know which one)
   android:
+    needs: hev
     runs-on: windows-latest
     timeout-minutes: 75
     strategy:
@@ -88,9 +131,15 @@ jobs:
           dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:InstallAndroidDependencies
           -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME" -p:AcceptAndroidSDKLicenses=True
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: hev-android
+          path: hev-android
+
       # The Android build reads the AAR very early, so fetch the engine files first in their own step
-      - name: Download Xray (arm64 + arm32) and hev-socks5-tunnel (pinned, SHA-256 checked)
-        run: dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:FetchAndroidEngine
+      - name: Download Xray (arm64 + arm32) and hev-socks5-tunnel (pinned, SHA-256 checked); repack the AAR for Android 6
+        shell: pwsh
+        run: dotnet build Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -t:FetchAndroidEngine "-p:HevNativeDir=$env:GITHUB_WORKSPACE\hev-android"
 
       - name: Restore the signing key
         shell: pwsh
@@ -106,7 +155,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: >
           dotnet publish Derafsh.Client/Derafsh.Client.csproj -f net10.0-android -p:TargetFrameworks=net10.0-android -c Release
-          -p:DerafshAndroidAbis=${{ matrix.variant }}
+          -p:DerafshAndroidAbis=${{ matrix.variant }} "-p:HevNativeDir=$env:GITHUB_WORKSPACE\hev-android"
           -p:AndroidSdkDirectory="$env:ANDROID_HOME" -p:JavaSdkDirectory="$env:JAVA_HOME"
           -p:AndroidKeyStore=true -p:AndroidSigningKeyStore="$env:RUNNER_TEMP\derafsh.keystore" -p:AndroidSigningKeyAlias=derafsh
           -p:AndroidSigningStorePass=env:KEYSTORE_PASS -p:AndroidSigningKeyPass=env:KEYSTORE_PASS
@@ -125,6 +174,15 @@ jobs:
               if ("lib/$abi/$lib" -notin $names) { throw "lib/$abi/$lib is missing from the APK" }
             }
           }
+          # The tunnel must be the Android 6 build from the hev job, not the one from the released AAR
+          $zip = [IO.Compression.ZipFile]::OpenRead($apk.FullName)
+          foreach ($abi in "${{ matrix.abis }}".Split(' ')) {
+            $s = $zip.GetEntry("lib/$abi/libhev-socks5-tunnel.so").Open(); $ms = New-Object IO.MemoryStream; $s.CopyTo($ms); $s.Dispose()
+            $inApk = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash($ms.ToArray()))
+            $built = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes("hev-android/$abi/libhev-socks5-tunnel.so")))
+            if ($inApk -ne $built) { throw "lib/$abi/libhev-socks5-tunnel.so is not the Android 6 build" }
+          }
+          $zip.Dispose()
           $names | Where-Object { $_ -like 'lib/*' } | Sort-Object
 
       - name: Attach to the release

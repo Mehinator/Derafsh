@@ -40,12 +40,36 @@ namespace Derafsh.Client
 
         public static bool EngineExists => File.Exists(EnginePath);
 
+#if ANDROID
+        // cacert.pem (فهرست گواهی‌های ریشه‌ی موزیلا) از داخل بسته‌ی برنامه یه بار کنار کانفیگ‌ها کپی می‌شه
+        private static string? s_caBundle;
+        private static string? CaBundlePath()
+        {
+            if (s_caBundle != null) return s_caBundle;
+            try
+            {
+                string path = Path.Combine(WorkDir, "cacert.pem");
+                if (!File.Exists(path))
+                {
+                    using var src = FileSystem.OpenAppPackageFileAsync("cacert.pem").GetAwaiter().GetResult();
+                    using var dst = File.Create(path);
+                    src.CopyTo(dst);
+                }
+                return s_caBundle = path;
+            }
+            catch { return null; }
+        }
+#endif
+
         public static XrayProc Start(string configPath, bool isTest = false)
         {
 #if ANDROID
             var pb = new Java.Lang.ProcessBuilder(EnginePath, "run", "-c", configPath);
             pb.Directory(new Java.IO.File(WorkDir));
             pb.Environment()!["XRAY_LOCATION_ASSET"] = WorkDir;
+            // اندروید ۷ و قدیمی‌تر: گواهی‌های ریشه‌ی گوشی قدیمی‌ان (مثلاً ریشه‌ی Let's Encrypt رو ندارن) و TLS خیلی از
+            // سرورها رد می‌شد؛ فهرست به‌روز موزیلا (cacert.pem همراه برنامه) به xray داده می‌شه
+            if (!OperatingSystem.IsAndroidVersionAtLeast(25) && CaBundlePath() is string ca) pb.Environment()!["SSL_CERT_FILE"] = ca;
             pb.RedirectErrorStream(true);
             // خروجی باید جایی خونده/نوشته بشه وگرنه بافرش پر می‌شه و xray گیر می‌کنه.
             // اندروید ۸ به بعد: مستقیم توی فایل؛ اندروید ۷ (بدون RedirectOutput): خودمون می‌خونیم و دور می‌ریزیم

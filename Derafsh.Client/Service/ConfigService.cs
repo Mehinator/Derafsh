@@ -83,7 +83,13 @@ namespace Derafsh.Client.Services
         // --- متد تولید کانفیگ Xray (عمومی - حیاتی!) ---
         // کانفیگ با JsonNode ساخته می‌شه، نه با چسباندن رشته: هیچ مقداری از لینک (مسیر، رمز، ...)
         // نمی‌تونه ساختار کانفیگ رو عوض کنه (مثلاً یه inbound اضافه باز کنه)
-        public string GenerateXrayConfig(string link, int localPort = 10809)
+        // IPهای ایران (از geoip.dat خود xray، فقط IPv4؛ Resources/Raw/iran_ip.txt). صفحه‌ی اصلی یه بار پرش می‌کنه.
+        public static IReadOnlyList<string> IranIpRanges { get; set; } = Array.Empty<string>();
+        private static readonly string[] PrivateRanges = { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "169.254.0.0/16", "fc00::/7", "fe80::/10" };
+
+        // iranDirect: سایت‌های ایرانی (دامنه‌ی .ir و IPهای ایران) بدون VPN، با اینترنت خود دستگاه. بانک‌ها و درگاه پرداخت
+        // (شاپرک) فقط IP ایران رو قبول می‌کنن و این سایت‌ها فیلتر هم نیستن. شبکه‌ی محلی (مودم، چاپگر) همیشه مستقیمه.
+        public string GenerateXrayConfig(string link, int localPort = 10809, bool iranDirect = false)
         {
             if (string.IsNullOrEmpty(link)) throw new FormatException("Link empty");
             link = link.Trim();
@@ -109,7 +115,7 @@ namespace Derafsh.Client.Services
                     ["listen"] = "127.0.0.1",
                     ["protocol"] = "socks",
                     ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
-                    ["sniffing"] = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") },
+                    ["sniffing"] = Sniffing(),
                 }),
                 ["dns"] = new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") },
                 ["outbounds"] = new JsonArray(outbound,
@@ -121,12 +127,37 @@ namespace Derafsh.Client.Services
                 ["routing"] = new JsonObject
                 {
                     ["domainStrategy"] = "AsIs",
-                    ["rules"] = new JsonArray(
-                        new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = "443", ["outboundTag"] = "block" },
-                        new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" }),
+                    ["rules"] = Rules(iranDirect),
                 },
             };
             return config.ToJsonString();
+        }
+
+        // سایت‌های ایرانی پرکاربرد که دامنه‌شون .ir نیست (ویندوز اسم سایت رو می‌ده نه IP، پس قانون IP بهشون نمی‌رسه)
+        private static readonly string[] IranDomains = { "domain:ir", "domain:digikala.com", "domain:aparat.com", "domain:torob.com", "domain:filimo.com",
+                                                         "domain:basalam.com", "domain:sheypoor.com", "domain:digistyle.com", "domain:snapp.taxi" };
+
+        private static JsonObject Sniffing()
+        {
+            var sniffing = new JsonObject { ["enabled"] = true, ["destOverride"] = new JsonArray("http", "tls") };
+#if ANDROID
+            // اندروید: تونل فقط IPv4 می‌ده؛ IP اصلی سر جاش می‌مونه (اسم سایت فقط برای انتخاب مسیر خونده می‌شه)، تا قانون
+            // IPهای ایران کار کنه و سایت ایرانی مستقیم به همون IP وصل بشه، بدون DNS اضافه
+            sniffing["routeOnly"] = true;
+#endif
+            return sniffing;
+        }
+
+        private static JsonArray Rules(bool iranDirect)
+        {
+            var rules = new JsonArray();
+            if (iranDirect)
+                rules.Add(new JsonObject { ["type"] = "field", ["domain"] = new JsonArray(IranDomains.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()), ["outboundTag"] = "direct" });
+            var directIps = iranDirect ? PrivateRanges.Concat(IranIpRanges) : PrivateRanges;
+            rules.Add(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray(directIps.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()), ["outboundTag"] = "direct" });
+            rules.Add(new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = "443", ["outboundTag"] = "block" });
+            rules.Add(new JsonObject { ["type"] = "field", ["outboundTag"] = "proxy", ["port"] = "0-65535" });
+            return rules;
         }
 
         // اندروید: روی گوشی‌های ۳۲ بیتی xray نسخه‌ی لینوکسیه و DNS گوشی رو پیدا نمی‌کنه، پس آدرس سرور اینجا با DNS
@@ -308,7 +339,9 @@ namespace Derafsh.Client.Services
                         s["tcpSettings"] = new JsonObject { ["header"] = new JsonObject { ["type"] = headerType } };
                     break;
             }
-            s["sockopt"] = new JsonObject { ["tcpFastOpen"] = true };
+            // keep-alive: اتصالی که وسط راه بی‌صدا مرده (مثلاً ویدیو وسط پخش ایستاده) زودتر بسته می‌شه تا برنامه دوباره وصل
+            // بشه؛ پیش‌فرض Go تا حدود دو و نیم دقیقه صبر می‌کرد (۱۵ ثانیه + ۹ × ۱۵ ثانیه)
+            s["sockopt"] = new JsonObject { ["tcpFastOpen"] = true, ["tcpKeepAliveIdle"] = 15, ["tcpKeepAliveInterval"] = 5 };
             return s;
         }
 

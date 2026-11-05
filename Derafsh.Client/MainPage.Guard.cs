@@ -8,8 +8,8 @@ namespace Derafsh.Client
     public partial class MainPage
     {
         // ---------- سرورهای زاپاس ----------
-        // تا وقتی وصلیم، دو سرور سالم دیگه (سریع‌ترین‌ها، و اگه گزینه‌ی جمینی روشنه فقط اون‌هایی که جمینی رو باز می‌کنن)
-        // آماده نگه داشته می‌شن: هر ۴ دقیقه دوباره تست می‌شن تا زاپاس کهنه نباشه.
+        // تا وقتی وصلیم، دو سرور سالم دیگه (سریع‌ترین‌ها، و اگه گزینه‌ی Gemini روشنه فقط و فقط اون‌هایی که Gemini رو باز
+        // می‌کنن) آماده نگه داشته می‌شن: هر ۴ دقیقه دوباره تست می‌شن تا زاپاس کهنه نباشه.
         private List<ConnectionGuard.Spare> _spares = new();
         private bool _refreshingSpares;
         private int _spareGen;
@@ -42,10 +42,12 @@ namespace Derafsh.Client
             {
                 string? current = _currentServer?.Config;
                 var working = WorkingServers().Where(s => s.Config != current).ToList();
-                // با گزینه‌ی جمینی: اول اون‌هایی که جمینی رو باز می‌کنن، بعد تست‌نشده‌ها؛ اون‌هایی که قبلاً جمینی‌شون رد شده آخر
+                // با گزینه‌ی Gemini: اون‌هایی که Gemini رو باز کردن اول، بعد تست‌نشده‌ها؛ اون‌هایی که باز نکردن اصلاً زاپاس نمی‌شن
                 if (RequireGemini)
-                    working = working.OrderBy(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config))).ThenBy(s => _pingCache[s.Config]).ToList();
-                var candidates = working.Take(6).ToList();
+                    working = working.Where(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)) < 2)
+                                     .OrderBy(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)))
+                                     .ThenBy(s => SpeedBucket(_speedCache.GetValueOrDefault(s.Config, -1))).ToList();
+                var candidates = working.Take(RequireGemini ? 8 : 6).ToList();
                 if (candidates.Count < 3 && !_discovering && !_isUpdating) _ = DiscoverAsync(fresh: false);
 
                 // دوباره تست: نتیجه‌ی قبلی ممکنه چند دقیقه کهنه باشه و کانفیگ رایگان تا حالا خاموش شده باشه
@@ -55,23 +57,23 @@ namespace Derafsh.Client
                                       .ThenBy(s => _pingCache[s.Config]).ToList();
                 if (RequireGemini)
                 {
-                    // تست جمینی چند دقیقه طول می‌کشه؛ تا اون موقع یه زاپاس موقت (اگه جمینی‌دار قبلی هست، همون) آماده باشه
+                    // تست Gemini کمی طول می‌کشه؛ اگه زاپاسی نداریم، اون‌هایی که قبلاً Gemini رو باز کردن همین الان زاپاس می‌شن
                     var known = alive.Where(s => IsGeminiOk(_geminiCache.GetValueOrDefault(s.Config))).ToList();
-                    if (_spares.Count == 0 && alive.Count > 0) await PublishSparesAsync(known.Count > 0 ? known : alive, known.Count == 0);
+                    if (_spares.Count == 0 && known.Count > 0) await PublishSparesAsync(known);
 
                     using (var gsem = new SemaphoreSlim(3))
                         await Task.WhenAll(alive.Where(s => !_geminiCache.ContainsKey(s.Config)).Take(6)
                             .Select(async s => { await gsem.WaitAsync(); try { await TestGemini(s.Config); } finally { gsem.Release(); } }));
-                    var gemini = alive.Where(s => IsGeminiOk(_geminiCache.GetValueOrDefault(s.Config))).ToList();
-                    // هیچ زاپاسی با جمینی نیست: وصل ماندن مهم‌تره، زاپاس بدون جمینی بهتر از هیچه
-                    await PublishSparesAsync(gemini.Count > 0 ? gemini : alive, gemini.Count == 0 && alive.Count > 0);
+                    alive = alive.Where(s => IsGeminiOk(_geminiCache.GetValueOrDefault(s.Config))).ToList();
                 }
-                else await PublishSparesAsync(alive, false);
+                await PublishSparesAsync(alive);
+                // هنوز زاپاس نداریم (مثلاً هیچ‌کدوم Gemini رو باز نکرد): یه دقیقه دیگه سرورهای بعدی امتحان می‌شن، نه چهار دقیقه
+                if (_spares.Count == 0 && isConnected) Dispatcher.DispatchDelayed(TimeSpan.FromMinutes(1), () => _ = RefreshSparesAsync());
             }
             finally { _refreshingSpares = false; }
         }
 
-        private async Task PublishSparesAsync(List<Server> alive, bool withoutGemini)
+        private async Task PublishSparesAsync(List<Server> alive)
         {
             int gen = ++_spareGen;
             var spares = new List<ConnectionGuard.Spare>();
@@ -85,23 +87,20 @@ namespace Derafsh.Client
 
             var old = _spares;
             _spares = spares;
-            _sparesWithoutGemini = withoutGemini;
             ConnectionGuard.WriteSpares(spares);
             foreach (var x in old.Where(o => spares.All(n => n.ConfigPath != o.ConfigPath))) try { File.Delete(x.ConfigPath); } catch { }
             UpdateSpareLabel();
         }
 
-        private bool _sparesWithoutGemini;
-
-        // ترتیب برای انتخاب زاپاس با گزینه‌ی جمینی: باز می‌کنه، تست نشده، رد شده
+        // ترتیب برای انتخاب زاپاس با گزینه‌ی Gemini: باز می‌کنه، تست نشده، رد شده
         private static int GeminiRank(string? status) => IsGeminiOk(status) ? 0 : string.IsNullOrEmpty(status) || status is "testing" or "timeout" or "failed" ? 1 : 2;
 
         private void UpdateSpareLabel()
         {
             SpareLabel.IsVisible = ManualSwitchButton.IsVisible = isConnected;
-            SpareLabel.Text = _spares.Count == 0 ? "در حال آماده کردن سرور زاپاس…"
+            SpareLabel.Text = _spares.Count == 0
+                ? (RequireGemini ? "در حال پیدا کردن سرور زاپاسی که Gemini را باز کند…" : "در حال آماده کردن سرور زاپاس…")
                 : $"سرور زاپاس آماده: {Q(_spares[0].Name)}" + (_spares[0].Speed > 0 ? $" · {Kbs(_spares[0].Speed)}" : "")
-                  + (_sparesWithoutGemini ? " (جمینی را باز نمی‌کند)" : "")
                   + "  ·  اگر این سرور قطع یا کند شود، خودکار به زاپاس می‌رود";
         }
 
@@ -167,7 +166,7 @@ namespace Derafsh.Client
                 {
                     StatusLabel.Text = "سرور زاپاس هنوز آماده نیست؛ در حال پیدا کردن…";
                     await RefreshSparesAsync();
-                    if (_spares.Count == 0) { StatusLabel.Text = "فعلاً سرور سالم دیگری پیدا نشد. کمی بعد دوباره امتحان کنید."; return; }
+                    if (_spares.Count == 0) { StatusLabel.Text = RequireGemini ? "فعلاً سرور دیگری که Gemini را باز کند پیدا نشد. کمی بعد دوباره امتحان کنید." : "فعلاً سرور سالم دیگری پیدا نشد. کمی بعد دوباره امتحان کنید."; return; }
                 }
                 StatusLabel.Text = $"در حال رفتن به {Q(_spares[0].Name)}…";
 #if ANDROID

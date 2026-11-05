@@ -33,7 +33,11 @@
 
 برنامه دو صفحه دارد:
 
-**صفحه‌ی اصلی** فقط یک دکمه‌ی گرد **اتصال** دارد. درفش خودش سرورها را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و به سریع‌ترین سروری که جواب بدهد وصل می‌شود. اگر تیک **«فقط سروری که جمینی را باز می‌کند»** را بزنید، سریع‌ترین سروری انتخاب می‌شود که جمینی را هم باز کند.
+**صفحه‌ی اصلی** فقط یک دکمه‌ی گرد **اتصال** دارد. درفش خودش سرورها را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و به سریع‌ترین سروری که جواب بدهد وصل می‌شود. اگر تیک **«فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند»** را بزنید، هم سروری که وصل می‌شوید و هم سرورهای زاپاس همه Gemini را باز می‌کنند.
+
+**برنامه‌ها و سایت‌های ایرانی بدون VPN** (تیک دوم، پیش‌فرض روشن): سایت‌های ایرانی (دامنه‌ی ‎.ir‎، چند سایت پرکاربرد مثل دیجی‌کالا و آپارات، و IPهای ایران) با اینترنت خود دستگاه باز می‌شوند؛ بانک‌ها و درگاه پرداخت فقط IP ایران را قبول می‌کنند. در اندروید، برنامه‌های ایرانی و بانکی هم خودکار بدون VPN می‌مانند.
+
+**انتخاب برنامه‌ها** (اندروید، کنار همان تیک): خودتان انتخاب کنید کدام برنامه‌ها از VPN استفاده کنند. دو حالت دارد: «همه‌ی برنامه‌ها با VPN، جز آن‌هایی که خاموش کنید» یا «فقط برنامه‌هایی که روشن کنید با VPN». تغییرها همان لحظه اعمال می‌شوند.
 
 **صفحه‌ی سرورها** (دکمه‌ی «سرورها» بالای صفحه) برای کارهای بیشتر است. از منوی **لیست** یکی را انتخاب کنید:
 
@@ -43,17 +47,17 @@
 | **شخصی** | کانفیگ‌هایی که خودتان اضافه کرده‌اید | **تست دوباره** · **افزودن کانفیگ** · **ذخیره به‌عنوان لیست** |
 | **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **حذف این لیست** |
 
-روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌های هر سرور: **پینگ** (سرعت)، **جمینی** (آیا جمینی باز می‌شود)، **اشتراک** (فرستادن لینک کانفیگ برای دیگران)، **✧** (علاقه‌مندی) و **+ شخصی** (افزودن به لیست شخصی). زیر هر سرور آدرس آن و کانال تلگرامی که از آن آمده نوشته شده است.
+روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌های هر سرور: **پینگ** (سرعت)، **Gemini** (آیا Gemini باز می‌شود)، **اشتراک** (فرستادن لینک کانفیگ برای دیگران)، **✧** (علاقه‌مندی) و **+ شخصی** (افزودن به لیست شخصی). زیر هر سرور آدرس آن و کانال تلگرامی که از آن آمده نوشته شده است.
 
 با دکمه‌ی **«اشتراک سالم‌ها»** در صفحه‌ی سرورها، لینک همه‌ی سرورهایی که الان جواب می‌دهند یکجا برای دیگران فرستاده می‌شود.
 
 **وصل ماندن:** کانفیگ‌های رایگان زود قطع یا کند می‌شوند. تا وقتی وصل هستید، درفش دو سرور سالم دیگر را به‌عنوان **زاپاس** آماده نگه می‌دارد (هر ۴ دقیقه دوباره تست می‌شوند) و هر ۱۰ ثانیه اتصال را از داخل خودش امتحان می‌کند. اگر سرور جواب ندهد، یا **کند شود** (مثلاً ویدیو وسط پخش بایستد: سرعت دو بار پشت سر هم زیر ۲۰ کیلوبایت بر ثانیه و زاپاس سریع‌تر باشد)، خودکار به زاپاس می‌رود و وصل می‌مانید؛ در اندروید VPN روشن می‌ماند، حتی وقتی برنامه بسته است. هر وقت خودتان خواستید، دکمه‌ی **«تعویض سرور»** زیر اسم زاپاس همین الان به آن می‌رود. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود و اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
 
-**سرعت، نه فقط پینگ:** پینگ خوب یعنی سرور جواب می‌دهد، نه اینکه ویدیو را روان پخش کند. درفش سرعت دانلود هر سرور را هم اندازه می‌گیرد (کنار هر سرور، مثلاً «۲۴۰ KB/s») و سرورهایی را که برای ویدیو سریع‌اند (۱۵۰ KB/s به بالا) اول انتخاب می‌کند. QUIC (UDP 443) بسته می‌شود تا اینستاگرام و یوتیوب از راه پایدارتر TCP بروند؛ روی سرورهای رایگان QUIC معمولاً همان چیزی است که ویدیو را وسط پخش نگه می‌دارد.
+**سرعت، نه فقط پینگ:** پینگ خوب یعنی سرور جواب می‌دهد، نه اینکه ویدیو را روان پخش کند. درفش سرعت دانلود هر سرور را هم اندازه می‌گیرد (کنار هر سرور، مثلاً «۲۴۰ KB/s») و سرورهایی را که برای ویدیو سریع‌اند (۱۵۰ KB/s به بالا) اول انتخاب می‌کند. سروری که فقط به پینگ جواب می‌دهد ولی چیزی دانلود نمی‌کند (در تست، نصف سرورهای پینگ‌دار) سالم حساب نمی‌شود. QUIC (UDP 443) بسته می‌شود تا اینستاگرام و یوتیوب از راه پایدارتر TCP بروند؛ روی سرورهای رایگان QUIC معمولاً همان چیزی است که ویدیو را وسط پخش نگه می‌دارد.
 
 **حافظه‌ی هر اینترنت:** درفش به خاطر می‌سپارد کدام سرورها روی همین اینترنت (ایرانسل، همراه اول، وای‌فای خانه و …) جواب داده‌اند و کدام نه، و دفعه‌ی بعد اول همان‌ها را تست می‌کند. برای همین تست بعدی خیلی سریع‌تر جواب می‌دهد. این اطلاعات فقط روی همین دستگاه می‌ماند.
 
-**تست دقیق:** هر سرور بعد از باز شدن تونل، سه بار دیگر با HTTPS امتحان می‌شود و فقط وقتی «سالم» حساب می‌شود که دست‌کم دو بار جواب بدهد (پینگ = میانه). تست جمینی کشوری را می‌خواند که گوگل شما را در آن می‌بیند؛ بعضی سرورهای رایگان IP خارجی دارند ولی ترافیک گوگل را از ایران رد می‌کنند و جمینی با آن‌ها باز نمی‌شود — این‌ها حالا «جمینی ✗ · IRN» نشان داده می‌شوند.
+**تست دقیق:** هر سرور بعد از باز شدن تونل، سه بار دیگر با HTTPS امتحان می‌شود و فقط وقتی «سالم» حساب می‌شود که دست‌کم دو بار جواب بدهد (پینگ = میانه). تست Gemini کشوری را می‌خواند که گوگل شما را در آن می‌بیند؛ بعضی سرورهای رایگان IP خارجی دارند ولی ترافیک گوگل را از ایران رد می‌کنند و Gemini با آن‌ها باز نمی‌شود — این‌ها «Gemini ✗ · IRN» نشان داده می‌شوند.
 
 **نسخه‌ی تازه:** وقتی نسخه‌ی جدیدی روی گیت‌هاب بیاید، بالای برنامه خبر داده می‌شود و دکمه‌ی **دانلود** فایل مخصوص همان دستگاه را می‌گیرد.
 
@@ -70,7 +74,7 @@
 2. فایل را باز کنید. اگر اندروید اجازه‌ی «نصب برنامه‌های ناشناس» خواست، برای همان مرورگر یا فایل‌منیجر اجازه بدهید و **Install** را بزنید.
 3. در درفش یک کانفیگ را انتخاب کنید و **Connect** را بزنید. بار اول اندروید می‌پرسد که درفش اجازه‌ی ساختن VPN دارد یا نه: **OK** را بزنید.
 
-نیازمندی: اندروید ۷ به بعد.
+نیازمندی: اندروید ۶ به بعد.
 
 اگر می‌خواهید از برنامه‌ی دیگری استفاده کنید، همین لیست را می‌توانید در **v2rayNG**، **Hiddify** یا **NekoBox** هم اضافه کنید؛ هر ۴ ساعت خودکار به‌روز می‌شود:
 
@@ -99,9 +103,9 @@
 
 ## English
 
-**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
+**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
 
-- **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 7+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
+- **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.3.27**. Configs the engine can't start are dropped by the collector.
 - **Other apps:** the same list works as a subscription in v2rayNG, Hiddify or NekoBox: `https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt`.
 - **Safety:** these are free servers run by unknown people. Prefer HTTPS sites and don't enter important passwords over them.

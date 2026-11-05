@@ -56,6 +56,15 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
+    <!-- Home options under Connect: quiet text, the checkbox does the talking -->
+    <Style x:Key="OptionLabel" TargetType="Label">
+        <Setter Property="TextColor" Value="{StaticResource TextSecondary}" />
+        <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <Setter Property="LineBreakMode" Value="WordWrap" />
+    </Style>
+
     <Style x:Key="SectionLabel" TargetType="Label">
         <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
         <Setter Property="FontFamily" Value="{StaticResource FontStrong}" />
@@ -164,6 +173,15 @@
         <Setter Property="HeightRequest" Value="44" />
         <Setter Property="MinimumWidthRequest" Value="150" />
         <Setter Property="Padding" Value="24,0" />
+    </Style>
+
+    <!-- A text-only button inside a line of text ("Choose apps") -->
+    <Style x:Key="LinkButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+        <Setter Property="HeightRequest" Value="32" />
+        <Setter Property="Padding" Value="8,0" />
     </Style>
 
     <!-- Small labelled buttons inside each server row -->

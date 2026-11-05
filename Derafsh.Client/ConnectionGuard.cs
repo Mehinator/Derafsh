@@ -4,9 +4,10 @@ namespace Derafsh.Client
 {
     // نگهبان اتصال: کانفیگ‌های رایگان زود قطع یا کند می‌شن. تا وقتی وصلیم:
     //   • هر ۱۰ ثانیه یه درخواست خیلی کوچک (جواب خالی 204) از داخل خود اتصال؛ دو بار بی‌جواب = قطع → زاپاس.
-    //   • هر ۴۰ ثانیه یه تست سرعت کوچک (۶۴ کیلوبایت)؛ دو بار کمتر از ۲۰ کیلوبایت بر ثانیه = گیر کرده (ویدیو وسطش
-    //     می‌ایسته ولی درخواست کوچک هنوز جواب می‌ده) → زاپاس، اگه زاپاس موقع تست سریع‌تر بوده.
-    //     اگه ترافیک خودش داره تند رد می‌شه (مثلاً ویدیو خوب پخش می‌شه)، تست سرعت زده نمی‌شه تا اینترنت هدر نره.
+    //   • هر ۴۰ ثانیه (ویندوز: ۲ دقیقه) یه تست سرعت (۲۰۰ کیلوبایت)؛ دو بار کمتر از ۶۰ کیلوبایت بر ثانیه = کند (ویدیو
+    //     وسطش می‌ایسته ولی درخواست کوچک هنوز جواب می‌ده) → زاپاس، اگه زاپاس موقع تست دست‌کم دو برابر و برای ویدیو سریع بوده.
+    //     اگه ترافیک خودش داره تند رد می‌شه (مثلاً ویدیو خوب پخش می‌شه) یا گوشی یه دقیقه‌ست کاری نکرده، تست سرعت زده
+    //     نمی‌شه تا اینترنت هدر نره.
     //   • دکمه‌ی «تعویض سرور» همین مسیر رو دستی صدا می‌زنه.
     //   اندروید: داخل سرویس VPN، تا با بسته بودن برنامه هم کار کنه؛ فقط موتور xray عوض می‌شه، VPN روشن می‌مونه.
     //   ویندوز: داخل صفحه‌ی اصلی؛ پروکسی سیستم دست نمی‌خوره.
@@ -19,22 +20,25 @@ namespace Derafsh.Client
         public const string ReasonDown = "down", ReasonSlow = "slow", ReasonManual = "manual";
 
         private const int CheckEverySeconds = 10, RecheckSeconds = 3, FailuresBeforeSwitch = 2;
-        private const int SpeedCheckEvery = 4, StuckSpeed = 20, FlowingSpeed = 100;   // ۴ × ۱۰ ثانیه؛ کیلوبایت بر ثانیه
+        private const int SpeedCheckEvery = 4, FlowingSpeed = 100;   // ۴ × ۱۰ ثانیه؛ کیلوبایت بر ثانیه
 
         private readonly Func<Spare, Task<bool>> _switchTo;
         private readonly Func<IReadOnlyList<Spare>> _spares;
         private readonly Func<int>? _currentDownload;   // سرعت دانلود فعلی ترافیک خود کاربر، اگه معلومه (اندروید)
+        private readonly Func<bool>? _recentlyActive;   // توی یه دقیقه‌ی اخیر چیزی دانلود شده (اندروید)
         private readonly CancellationTokenSource _cts = new();
         private readonly SemaphoreSlim _switchLock = new(1, 1);
 
         public event Action<Spare, string>? Switched;   // به این زاپاس رفت و جواب داد (دلیل)
         public event Action<string>? Lost;              // باید عوض می‌شد ولی هیچ زاپاسی جواب نداد (نگهبان به کارش ادامه می‌ده)
 
-        public ConnectionGuard(Func<Spare, Task<bool>> switchTo, Func<IReadOnlyList<Spare>> spares, Func<int>? currentDownloadKbps = null)
+        public ConnectionGuard(Func<Spare, Task<bool>> switchTo, Func<IReadOnlyList<Spare>> spares, Func<int>? currentDownloadKbps = null,
+                               Func<bool>? recentlyActive = null)
         {
             _switchTo = switchTo;
             _spares = spares;
             _currentDownload = currentDownloadKbps;
+            _recentlyActive = recentlyActive;
             _ = Task.Run(LoopAsync);
         }
 
@@ -55,15 +59,21 @@ namespace Derafsh.Client
                     continue;
                 }
                 failures = 0;
-                if (++tick % SpeedCheckEvery != 0) continue;
+                // ویندوز آمار ترافیک نداره، پس تست سرعت کمتر (هر ۲ دقیقه) تا اینترنت هدر نره
+                if (++tick % (_currentDownload == null ? SpeedCheckEvery * 3 : SpeedCheckEvery) != 0) continue;
 
-                // ترافیک خود کاربر تند رد می‌شه: سالمه، تست سرعت لازم نیست
-                if (_currentDownload?.Invoke() >= FlowingSpeed) { slow = 0; continue; }
-                int kbps = await MeasureSpeedAsync(XrayProc.SessionPort, maxSeconds: 5, maxBytes: 65536);
-                if (kbps >= StuckSpeed) { slow = 0; continue; }
+                if (_currentDownload != null)
+                {
+                    // ترافیک خود کاربر تند رد می‌شه: سالمه، تست سرعت لازم نیست
+                    if (_currentDownload() >= FlowingSpeed) { slow = 0; continue; }
+                    // گوشی کاری نمی‌کنه (مثلاً صفحه خاموشه): کندی مهم نیست و تست سرعت فقط اینترنت کاربر رو هدر می‌ده
+                    if (_recentlyActive?.Invoke() == false) { slow = 0; continue; }
+                }
+                int kbps = await MeasureSpeedAsync(XrayProc.SessionPort, maxSeconds: 5, maxBytes: 200_000);
+                if (kbps >= MainPage.OkSpeed) { slow = 0; continue; }
                 if (++slow < 2) continue;
-                // دو بار پشت سر هم گیر کرده: فقط اگه زاپاسی هست که موقع تست ازش سریع‌تر بوده
-                if (_spares().Any(x => x.Speed == 0 || x.Speed > Math.Max(kbps * 2, StuckSpeed))) await SwitchToNextAsync(ReasonSlow);
+                // دو بار پشت سر هم کندتر از چیزی که ویدیو لازم داره: فقط اگه زاپاسی هست که موقع تست واقعاً سریع‌تر بوده
+                if (_spares().Any(x => x.Speed == 0 || x.Speed >= Math.Max(kbps * 2, MainPage.VideoSpeed))) await SwitchToNextAsync(ReasonSlow);
                 slow = 0;
             }
         }
@@ -104,16 +114,24 @@ namespace Derafsh.Client
 
         // سرعت دانلود از راه یه پورت SOCKS (تست سرور یا خود اتصال)، به کیلوبایت بر ثانیه. زمان از اولین بایت حساب می‌شه، تا
         // معطلی شروع اتصال سرعت رو کم نشون نده. ۰ یعنی هیچی نیومد.
+        // اگه از کلادفلر چیزی نیومد، یه بار از jsDelivr (لیست اشتراک خود درفش، حدود ۶۵۰ کیلوبایت): بعضی سرورهای رایگان
+        // (مثلاً روی Workers کلادفلر) به سایت‌های کلادفلر وصل نمی‌شن ولی بقیه‌ی اینترنت رو خوب رد می‌کنن.
         public static async Task<int> MeasureSpeedAsync(int socksPort, int maxSeconds = 6, int maxBytes = 300_000)
         {
-            const string SpeedUrl = "https://speed.cloudflare.com/__down?bytes=";
+            int kbps = await DownloadSpeedAsync(socksPort, "https://speed.cloudflare.com/__down?bytes=" + maxBytes, maxSeconds, maxBytes);
+            if (kbps == 0) kbps = await DownloadSpeedAsync(socksPort, "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt", maxSeconds, maxBytes);
+            return kbps;
+        }
+
+        private static async Task<int> DownloadSpeedAsync(int socksPort, string url, int maxSeconds, int maxBytes)
+        {
             long total = 0;
             System.Diagnostics.Stopwatch? sw = null;
             try
             {
                 using var client = XrayProc.SocksClient(socksPort, TimeSpan.FromSeconds(maxSeconds + 8));
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(maxSeconds + 6));
-                using var res = await client.GetAsync(SpeedUrl + maxBytes, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                using var res = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 if (!res.IsSuccessStatusCode) return 0;
                 await using var stream = await res.Content.ReadAsStreamAsync(cts.Token);
                 var buf = new byte[16384];

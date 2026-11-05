@@ -12,7 +12,8 @@ using Microsoft.Win32;
 namespace Derafsh.Client
 {
     // صفحه‌ی اصلی: دو نما روی یک صفحه
-    //   HomeView: دکمه‌ی گرد اتصال، گزینه‌ی «فقط سروری که جمینی را باز می‌کند»، سرور (خودکار یا انتخاب کاربر)
+    //   HomeView: دکمه‌ی گرد اتصال، گزینه‌های «ایرانی‌ها بدون VPN» و «فقط Gemini»، سرور (خودکار یا انتخاب کاربر)
+    //   AppsView (اندروید): کدوم برنامه‌ها از VPN استفاده کنن
     //   ServersView: لیست‌ها (آنلاین / شخصی / ذخیره‌شده‌ها)، تست، ذخیره، افزودن کانفیگ، انتخاب سرور
     // تست سرورها: MainPage.Testing.cs؛ لیست‌های ذخیره‌شده: MainPage.Lists.cs
     public partial class MainPage : ContentPage
@@ -58,6 +59,7 @@ namespace Derafsh.Client
             ServerListView.ItemsSource = ServerGroups;
             BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
             GeminiCheck.IsChecked = Preferences.Default.Get("require_gemini", false);
+            InitIranOption();
             RefreshListPicker();
             SetConnState(ConnState.Disconnected);
 #if WINDOWS
@@ -140,6 +142,7 @@ namespace Derafsh.Client
         protected override bool OnBackButtonPressed()
         {
             if (ServersView.IsVisible) { ShowServers(false); return true; }
+            if (AppsView.IsVisible) { CloseApps(); return true; }
             return base.OnBackButtonPressed();
         }
 
@@ -457,6 +460,14 @@ namespace Derafsh.Client
         {
             Preferences.Default.Set("require_gemini", e.Value);
             UpdateHome();
+            // وصلیم: زاپاس‌های قبلی ممکنه Gemini رو باز نکنن؛ از نو انتخاب می‌شن
+            if (isConnected)
+            {
+                _spares = new();
+                ConnectionGuard.ClearSpares();
+                UpdateSpareLabel();
+                _ = RefreshSparesAsync();
+            }
         }
 
         // متن‌های صفحه‌ی اصلی: کدوم سرور استفاده می‌شه
@@ -482,7 +493,7 @@ namespace Derafsh.Client
             {
                 case ConnState.Finding:
                     text = "لغو"; stateText = "در حال پیدا کردن سرور…";
-                    detail ??= RequireGemini ? "سرورها روی همین اینترنت تست می‌شوند، با جمینی" : "سرورها روی همین اینترنت تست می‌شوند";
+                    detail ??= RequireGemini ? "سرورها روی همین اینترنت تست می‌شوند، همراه با Gemini" : "سرورها روی همین اینترنت تست می‌شوند";
                     mini = stateText;
                     break;
                 case ConnState.Connecting:
@@ -525,7 +536,7 @@ namespace Derafsh.Client
             var best = WorkingServers().FirstOrDefault();
             if (best != null && !RequireGemini) return $"بهترین سرور الان: {Q(best.City)}  ·  " + (best.Speed > 0 ? $"{Kbs(best.Speed)}  ·  " : "") + Ms(best.Ping);
             if (_discovering) return "سرورها روی همین اینترنت تست می‌شوند…";
-            return RequireGemini ? "سریع‌ترین سروری که جمینی را باز کند انتخاب می‌شود" : "سریع‌ترین سروری که روی همین اینترنت جواب بدهد انتخاب می‌شود";
+            return RequireGemini ? "سریع‌ترین سروری که Gemini را باز کند انتخاب می‌شود" : "سریع‌ترین سروری که روی همین اینترنت جواب بدهد انتخاب می‌شود";
         }
 
         private async void OnConnectButtonClicked(object sender, EventArgs e)
@@ -574,7 +585,7 @@ namespace Derafsh.Client
                 {
                     await DisplayAlertAsync("سرور مناسبی پیدا نشد",
                         RequireGemini && working.Any()
-                            ? "سرورهایی که روی این اینترنت جواب می‌دهند جمینی را باز نکردند. تیک جمینی را بردارید، یا کمی بعد دوباره امتحان کنید."
+                            ? "سرورهایی که روی این اینترنت جواب می‌دهند Gemini را باز نکردند. تیک Gemini را بردارید، یا کمی بعد دوباره امتحان کنید."
                             : "فعلاً هیچ سروری روی این اینترنت جواب نداد. کمی بعد دوباره «اتصال» را بزنید؛ لیست هر ۴ ساعت تازه می‌شود.",
                         "باشه");
                     return null;

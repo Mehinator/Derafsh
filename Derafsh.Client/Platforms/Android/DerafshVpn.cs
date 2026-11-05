@@ -10,7 +10,7 @@ namespace Derafsh.Client
 {
     // سرویس VPN اندروید:
     //   همه‌ی ترافیک گوشی → رابط TUN → تونل hev-socks5-tunnel (داخل همین برنامه) → SOCKS محلی xray (127.0.0.1:10809) → سرور کانفیگ
-    // خود برنامه از VPN مستثناست، تا ترافیک xray دوباره وارد تونل نشه.
+    // خود برنامه از VPN مستثناست، تا ترافیک xray دوباره وارد تونل نشه؛ برنامه‌های «بدون VPN» هم (AppBypass).
     // تا وقتی وصله، یه اعلان ثابت داره (سرور، شهر، سرعت، دکمه‌ی «قطع اتصال») و سرویس پیش‌زمینه است تا اندروید نبندتش.
     // نگهبان اتصال (ConnectionGuard) هم همین‌جاست: اگه سرور قطع بشه، موتور xray به سرور زاپاس عوض می‌شه و VPN روشن می‌مونه،
     // حتی وقتی برنامه بسته‌ست.
@@ -70,21 +70,32 @@ namespace Derafsh.Client
                 if (!await XrayProc.WaitForPortAsync(SocksPort, 6000))
                     throw new Exception("موتور Xray با این کانفیگ روشن نشد.");
 
+                // فقط IPv4: بدون آدرس IPv6، اندروید IPv6 برنامه‌ها رو همون لحظه رد می‌کنه و برنامه‌ها بی‌معطلی از IPv4 می‌رن.
+                // (خیلی از سرورهای رایگان IPv6 ندارن؛ و xray با IP اصلی مسیر رو انتخاب می‌کنه، مثلاً IPهای ایران مستقیم)
                 var builder = new Builder(this)
                     .SetSession("Derafsh")!
                     .SetMtu(1500)!
                     .AddAddress("172.19.0.1", 30)!
                     .AddRoute("0.0.0.0", 0)!
-                    .AddAddress("fdfe:dcba:9876::1", 126)!
-                    .AddRoute("::", 0)!
                     .AddDnsServer("1.1.1.1")!
                     .AddDnsServer("8.8.8.8")!;
-                builder.AddDisallowedApplication(PackageName!);
+                // حالت «فقط این برنامه‌ها با VPN»: فقط همون‌ها (خود درفش هم بیرون می‌مونه چون توی لیست نیست)
+                int allowed = 0;
+                if (AppBypass.OnlySelected)
+                    foreach (var package in AppBypass.Selected.Where(p => p != PackageName))
+                        try { builder.AddAllowedApplication(package); allowed++; } catch { }   // برنامه‌ای که پاک شده
+                if (allowed == 0)
+                {
+                    // همه با VPN، جز خود درفش و برنامه‌هایی که کاربر (یا تشخیص برنامه‌های ایرانی) گفته بدون VPN باشن، مثلاً بانک‌ها
+                    builder.AddDisallowedApplication(PackageName!);
+                    foreach (var package in InstalledApps.ToBypass(this))
+                        try { builder.AddDisallowedApplication(package); } catch { }
+                }
                 _tun = builder.Establish() ?? throw new Exception("اندروید اجازه‌ی VPN نداد. درفش را باز کنید و به درخواست VPN «OK» بگویید.");
 
                 string hevConfig = Path.Combine(CacheDir!.AbsolutePath, "hev.yml");
                 File.WriteAllText(hevConfig,
-                    "tunnel:\n  mtu: 1500\n  ipv4: 172.19.0.1\n  ipv6: 'fdfe:dcba:9876::1'\n" +
+                    "tunnel:\n  mtu: 1500\n  ipv4: 172.19.0.1\n" +
                     $"socks5:\n  port: {SocksPort}\n  address: 127.0.0.1\n  udp: 'udp'\n" +
                     "misc:\n  task-stack-size: 81920\n");
                 Hev.Start(this, hevConfig, _tun.Fd);
@@ -109,6 +120,7 @@ namespace Derafsh.Client
             _guard = null;
             _statsTimer?.Dispose();
             _statsTimer = null;
+            lock (_recent) _recent.Clear();
             Hev.Stop();
             _xray?.Dispose();
             _xray = null;
@@ -116,7 +128,7 @@ namespace Derafsh.Client
             _tun = null;
             bool was = IsRunning;
             IsRunning = false;
-            try { StopForeground(StopForegroundFlags.Remove); } catch { }
+            try { if (OperatingSystem.IsAndroidVersionAtLeast(24)) StopForeground(StopForegroundFlags.Remove); else StopForeground(true); } catch { }   // اندروید ۶: شکل قدیمی
             if (was && notify) StateChanged?.Invoke();
         }
 
@@ -125,7 +137,7 @@ namespace Derafsh.Client
         {
             // سرعت دانلود ترافیک خود کاربر (از آمار تونل)، تا وقتی تند رد می‌شه تست سرعت زده نشه
             _guard = new ConnectionGuard(SwitchEngineAsync, () => ConnectionGuard.ReadSpares().Where(x => x.Link != CurrentLink).ToList(),
-                                         () => (int)_downKbps);
+                                         () => (int)_downKbps, RecentlyActive);
             _guard.Switched += (spare, reason) =>
             {
                 CurrentLink = spare.Link;
@@ -181,6 +193,13 @@ namespace Derafsh.Client
         private double _downKbps;
         private DateTime _lastAt;
         private static DerafshVpnService? s_current;
+        // دانلودِ یه دقیقه‌ی اخیر (فقط ترافیک برنامه‌ها؛ تست‌های خود درفش از تونل رد نمی‌شن)
+        private readonly Queue<(DateTime at, long down)> _recent = new();
+
+        private bool RecentlyActive()
+        {
+            lock (_recent) return _recent.Count > 1 && _recent.Last().down - _recent.Peek().down >= 100 * 1024;
+        }
 
         // صفحه‌ی اصلی بعد از وصل شدن، شهر و کشور سرور رو اینجا می‌ده
         public static void SetLocation(string? location)
@@ -215,6 +234,11 @@ namespace Derafsh.Client
                 var now = DateTime.UtcNow;
                 double secs = Math.Max(0.2, (now - _lastAt).TotalSeconds);
                 _downKbps = _downKbps * 0.7 + (down - _lastDown) / secs / 1024 * 0.3;   // میانگین نرم چند ثانیه‌ی اخیر
+                lock (_recent)
+                {
+                    _recent.Enqueue((now, down));
+                    while (_recent.Count > 0 && now - _recent.Peek().at > TimeSpan.FromSeconds(60)) _recent.Dequeue();
+                }
                 string speed = $"↓ {Speed((down - _lastDown) / secs)}   ↑ {Speed((up - _lastUp) / secs)}";
                 (_lastDown, _lastUp, _lastAt) = (down, up, now);
                 NotificationManagerCompat.From(this).Notify(NotificationId, BuildNotification(speed));

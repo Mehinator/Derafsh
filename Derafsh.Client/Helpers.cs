@@ -79,16 +79,16 @@ namespace Derafsh.Client
         public object? Convert(object? v, Type t, object? p, CultureInfo c) => (v as string) switch
         {
             null or "" => "",
-            "testing" => "جمینی: در حال تست…",
-            "ok" => "جمینی ✓",
-            var s when s.StartsWith("ok:") => $"جمینی ✓ · {s[3..]}",
-            "region" => "جمینی: محدودیت منطقه",
-            var s when s.StartsWith("region:") => $"جمینی ✗ · {s[7..]}",
-            "unknown" => "جمینی: نامشخص",
-            "blocked" => "جمینی: مسدود",
-            "timeout" => "جمینی: بی‌پاسخ",
-            "failed" => "جمینی: باز نشد",
-            var s when s.StartsWith("http:") => $"جمینی: خطای {s[5..]}",
+            "testing" => "Gemini: در حال تست…",
+            "ok" => "Gemini ✓",
+            var s when s.StartsWith("ok:") => $"Gemini ✓ · {s[3..]}",
+            "region" => "Gemini: محدودیت منطقه",
+            var s when s.StartsWith("region:") => $"Gemini ✗ · {s[7..]}",
+            "unknown" => "Gemini: نامشخص",
+            "blocked" => "Gemini: مسدود",
+            "timeout" => "Gemini: بی‌پاسخ",
+            "failed" => "Gemini: باز نشد",
+            var s when s.StartsWith("http:") => $"Gemini: خطای {s[5..]}",
             var s => s,
         };
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;

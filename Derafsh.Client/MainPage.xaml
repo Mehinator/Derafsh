@@ -74,8 +74,8 @@
                             <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6" HorizontalOptions="End">
                                 <Button Text="پینگ" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
                                         ToolTipProperties.Text="سرعت همین سرور را تست می‌کند" />
-                                <Button Text="جمینی" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="بررسی می‌کند جمینی از طریق همین سرور باز می‌شود یا نه" />
+                                <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
+                                        ToolTipProperties.Text="بررسی می‌کند Gemini (هوش مصنوعی گوگل) از طریق همین سرور باز می‌شود یا نه" />
                                 <Button Text="اشتراک" Style="{StaticResource RowButton}" Clicked="OnShareClicked" CommandParameter="{Binding .}"
                                         ToolTipProperties.Text="لینک این کانفیگ را با دیگران به اشتراک می‌گذارد" />
                                 <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
@@ -121,7 +121,7 @@
                                    FontSize="12" HorizontalTextAlignment="End" VerticalOptions="Center" />
                             <HorizontalStackLayout Grid.Row="2" Grid.ColumnSpan="2" Spacing="8" Margin="0,4,0,0">
                                 <Button Text="پینگ" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}" />
-                                <Button Text="جمینی" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
+                                <Button Text="Gemini" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
                                 <Button Text="اشتراک" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnShareClicked" CommandParameter="{Binding .}" />
                                 <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
                                         SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
@@ -182,18 +182,29 @@
                             ToolTipProperties.Text="همین الان به سرور زاپاس برو (مثلاً وقتی ویدیو پخش نمی‌شود)" />
                 </VerticalStackLayout>
 
-                <!-- Gemini option -->
-                <Border Style="{StaticResource Card}" Padding="14,8" HorizontalOptions="Center">
-                    <HorizontalStackLayout Spacing="8">
-                        <CheckBox x:Name="GeminiCheck" Color="{StaticResource Accent}" VerticalOptions="Center" CheckedChanged="OnGeminiOptionChanged"
-                                  SemanticProperties.Description="فقط سروری که جمینی را باز می‌کند" />
-                        <Label Text="فقط سروری که جمینی را باز می‌کند" VerticalOptions="Center">
+                <!-- Options: quiet, so the gold stays on Connect -->
+                <VerticalStackLayout Spacing="0" HorizontalOptions="Center">
+                    <HorizontalStackLayout Spacing="4">
+                        <CheckBox x:Name="IranDirectCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnIranDirectChanged"
+                                  SemanticProperties.Description="برنامه‌ها و سایت‌های ایرانی بدون VPN" />
+                        <Label x:Name="IranDirectLabel" Text="برنامه‌ها و سایت‌های ایرانی بدون VPN" Style="{StaticResource OptionLabel}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnIranDirectLabelTapped" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                        <Button x:Name="ChooseAppsButton" Text="انتخاب برنامه‌ها" Style="{StaticResource LinkButton}" Clicked="OnOpenAppsClicked" VerticalOptions="Center"
+                                IsVisible="False" ToolTipProperties.Text="خودتان انتخاب کنید کدام برنامه‌ها بدون VPN کار کنند" />
+                    </HorizontalStackLayout>
+                    <HorizontalStackLayout Spacing="4">
+                        <CheckBox x:Name="GeminiCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnGeminiOptionChanged"
+                                  SemanticProperties.Description="فقط سرورهایی که Gemini، هوش مصنوعی گوگل، را باز می‌کنند" />
+                        <Label Text="فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند" Style="{StaticResource OptionLabel}">
                             <Label.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnGeminiLabelTapped" />
                             </Label.GestureRecognizers>
                         </Label>
                     </HorizontalStackLayout>
-                </Border>
+                </VerticalStackLayout>
             </VerticalStackLayout>
 
             <!-- Which server Connect uses -->
@@ -269,6 +280,44 @@
                     <Button x:Name="MiniConnectButton" Grid.Column="2" Text="اتصال" Style="{StaticResource PrimaryButton}" Clicked="OnConnectButtonClicked" VerticalOptions="Center" />
                 </Grid>
             </Border>
+        </Grid>
+
+        <!-- ================= Apps and VPN (Android): which apps use the VPN ================= -->
+        <Grid x:Name="AppsView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="10" Padding="20,16,20,8" MaximumWidthRequest="600">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnAppsBackClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
+                <Label Grid.Column="1" Text="برنامه‌ها و VPN" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
+            </Grid>
+            <!-- Two ways, like most VPN apps -->
+            <VerticalStackLayout Grid.Row="1" Spacing="0">
+                <RadioButton x:Name="AllAppsMode" GroupName="AppsMode" Content="همه‌ی برنامه‌ها با VPN، جز آن‌هایی که خاموش کنید" CheckedChanged="OnAppsModeChanged"
+                             TextColor="{StaticResource TextPrimary}" FontFamily="{StaticResource FontBody}" FontSize="14" />
+                <RadioButton x:Name="OnlyAppsMode" GroupName="AppsMode" Content="فقط برنامه‌هایی که روشن کنید با VPN" CheckedChanged="OnAppsModeChanged"
+                             TextColor="{StaticResource TextPrimary}" FontFamily="{StaticResource FontBody}" FontSize="14" />
+            </VerticalStackLayout>
+            <Label x:Name="AppsHint" Grid.Row="2" TextColor="{StaticResource TextSecondary}" FontSize="13" LineBreakMode="WordWrap" />
+            <Entry x:Name="AppSearch" Grid.Row="3" Placeholder="جستجوی برنامه" TextChanged="OnAppSearchChanged" ClearButtonVisibility="WhileEditing"
+                   TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextMuted}" BackgroundColor="{StaticResource Surface}"
+                   FontFamily="{StaticResource FontBody}" FontSize="14" />
+            <CollectionView x:Name="AppsList" Grid.Row="4" SelectionMode="None">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:AppEntry">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Padding="4,8">
+                            <Image Source="{Binding Icon}" WidthRequest="36" HeightRequest="36" VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="0">
+                                <Label Text="{Binding Name}" LineBreakMode="TailTruncation" MaxLines="1" />
+                                <Label Text="{Binding Note}" Style="{StaticResource MetaLabel}" />
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="2" IsToggled="{Binding UsesVpn, Mode=TwoWay}" OnColor="{StaticResource Accent}" ThumbColor="{StaticResource TextPrimary}"
+                                    VerticalOptions="Center" SemanticProperties.Description="{Binding Name}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+                <CollectionView.EmptyView>
+                    <Label x:Name="AppsEmptyLabel" Text="در حال خواندن برنامه‌های گوشی…" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,24" />
+                </CollectionView.EmptyView>
+            </CollectionView>
         </Grid>
 
         <!-- Status bar: what just happened (tests, downloads, saves) -->

@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-	<!-- hev-socks5-tunnel's AAR says Android 10+, but its native library only uses functions that exist from
-	     Android 7.0 (API 24, the app's minimum); without this override the build refuses Android 7-9.
+	<!-- hev-socks5-tunnel's AAR says Android 10+; the release build swaps in its native library rebuilt from the same
+	     source for Android 6 (API 21, no FORTIFY; see release.yml), so the override is safe from Android 6.0 (API 23).
 	     targetSdkVersion is set here because a uses-sdk element without it made the build fall back to an old target. -->
-	<uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" tools:overrideLibrary="hev.socks5.tunnel" />
+	<uses-sdk android:minSdkVersion="23" android:targetSdkVersion="36" tools:overrideLibrary="hev.socks5.tunnel" />
+	<!-- "Apps without VPN": Android 11+ only shows an app the packages it declares here; we need every app with an icon -->
+	<queries>
+		<intent>
+			<action android:name="android.intent.action.MAIN" />
+			<category android:name="android.intent.category.LAUNCHER" />
+		</intent>
+	</queries>
 	<!-- extractNativeLibs: libxray.so has to be on disk to be executed -->
 	<application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true" android:extractNativeLibs="true" android:label="Derafsh">
 		<!-- The VPN. A foreground service with a notification (speed, city, disconnect), so Android doesn't close it.

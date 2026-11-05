@@ -10,7 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Mehinator/Derafsh/releases/latest"><b>⬇ دانلود آخرین نسخه / Download the latest release</b></a>
+  <a href="https://github.com/Mehinator/Derafsh/releases/latest"><b>⬇ دانلود آخرین نسخه / Download the latest release</b></a><br>
+  <a href="#آیفون-و-آیپد">آیفون و آیپد: لینک اشتراک / iPhone: subscription link</a>
 </p>
 
 <p align="center"><img src="docs/screenshot.png" width="720" alt="Derafsh on Windows"></p>
@@ -85,6 +86,19 @@
    ```
 3. **Update subscription** را بزنید، کانفیگ‌ها را تست کنید و به یکی از سریع‌ها وصل شوید.
 
+### آیفون و آیپد
+
+درفش هنوز نسخه‌ی iOS ندارد، ولی همین لیست کانفیگ‌ها روی آیفون و آیپد هم کار می‌کند:
+
+1. یکی از این برنامه‌های رایگان را از App Store نصب کنید: **Hiddify**، **V2Box** یا **Streisand**. (App Store رسماً در ایران فعال نیست؛ این برنامه‌ها در App Store کشورهای دیگر هستند.)
+2. در برنامه، افزودن اشتراک (**Subscription** یا **+**) را بزنید و این آدرس را وارد کنید:
+   ```
+   https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt
+   ```
+3. لیست را به‌روز کنید، سرورها را تست کنید (**Ping** یا **Test**) و به یکی از سریع‌ها وصل شوید. لیست هر ۴ ساعت خودکار تازه می‌شود.
+
+این برنامه‌ها مثل درفش سرورها را روی اینترنت خود شما نمی‌سنجند، پس بعضی از سرورهای لیست جواب نمی‌دهند؛ اول تست کنید و یکی از سالم‌ها را انتخاب کنید.
+
 ### کانفیگ‌ها از کجا می‌آیند؟
 
 اسکریپت [`collector.py`](collector.py) هر ۴ ساعت روی GitHub Actions اجرا می‌شود: صفحه‌ی عمومی چند کانال تلگرام (فهرست در همان فایل) را می‌خواند، لینک‌های خراب و تکراری را حذف می‌کند و سه فایل می‌سازد:
@@ -108,6 +122,7 @@
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.3.27**. Configs the engine can't start are dropped by the collector.
 - **Other apps:** the same list works as a subscription in v2rayNG, Hiddify or NekoBox: `https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt`.
+- **iPhone / iPad:** no iOS app yet; add the same subscription URL in Hiddify, V2Box or Streisand from the App Store.
 - **Safety:** these are free servers run by unknown people. Prefer HTTPS sites and don't enter important passwords over them.
 
 ### Build from source

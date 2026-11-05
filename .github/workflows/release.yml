@@ -31,8 +31,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # nuget.org sometimes answers 503 "server is busy"; a few tries before giving up
       - name: Install the MAUI Windows workload
-        run: dotnet workload install maui-windows
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 4; $i++) {
+            dotnet workload install maui-windows
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds (30 * $i)
+          }
+          exit 1
 
       # The build downloads Xray for Windows itself (pinned version, SHA-256 checked)
       - name: Publish (self-contained, nothing to install for users)
@@ -122,8 +130,16 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # nuget.org sometimes answers 503 "server is busy"; a few tries before giving up
       - name: Install the MAUI Android workload
-        run: dotnet workload install maui-android
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 4; $i++) {
+            dotnet workload install maui-android
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds (30 * $i)
+          }
+          exit 1
 
       - name: Install Android SDK parts the build needs
         shell: pwsh

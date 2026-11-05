@@ -17,6 +17,8 @@
     <Color x:Key="SurfaceHover">#2A2035</Color>
     <Color x:Key="Hairline">#2E2438</Color>
     <Color x:Key="BorderStrong">#4B3E59</Color>
+    <!-- QR codes stay dark on white so every camera can read them, even in this dark theme -->
+    <Color x:Key="QrPaper">#FFFFFF</Color>
 
     <!-- Text -->
     <Color x:Key="TextPrimary">#F3EEF7</Color>

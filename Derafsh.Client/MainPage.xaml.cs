@@ -18,8 +18,20 @@ namespace Derafsh.Client
     // تست سرورها: MainPage.Testing.cs؛ لیست‌های ذخیره‌شده: MainPage.Lists.cs
     public partial class MainPage : ContentPage
     {
-        private const string OnlineConfigUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_servers.txt";
-        private const string OnlineSourcesUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sources.json";
+        // لیست آنلاین از چند آینه: روی بعضی اینترنت‌ها (مثلاً وای‌فای مخابرات) گیت‌هاب یا jsDelivr بسته‌ست.
+        // همه با هم امتحان می‌شن و اولین جواب سالم برداشته می‌شه (github.io فقط اگه GitHub Pages روشن باشه جواب می‌ده).
+        private static readonly string[] ListMirrors =
+        {
+            "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/",
+            "https://fastly.jsdelivr.net/gh/Mehinator/Derafsh@main/",
+            "https://gcore.jsdelivr.net/gh/Mehinator/Derafsh@main/",
+            "https://testingcf.jsdelivr.net/gh/Mehinator/Derafsh@main/",
+            "https://raw.githubusercontent.com/Mehinator/Derafsh/main/",
+            "https://raw.githack.com/Mehinator/Derafsh/main/",
+            "https://mehinator.github.io/Derafsh/",
+        };
+        // لینک اشتراک برای برنامه‌های دیگر (v2rayNG، Hiddify، V2Box، Streisand)
+        public const string SubscriptionUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt";
         private string CloudPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_configs.txt");
         private string CloudSourcesPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_sources.json");
         private string UserPath => Path.Combine(FileSystem.AppDataDirectory, "user_configs.txt");
@@ -248,6 +260,8 @@ namespace Derafsh.Client
         // ---------- دکمه‌های لیست ----------
 
         private async void OnUpdateOnlineClicked(object sender, EventArgs e) => await UpdateOnlineConfigs();
+        private bool _listDownloadFailed;   // آخرین بار هیچ آینه‌ای جواب نداد؛ لیست تازه از داخل اولین سرور سالم گرفته می‌شه
+
         private async Task UpdateOnlineConfigs()
         {
             // وسط «تست دوباره» لیست عوض نمی‌شه: نتیجه‌ها به ردیف‌هایی می‌رسید که دیگه نمایش داده نمی‌شدن
@@ -256,36 +270,122 @@ namespace Derafsh.Client
             RefreshButton.IsEnabled = false;
             UpdateEmptyState();
             StatusLabel.Text = "در حال دانلود جدیدترین کانفیگ‌ها…";
+            bool ok = false;
             try
             {
-                // اول از راه پروکسی سیستم (اگه کاربر به یه VPN وصله)؛ اگه اون پروکسی خراب بود، مستقیم
-                (string list, string? sources) data;
-                try { data = await DownloadListAsync(useSystemProxy: true); }
-                catch { data = await DownloadListAsync(useSystemProxy: false); }
-
-                await File.WriteAllTextAsync(CloudPath, data.list);
-                if (data.sources != null) await File.WriteAllTextAsync(CloudSourcesPath, data.sources);
-                _discoverGen++;   // تست خودکارِ لیست قبلی دیگه ردیف اضافه نمی‌کنه
-                _discovering = false;
-                LoadConfigs();
+                // اول از راه پروکسی سیستم (اگه کاربر به یه VPN وصله)، بعد مستقیم، بعد از داخل اتصال خود درفش (اگه وصلیم)
+                for (int way = 0; way < 3 && !ok; way++)
+                {
+                    if (way == 2 && !isConnected) break;
+                    try { await SaveListAsync(await DownloadListAsync(useSystemProxy: way == 0, socksPort: way == 2 ? XrayProc.SessionPort : null)); ok = true; }
+                    catch { }
+                }
+                // اولین اجرا و هیچ آینه‌ای باز نیست: لیستی که همراه خود برنامه اومده
+                if (!ok && !File.Exists(CloudPath)) await UseSeedListAsync();
             }
-            catch
+            finally { _isUpdating = false; RefreshButton.IsEnabled = true; }
+
+            _listDownloadFailed = !ok;
+            if (!File.Exists(CloudPath))
             {
                 StatusLabel.Text = "لیست دانلود نشد. اتصال اینترنت را بررسی کنید و دوباره «دریافت لیست تازه» را بزنید.";
                 return;
             }
-            finally { _isUpdating = false; RefreshButton.IsEnabled = true; }
+            if (!ok) StatusLabel.Text = "لیست تازه دانلود نشد (روی این اینترنت گیت‌هاب و آینه‌هایش بسته‌اند). لیست قبلی تست می‌شود و لیست تازه از داخل اولین سرور سالم گرفته می‌شود.";
             await DiscoverAsync(fresh: false);   // کانفیگ‌هایی که همین الان تست شدن دوباره تست نمی‌شن
+            if (!ok) await FetchListThroughServerAsync();
         }
 
-        private static async Task<(string list, string? sources)> DownloadListAsync(bool useSystemProxy)
+        private async Task SaveListAsync((string list, string? sources) data)
         {
-            using var client = new HttpClient(new HttpClientHandler { UseProxy = useSystemProxy }) { Timeout = TimeSpan.FromSeconds(useSystemProxy ? 12 : 20) };
-            string list = await client.GetStringAsync(OnlineConfigUrl);
+            await File.WriteAllTextAsync(CloudPath, data.list);
+            if (data.sources != null) await File.WriteAllTextAsync(CloudSourcesPath, data.sources);
+            _discoverGen++;   // تست خودکارِ لیست قبلی دیگه ردیف اضافه نمی‌کنه
+            _discovering = false;
+            LoadConfigs();
+        }
+
+        // لیست همون روزی که این نسخه ساخته شده (همراه برنامه). کهنه‌ست ولی برای شروع کافیه: اگه حتی یکی‌ش کار کنه،
+        // لیست تازه از داخل همون گرفته می‌شه. تاریخش قدیمی گذاشته می‌شه تا دفعه‌ی بعد دوباره دانلود امتحان بشه.
+        private async Task UseSeedListAsync()
+        {
+            try
+            {
+                using (var src = await FileSystem.OpenAppPackageFileAsync("seed_servers.txt"))
+                using (var dst = File.Create(CloudPath))
+                    await src.CopyToAsync(dst);
+                File.SetLastWriteTime(CloudPath, DateTime.Now.AddDays(-1));
+                _discoverGen++;
+                _discovering = false;
+                LoadConfigs();
+            }
+            catch { }
+        }
+
+        // آینه‌ها روی این اینترنت بسته‌ان: لیست تازه از داخل اتصال خود درفش، یا اگه وصل نیستیم، از داخل سریع‌ترین سرور سالم
+        // (با یه xray موقت). بعدش سرورهای لیست تازه تست می‌شن.
+        private async Task FetchListThroughServerAsync()
+        {
+            if (!_listDownloadFailed || _isUpdating) return;
+            var best = isConnected ? null : WorkingServers().FirstOrDefault();
+            if (!isConnected && best == null) return;
+            _isUpdating = true;
+            XrayProc? proc = null; int port = XrayProc.SessionPort; string? configPath = null;
+            try
+            {
+                if (best != null) (proc, port, configPath) = await StartTestXray(best.Config);
+                var data = await DownloadListAsync(socksPort: port);
+                StopTestXray(proc, port, configPath); proc = null;
+                await SaveListAsync(data);
+                _listDownloadFailed = false;
+                if (!_connecting) StatusLabel.Text = "لیست تازه از داخل یک سرور سالم گرفته شد.";
+            }
+            catch { return; }
+            finally
+            {
+                if (proc != null) StopTestXray(proc, port, configPath);
+                _isUpdating = false;
+            }
+            await DiscoverAsync(fresh: false);
+        }
+
+        private static async Task<(string list, string? sources)> DownloadListAsync(bool useSystemProxy = false, int? socksPort = null)
+        {
+            var timeout = TimeSpan.FromSeconds(socksPort != null ? 25 : useSystemProxy ? 12 : 20);
+            using var client = socksPort is int port ? XrayProc.SocksClient(port, timeout)
+                                                     : new HttpClient(new HttpClientHandler { UseProxy = useSystemProxy }) { Timeout = timeout };
+            // لیست کامل حدود ۲۰۰۰ خطه؛ کمتر از ۲۰۰ یعنی نصفه رسیده (بعضی آینه‌ها فایل بزرگ رو نصفه می‌دن)
+            string list = await FetchAnyMirrorAsync(client, "derafsh_servers.txt", text => text.Count(c => c == '\n') >= 200 && text.Contains("://"));
             string? sources = null;
             // فایل منبع اختیاریه؛ اگه نبود، برنامه بدون اون کار می‌کنه
-            try { sources = await client.GetStringAsync(OnlineSourcesUrl); } catch { }
+            try { sources = await FetchAnyMirrorAsync(client, "derafsh_sources.json", text => text.TrimStart().StartsWith('{') && text.TrimEnd().EndsWith('}')); } catch { }
             return (list, sources);
+        }
+
+        // همه‌ی آینه‌ها با هم؛ اولین جوابی که سالم برسه برداشته می‌شه و بقیه لغو می‌شن
+        private static async Task<string> FetchAnyMirrorAsync(HttpClient client, string file, Func<string, bool> valid)
+        {
+            using var cts = new CancellationTokenSource(client.Timeout);
+            var pending = ListMirrors.Select(m => client.GetAsync(m + file, HttpCompletionOption.ResponseHeadersRead, cts.Token)).ToList();
+            try
+            {
+                while (pending.Count > 0)
+                {
+                    var first = await Task.WhenAny(pending);
+                    pending.Remove(first);
+                    if (!first.IsCompletedSuccessfully) continue;
+                    using var res = first.Result;
+                    if (!res.IsSuccessStatusCode) continue;
+                    try { string text = await res.Content.ReadAsStringAsync(cts.Token); if (valid(text)) return text; }
+                    catch { }
+                }
+                throw new HttpRequestException("No mirror answered.");
+            }
+            finally
+            {
+                cts.Cancel();
+                foreach (var t in pending) _ = t.ContinueWith(x => { if (x.IsCompletedSuccessfully) x.Result.Dispose(); });
+            }
         }
 
         private async void OnAddCustomConfigClicked(object sender, EventArgs e)
@@ -316,17 +416,18 @@ namespace Derafsh.Client
 
         // ---------- اشتراک‌گذاری کانفیگ‌ها ----------
 
-        // اشتراک لینک خام یک کانفیگ (با سیستم‌عامل؛ در اندروید برگه‌ی اشتراک، در ویندوز پنجره‌ی Share)
+        // اشتراک یک کانفیگ: QR (برای اسکن با گوشی دیگه) به‌علاوه‌ی «کپی لینک» و «فرستادن»
         private async void OnShareClicked(object sender, EventArgs e)
         {
             if (sender is not Button btn || btn.CommandParameter is not Server s) return;
-            try
-            {
-                await Share.Default.RequestAsync(new ShareTextRequest { Text = s.Config, Title = string.IsNullOrEmpty(s.City) ? "Derafsh config" : s.City });
-                StatusLabel.Text = $"لینک {Q(s.City)} برای اشتراک آماده شد";
-            }
-            catch { StatusLabel.Text = "اشتراک‌گذاری انجام نشد."; }
+            await Navigation.PushModalAsync(new QrPage(string.IsNullOrEmpty(s.City) ? "کانفیگ" : s.City, s.Config,
+                "با دوربین برنامه‌ی VPN یک گوشی دیگر اسکن کنید، مثلاً v2rayNG یا Hiddify یا V2Box یا Streisand. یا لینک را کپی کنید یا بفرستید."));
         }
+
+        // لینک اشتراک درفش (برای آیفون و برنامه‌های دیگر)، با QR
+        private async void OnShareSubscriptionClicked(object sender, EventArgs e) =>
+            await Navigation.PushModalAsync(new QrPage("لینک اشتراک درفش", SubscriptionUrl,
+                "برای آیفون و برنامه‌های دیگر: این QR را در Hiddify یا V2Box یا Streisand یا v2rayNG اسکن کنید، یا لینک را به‌عنوان اشتراک اضافه کنید. لیست هر ۴ ساعت خودکار تازه می‌شود."));
 
         // اشتراک همه‌ی سرورهایی که الان جواب می‌دن، یکجا (هر لینک در یک خط)
         private async void OnShareWorkingClicked(object sender, EventArgs e)
@@ -672,6 +773,8 @@ namespace Derafsh.Client
                 UpdateHome();
                 StartGuard();
                 StartSpareUpkeep();
+                if (_listDownloadFailed) _ = FetchListThroughServerAsync();
+                if (_updateTag == null) _ = CheckForUpdateAsync();   // شاید گیت‌هاب قبل از اتصال جواب نداده بود
                 return true;
             }
             catch (Exception ex)

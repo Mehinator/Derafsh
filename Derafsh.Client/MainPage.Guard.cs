@@ -231,14 +231,17 @@ namespace Derafsh.Client
                 var current = typeof(MainPage).Assembly.GetName().Version;
                 if (current == null) return;
                 JsonDocument? doc = null;
-                foreach (bool viaProxy in new[] { true, false })   // اول از راه پروکسی سیستم (اگه وصلیم)، بعد مستقیم
+                // اول از راه پروکسی سیستم (اگه وصلیم)، بعد مستقیم، بعد از داخل اتصال خود درفش (اندروید: خود برنامه بیرون از VPN
+                // است و وقتی گیت‌هاب روی این اینترنت بسته‌ست، فقط از داخل اتصال جواب می‌ده)
+                for (int way = 0; way < 3 && doc == null; way++)
                 {
+                    if (way == 2 && !isConnected) break;
                     try
                     {
-                        using var client = new HttpClient(new HttpClientHandler { UseProxy = viaProxy }) { Timeout = TimeSpan.FromSeconds(12) };
+                        using var client = way == 2 ? XrayProc.SocksClient(XrayProc.SessionPort, TimeSpan.FromSeconds(15))
+                                                    : new HttpClient(new HttpClientHandler { UseProxy = way == 0 }) { Timeout = TimeSpan.FromSeconds(12) };
                         client.DefaultRequestHeaders.UserAgent.ParseAdd("Derafsh-App");   // گیت‌هاب بدون User-Agent جواب نمی‌ده
                         doc = JsonDocument.Parse(await client.GetStringAsync(LatestReleaseApi));
-                        break;
                     }
                     catch { }
                 }

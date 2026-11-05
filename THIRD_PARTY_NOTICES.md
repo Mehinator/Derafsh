@@ -14,8 +14,26 @@ and is at https://github.com/patterniha/Xray-core/blob/main/LICENSE. Source code
 
 ## hev-socks5-tunnel (Android only)
 
-`hev-socks5-tunnel.aar` v2.19.1 by hev (https://github.com/heiher/hev-socks5-tunnel), unmodified, used to pass the
-phone's VPN traffic to Xray. Licensed under the MIT License (https://github.com/heiher/hev-socks5-tunnel/blob/main/License).
+`hev-socks5-tunnel.aar` v2.19.1 by hev (https://github.com/heiher/hev-socks5-tunnel), used to pass the phone's VPN traffic to
+Xray. Its Java classes are used as released; its native library is rebuilt by the release workflow from the same source
+(tag 2.19.1) for Android 6 (API 21, FORTIFY off), with no code changes. Licensed under the MIT License
+(https://github.com/heiher/hev-socks5-tunnel/blob/main/License).
+
+## QRCoder
+
+QRCoder 1.6.0 (https://github.com/Shane32/QRCoder), used to draw QR codes for configs and the subscription link.
+Licensed under the MIT License (https://github.com/Shane32/QRCoder/blob/master/LICENSE.txt).
+
+## Mozilla CA certificate bundle (Android 6 and 7)
+
+`Derafsh.Client/Resources/Raw/cacert.pem`, the Mozilla root certificates as published by curl (https://curl.se/docs/caextract.html),
+given to Xray on Android 7.0 and older, whose own root certificates are out of date. Licensed under the Mozilla Public License 2.0.
+
+## Iranian IP ranges
+
+`Derafsh.Client/Resources/Raw/iran_ip.txt` (for "Iranian sites without VPN") is the IPv4 `IR` list taken from the `geoip.dat`
+that ships with Xray-core (see above), merged into fewer ranges. The list's own data comes from the geoip projects behind that file
+and their sources; see https://github.com/v2fly/geoip and https://github.com/Loyalsoldier/geoip for their licenses.
 
 ## Vazirmatn font
 

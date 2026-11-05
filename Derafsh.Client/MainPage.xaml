@@ -77,7 +77,7 @@
                                 <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
                                         ToolTipProperties.Text="بررسی می‌کند Gemini (هوش مصنوعی گوگل) از طریق همین سرور باز می‌شود یا نه" />
                                 <Button Text="اشتراک" Style="{StaticResource RowButton}" Clicked="OnShareClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="لینک این کانفیگ را با دیگران به اشتراک می‌گذارد" />
+                                        ToolTipProperties.Text="QR و لینک این کانفیگ را نشان می‌دهد، برای اسکن با گوشی دیگر یا فرستادن" />
                                 <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
                                         ToolTipProperties.Text="{Binding IsFavorite, Converter={StaticResource FavoriteName}}"
                                         SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
@@ -250,6 +250,8 @@
                         ToolTipProperties.Text="سرورهایی که الان جواب می‌دهند را با اسمی که خودتان می‌گذارید ذخیره می‌کند" />
                 <Button x:Name="ShareWorkingButton" Text="اشتراک سالم‌ها" Style="{StaticResource SecondaryButton}" Clicked="OnShareWorkingClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="لینک همه‌ی سرورهایی که الان جواب می‌دهند را یکجا به اشتراک می‌گذارد" />
+                <Button x:Name="ShareSubButton" Text="لینک اشتراک (QR)" Style="{StaticResource SecondaryButton}" Clicked="OnShareSubscriptionClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="لینک و QR اشتراک درفش، برای آیفون و برنامه‌های دیگر مثل Hiddify یا V2Box یا Streisand یا v2rayNG" />
                 <Button x:Name="DeleteListButton" Text="حذف این لیست" Style="{StaticResource SecondaryButton}" TextColor="{StaticResource Danger}" Clicked="OnDeleteSavedListClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="این لیست ذخیره‌شده را پاک می‌کند" />
             </FlexLayout>

@@ -22,6 +22,10 @@ namespace Derafsh.Client
         public const string ActionStop = "com.derafsh.client.STOP";
         public const string ActionSwitch = "com.derafsh.client.SWITCH";   // دکمه‌ی «تعویض سرور»: همین الان برو روی زاپاس
         public const int SocksPort = 10809;
+        private const int TunMtu = 8500;
+
+        // سرعت دانلود برنامه‌های کاربر از تونل (کیلوبایت بر ثانیه، میانگین چند ثانیه‌ی اخیر)
+        public static int UserDownKbps => s_current is { } s && IsRunning ? (int)s._downKbps : 0;
 
         public static bool IsRunning { get; private set; }
         public static string? LastError { get; private set; }
@@ -72,9 +76,10 @@ namespace Derafsh.Client
 
                 // فقط IPv4: بدون آدرس IPv6، اندروید IPv6 برنامه‌ها رو همون لحظه رد می‌کنه و برنامه‌ها بی‌معطلی از IPv4 می‌رن.
                 // (خیلی از سرورهای رایگان IPv6 ندارن؛ و xray با IP اصلی مسیر رو انتخاب می‌کنه، مثلاً IPهای ایران مستقیم)
+                // MTU بزرگ (پیش‌فرض خود hev): بسته‌های کمتر بین برنامه‌ها و تونل، یعنی کار کمتر برای پردازنده‌ی گوشی موقع ویدیو
                 var builder = new Builder(this)
                     .SetSession("Derafsh")!
-                    .SetMtu(1500)!
+                    .SetMtu(TunMtu)!
                     .AddAddress("172.19.0.1", 30)!
                     .AddRoute("0.0.0.0", 0)!
                     .AddDnsServer("1.1.1.1")!
@@ -95,9 +100,8 @@ namespace Derafsh.Client
 
                 string hevConfig = Path.Combine(CacheDir!.AbsolutePath, "hev.yml");
                 File.WriteAllText(hevConfig,
-                    "tunnel:\n  mtu: 1500\n  ipv4: 172.19.0.1\n" +
-                    $"socks5:\n  port: {SocksPort}\n  address: 127.0.0.1\n  udp: 'udp'\n" +
-                    "misc:\n  task-stack-size: 81920\n");
+                    $"tunnel:\n  mtu: {TunMtu}\n  ipv4: 172.19.0.1\n" +
+                    $"socks5:\n  port: {SocksPort}\n  address: 127.0.0.1\n  udp: 'udp'\n");
                 Hev.Start(this, hevConfig, _tun.Fd);
 
                 IsRunning = true;

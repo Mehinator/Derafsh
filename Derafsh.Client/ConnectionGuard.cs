@@ -20,7 +20,8 @@ namespace Derafsh.Client
         public const string ReasonDown = "down", ReasonSlow = "slow", ReasonManual = "manual";
 
         private const int CheckEverySeconds = 10, RecheckSeconds = 3, FailuresBeforeSwitch = 2;
-        private const int SpeedCheckEvery = 4, FlowingSpeed = 100;   // ۴ × ۱۰ ثانیه؛ کیلوبایت بر ثانیه
+        private const int SpeedCheckEvery = 4;   // ۴ × ۱۰ ثانیه
+        public const int FlowingSpeed = 100;     // کیلوبایت بر ثانیه: ترافیک خود کاربر داره تند رد می‌شه
 
         private readonly Func<Spare, Task<bool>> _switchTo;
         private readonly Func<IReadOnlyList<Spare>> _spares;

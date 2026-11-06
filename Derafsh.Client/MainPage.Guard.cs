@@ -37,6 +37,11 @@ namespace Derafsh.Client
         private async Task RefreshSparesAsync()
         {
             if (!isConnected || _refreshingSpares) return;
+#if ANDROID
+            // کاربر داره ویدیو می‌بینه یا دانلود می‌کنه: تست سرورهای دیگه (که هر کدوم یه تکه دانلود دارن) همون اینترنت رو
+            // ازش می‌گیره و ویدیو گیر می‌کنه. اگه زاپاس داریم، این دور تست نمی‌شه (موقع تعویض، زاپاس دوباره امتحان می‌شه)
+            if (_spares.Count > 0 && DerafshVpnService.UserDownKbps >= ConnectionGuard.FlowingSpeed) return;
+#endif
             _refreshingSpares = true;
             try
             {

@@ -117,10 +117,11 @@ namespace Derafsh.Client.Services
                     ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = true },
                     ["sniffing"] = Sniffing(),
                 }),
-                ["dns"] = new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") },
+                ["dns"] = Dns(),
                 ["outbounds"] = new JsonArray(outbound,
                     new JsonObject { ["protocol"] = "freedom", ["tag"] = "direct" },
-                    new JsonObject { ["protocol"] = "blackhole", ["tag"] = "block" }),
+                    new JsonObject { ["protocol"] = "blackhole", ["tag"] = "block" },
+                    new JsonObject { ["protocol"] = "dns", ["tag"] = "dns-out" }),
                 // روتینگ آزاد (AsIs)، با یه استثنا: QUIC (UDP پورت 443) بسته می‌شه.
                 // اینستاگرام و یوتیوب اول QUIC امتحان می‌کنن؛ خیلی از کانفیگ‌های رایگان UDP رو بد رد می‌کنن و ویدیو وسطش
                 // می‌ایسته تا برنامه دیر به TCP برگرده. با بستنش، برنامه‌ها همون اول از TCP می‌رن (کاری که v2rayNG هم می‌کنه).
@@ -148,9 +149,23 @@ namespace Derafsh.Client.Services
             return sniffing;
         }
 
+        // DNS گوشی (اندروید): هر درخواست DNS که از تونل می‌اومد، یه اتصال تازه به سرور باز می‌کرد (TCP + TLS + ...)، یعنی
+        // برای هر اسم سایت تازه نیم تا چند ثانیه معطلی، و روی سرورهایی که UDP رو رد نمی‌کنن اصلاً جواب نمی‌اومد.
+        // حالا xray خودش جواب می‌ده: از راه یه اتصال ثابت DoH (روی TCP) از داخل سرور، با حافظه؛ فقط IPv4 چون تونل IPv4 است.
+        // (تست روی پورت جدا: قبلاً هر درخواست ۴۵۰ تا ۹۷۰ میلی‌ثانیه، حالا ۱۵۵ میلی‌ثانیه و تکراری‌ها ۱ میلی‌ثانیه)
+        private static JsonObject Dns()
+        {
+#if ANDROID
+            return new JsonObject { ["servers"] = new JsonArray("https://1.1.1.1/dns-query", "https://8.8.8.8/dns-query"), ["queryStrategy"] = "UseIPv4" };
+#else
+            return new JsonObject { ["servers"] = new JsonArray("8.8.8.8", "1.1.1.1") };
+#endif
+        }
+
         private static JsonArray Rules(bool iranDirect)
         {
             var rules = new JsonArray();
+            rules.Add(new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = "53", ["outboundTag"] = "dns-out" });
             if (iranDirect)
                 rules.Add(new JsonObject { ["type"] = "field", ["domain"] = new JsonArray(IranDomains.Select(x => (JsonNode)JsonValue.Create(x)!).ToArray()), ["outboundTag"] = "direct" });
             var directIps = iranDirect ? PrivateRanges.Concat(IranIpRanges) : PrivateRanges;
@@ -309,7 +324,7 @@ namespace Derafsh.Client.Services
                     s["wsSettings"] = new JsonObject { ["path"] = path, ["host"] = host };
                     break;
                 case "grpc":
-                    s["grpcSettings"] = new JsonObject { ["serviceName"] = serviceName ?? "" };
+                    s["grpcSettings"] = new JsonObject { ["serviceName"] = serviceName ?? "", ["multiMode"] = mode == "multi" };
                     break;
                 case "xhttp":
                     s["xhttpSettings"] = new JsonObject { ["path"] = path, ["host"] = host, ["mode"] = string.IsNullOrEmpty(mode) ? "auto" : mode };
@@ -341,7 +356,9 @@ namespace Derafsh.Client.Services
             }
             // keep-alive: اتصالی که وسط راه بی‌صدا مرده (مثلاً ویدیو وسط پخش ایستاده) زودتر بسته می‌شه تا برنامه دوباره وصل
             // بشه؛ پیش‌فرض Go تا حدود دو و نیم دقیقه صبر می‌کرد (۱۵ ثانیه + ۹ × ۱۵ ثانیه)
-            s["sockopt"] = new JsonObject { ["tcpFastOpen"] = true, ["tcpKeepAliveIdle"] = 15, ["tcpKeepAliveInterval"] = 5 };
+            // TCP Fast Open خاموش (مثل بقیه‌ی برنامه‌ها): سرورهای رایگان پشتیبانی‌اش نمی‌کنن و بسته‌ی SYN با داده رو بعضی
+            // فیلترها دور می‌ریزن؛ اون‌وقت هر اتصال تازه یه ثانیه منتظر تکرار SYN می‌مونه
+            s["sockopt"] = new JsonObject { ["tcpKeepAliveIdle"] = 15, ["tcpKeepAliveInterval"] = 5 };
             return s;
         }
 

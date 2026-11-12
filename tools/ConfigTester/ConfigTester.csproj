@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- Tests the collected share links on GitHub Actions before they go into derafsh_servers.txt (see collector.py).
+	     It builds every link with the app's own ConfigService, so a config is tested exactly as the app connects with it. -->
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<InvariantGlobalization>true</InvariantGlobalization>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Include="..\..\Derafsh.Client\Service\ConfigService.cs" Link="App\ConfigService.cs" />
+		<Compile Include="..\..\Derafsh.Client\Models\Server.cs" Link="App\Server.cs" />
+		<Compile Include="..\..\Derafsh.Client\Models\ConfigDto.cs" Link="App\ConfigDto.cs" />
+	</ItemGroup>
+
+</Project>

@@ -11,4 +11,5 @@ exclude:
   - Derafsh.Client/
   - Derafsh.sln
   - collector.py
+  - tools/
   - THIRD_PARTY_NOTICES.md

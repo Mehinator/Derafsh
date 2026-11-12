@@ -2,13 +2,23 @@ name: Update Derafsh Configs
 
 on:
   schedule:
-    - cron: '17 */4 * * *' # هر 4 ساعت یکبار (ساعت 0:17, 4:17, 8:17...)؛ دقیقه 17 چون سر ساعت گیت‌هاب شلوغه و دیر اجرا می‌کنه
+    - cron: '17 */2 * * *' # هر ۲ ساعت (ساعت 0:17, 2:17, 4:17...)؛ دقیقه 17 چون سر ساعت گیت‌هاب شلوغه و دیر اجرا می‌کنه
   workflow_dispatch: # اجازه میده دکمه Run رو دستی هم بزنی
+    inputs:
+      dry_run:
+        description: "فقط تست و آمار؛ لیست عوض نشه"
+        type: boolean
+        default: false
+
+# دو اجرا با هم لیست رو عوض نکنن
+concurrency:
+  group: update-configs
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
 
     permissions:
       contents: write # اجازه میده فایل رو تغییر بده و ذخیره کنه
@@ -23,14 +33,34 @@ jobs:
         with:
           python-version: '3.x'
 
+      - name: Set up .NET (for the config tester)
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # همون Xray (فورک patterniha) و همون نسخه‌ای که برنامه داره (Derafsh.Client.csproj)؛ موقع عوض کردن نسخه، هر دو جا
+      - name: Get Xray for testing (SHA-256 checked)
+        run: |
+          curl -sSfL --retry 3 -o xray.zip "https://github.com/patterniha/Xray-core/releases/download/v26.10.22/Xray-linux-64.zip"
+          echo "d32101fad9e76cc9c539ee6424d9d57d88cadbd89455bb1abf9002236cecb6ef  xray.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/xray" && unzip -q xray.zip -d "$RUNNER_TEMP/xray" && chmod +x "$RUNNER_TEMP/xray/xray" && rm xray.zip
+
+      - name: Build the config tester
+        run: dotnet publish tools/ConfigTester/ConfigTester.csproj -c Release -o "$RUNNER_TEMP/tester" --nologo -v q
+
       - name: Install dependencies
         run: pip install requests
 
       - name: Run Collector Script
+        env:
+          DERAFSH_TESTER: dotnet ${{ runner.temp }}/tester/ConfigTester.dll
+          DERAFSH_XRAY: ${{ runner.temp }}/xray/xray
+          DERAFSH_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: python collector.py
 
       - name: Commit and Push changes
         id: commit
+        if: ${{ !inputs.dry_run }}
         run: |
           git config --global user.name "Derafsh Bot"
           git config --global user.email "bot@derafsh.com"
@@ -39,6 +69,8 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "🔄 Auto-update configs"
+            # تست چند دقیقه طول می‌کشه؛ اگه این وسط چیزی روی main آمده، اول روی اون
+            git pull --rebase
             git push
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi

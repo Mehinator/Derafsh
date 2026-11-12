@@ -5,6 +5,9 @@ import sys
 import json
 import html
 import base64
+import shlex
+import tempfile
+import subprocess
 from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
@@ -22,6 +25,40 @@ CHANNELS = [
     "https://t.me/s/Express_freevpn",
     "https://t.me/s/i10VPN",
 ]
+
+# از هر کانال چند صفحه (هر صفحه حدود ۲۰ پیام آخر)
+TELEGRAM_PAGES = 2
+
+# لیست‌های عمومی گیت‌هاب (جمع‌کننده‌های دیگه که هر ۱۵ دقیقه تا ۴ ساعت تازه می‌شن و از صدها کانال جمع می‌کنن؛
+# همون‌هایی که برنامه‌هایی مثل MEH VPN هم می‌گیرن). فقط وقتی اضافه می‌شن که تست (پایین) اجرا بشه، چون بیشترشون
+# مرده‌ان و بدون تست فقط لیست رو شلوغ می‌کنن.
+GITHUB_LISTS = [
+    ("rzashakeri", "https://raw.githubusercontent.com/rzashakeri/v2ray-configs/main/configs/all.txt"),
+    ("mhcfp", "https://raw.githubusercontent.com/mhcfpTopic/config/main/xray_final.txt"),
+    ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/Tested.txt"),
+    ("PSG", "https://raw.githubusercontent.com/itsyebekhe/PSG/main/config.txt"),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vless.txt"),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/trojan.txt"),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vmess.txt"),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/ss.txt"),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub1.txt"),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub2.txt"),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub3.txt"),
+    ("ALIILAPRO", "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt"),
+    ("arshiacomplus", "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/mix/sub.html"),
+    ("Masir_Sefid", "https://raw.githubusercontent.com/masir-sefid/Sub/main/@Masir_Sefid.txt"),
+]
+PER_LIST = 500          # از هر لیست، چندتای اول
+MAX_CANDIDATES = 7000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۱۵ دقیقه)
+
+# تست قبل از ساختن لیست: برنامه‌ی tools/ConfigTester هر لینک رو با کد خود درفش (ConfigService) به Xray تبدیل می‌کنه و
+# از داخلش generate_204 گوگل و یه دانلود واقعی رو امتحان می‌کنه. فقط اون‌هایی که جواب می‌دن توی لیست می‌مونن.
+# روی گیت‌هاب (بیرون از ایران) اجرا می‌شه، پس فیلتر ایران رو نمی‌سنجه؛ سرورهای مرده رو کنار می‌ذاره و بقیه رو گوشی
+# روی اینترنت خودش تست می‌کنه. بدون این دو متغیر (مثلاً اجرای دستی) مثل قبل، بدون تست.
+TESTER = os.environ.get("DERAFSH_TESTER")   # مثلاً "dotnet tester/ConfigTester.dll"
+XRAY = os.environ.get("DERAFSH_XRAY")
+DRY_RUN = bool(os.environ.get("DERAFSH_DRY_RUN"))   # فقط تست و آمار، لیست عوض نمی‌شه
+MIN_ALIVE = 150   # کمتر از این زنده بود یعنی تست خودش درست کار نکرده؛ لیست مثل قبل ساخته می‌شه
 
 # فایل خروجی
 OUTPUT_FILE = "derafsh_servers.txt"
@@ -135,6 +172,37 @@ def server_key(link):
         return body
 
 
+def interleave(groups):
+    """از هر گروه یکی به نوبت، تا اول لیست فقط مال یه منبع نباشه"""
+    out = []
+    for group in zip_longest(*groups):
+        out.extend(link for link in group if link)
+    return out
+
+
+def channel_page_links(url):
+    """لینک‌های چند صفحه‌ی آخر یه کانال، به ترتیب زمان (قدیمی‌تر اول)؛ None یعنی کانال پیام عمومی نداره"""
+    links, before = [], None
+    for _ in range(TELEGRAM_PAGES):
+        response = requests.get(url + (f"?before={before}" if before else ""), timeout=15, headers=HEADERS)
+        if response.status_code != 200:
+            if before:
+                break
+            raise Exception(f"HTTP {response.status_code}")
+        # تلگرام & رو توی HTML به شکل &amp; می‌نویسه؛ اول برش می‌گردونیم
+        page = html.unescape(response.text)
+        if "tgme_widget_message" not in page:
+            if before:
+                break
+            return None
+        links = [c for c in (clean_link(m) for m in LINK_PATTERN.findall(page)) if c] + links
+        ids = [int(x) for x in re.findall(r'data-post="[^"/]+/(\d+)"', page)]
+        if not ids:
+            break
+        before = min(ids)   # صفحه‌ی قبلی: پیام‌های قدیمی‌تر از این
+    return links
+
+
 def get_new_configs(sources):
     per_channel = []
 
@@ -142,35 +210,147 @@ def get_new_configs(sources):
     for url in CHANNELS:
         name = url.rstrip('/').split('/')[-1]
         try:
-            response = requests.get(url, timeout=15, headers=HEADERS)
-            if response.status_code != 200:
-                print(f"   ❌ {name}: HTTP {response.status_code}")
-                continue
-
-            # تلگرام & رو توی HTML به شکل &amp; می‌نویسه؛ اول برش می‌گردونیم
-            page = html.unescape(response.text)
-            if "tgme_widget_message" not in page:
+            links = channel_page_links(url)
+            if links is None:
                 print(f"   ⚠️ {name}: No public messages (channel deleted, private, or preview disabled?)")
                 continue
-
-            links = [c for c in (clean_link(m) for m in LINK_PATTERN.findall(page)) if c]
             # پیام‌های جدیدتر پایین صفحه‌ان؛ برعکس می‌کنیم که جدیدترها اول باشن، و هر سرور فقط یه بار
             unique = {}
             for link in reversed(links):
                 unique.setdefault(server_key(link), link)
             links = list(unique.values())
             for link in links:
-                sources[link] = name
+                sources.setdefault(link, name)
             per_channel.append(links)
             print(f"   ✅ {name}: Found {len(links)}")
         except Exception as e:
             print(f"   ❌ {name}: {e}")
 
-    # از هر کانال یکی به نوبت، تا اول لیست فقط مال یه کانال نباشه
-    found_configs = []
-    for group in zip_longest(*per_channel):
-        found_configs.extend(link for link in group if link)
-    return found_configs
+    return interleave(per_channel)
+
+
+def get_list_configs(sources):
+    """کانفیگ‌های لیست‌های عمومی گیت‌هاب (متن ساده یا base64)"""
+    per_list = []
+    print("🚀 Fetching public GitHub lists...")
+    for name, url in GITHUB_LISTS:
+        try:
+            response = requests.get(url, timeout=30, headers=HEADERS)
+            if response.status_code != 200:
+                print(f"   ❌ {name}: HTTP {response.status_code} ({url})")
+                continue
+            text = response.text
+            if "://" not in text[:5000]:   # لینک اشتراک base64
+                data = re.sub(r"\s+", "", text).replace("-", "+").replace("_", "/")
+                try:
+                    text = base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "ignore")
+                except Exception:
+                    pass
+            unique = {}
+            for link in (c for c in (clean_link(m) for m in LINK_PATTERN.findall(text)) if c):
+                unique.setdefault(server_key(link), link)
+            links = list(unique.values())[:PER_LIST]
+            for link in links:
+                sources.setdefault(link, name)
+            per_list.append(links)
+            print(f"   ✅ {name}: Found {len(links)} ({url.rsplit('/', 1)[-1]})")
+        except Exception as e:
+            print(f"   ❌ {name}: {e}")
+    return interleave(per_list)
+
+
+def test_configs(links):
+    """نتیجه‌ی تست هر لینک: {لینک: (وضعیت، پینگ، سرعت)}؛ None یعنی تست اجرا نشد"""
+    if not TESTER or not XRAY:
+        print("ℹ️ No tester (DERAFSH_TESTER / DERAFSH_XRAY): the list is built without testing")
+        return None
+    work = tempfile.mkdtemp(prefix="derafsh-")
+    candidates_path = os.path.join(work, "candidates.txt")
+    results_path = os.path.join(work, "results.tsv")
+    with open(candidates_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(links) + "\n")
+    print(f"🧪 Testing {len(links)} configs with Xray...")
+    try:
+        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "200", "18"], check=True, timeout=25 * 60)
+        results = {}
+        with open(results_path, encoding="utf-8") as f:
+            for line in f:
+                parts = line.rstrip("\n").split("\t")
+                if len(parts) >= 2:
+                    ping = int(parts[2]) if len(parts) > 3 else 0
+                    kbps = int(parts[3]) if len(parts) > 3 else 0
+                    results[parts[0]] = (parts[1], ping, kbps)
+        return results
+    except Exception as e:
+        print(f"❌ Tester failed: {e}")
+        return None
+
+
+def spread_key(link):
+    """برای پخش کردن: آدرس سرور + اسم سایتی که پشتشه (sni/host)؛ مثلاً ده‌تا ورکر مختلف روی یه IP کلادفلر یکی حساب نمی‌شن"""
+    key = server_key(link)
+    if not isinstance(key, tuple):
+        return key
+    if key[0] == "vmess":
+        return (key[1], key[9] or key[6])
+    return (key[2], key[6] or key[7])
+
+
+def spread(links, per_key=2):
+    """از هر سرور حداکثر دوتا پشت سر هم اول لیست؛ بقیه‌ی همون سرور آخر، تا گوشی اول سرورهای مختلف رو تست کنه"""
+    first, rest, count = [], [], {}
+    for link in links:
+        k = spread_key(link)
+        count[k] = count.get(k, 0) + 1
+        (first if count[k] <= per_key else rest).append(link)
+    return first + rest
+
+
+def speed_rank(kbps):
+    # سرعت از گیت‌هاب (۱۵۰ کیلوبایت): بیشتر توان خود سرور رو نشون می‌ده، نه سرعتی که از ایران می‌گیره
+    return 0 if kbps >= 1000 else 1 if kbps >= 300 else 2
+
+
+def dedup(links):
+    out, seen = [], set()
+    for link in links:
+        key = server_key(link)
+        if key not in seen:
+            seen.add(key)
+            out.append(link)
+    return out
+
+
+def build_tested_list(candidates, results, old_configs, sources):
+    """لیست نهایی از کانفیگ‌های سالم: تازه‌ها اول (سریع‌ترها جلوتر، سرورهای مختلف پخش)، بعد سالم‌های لیست قبلی به
+    همون ترتیب قبلی، بعد اون‌هایی که وقت نشد تست بشن. مرده‌ها و خراب‌ها حذف می‌شن.
+    None یعنی خیلی کم جواب دادن و احتمالاً خود تست خراب بوده"""
+    status = lambda c: results.get(c, ("untested", 0, 0))
+    alive = [c for c in candidates if status(c)[0] == "ok"]
+
+    stats = {}
+    for c in candidates:
+        name = sources.get(c) or sources.get(c + '#') or "?"
+        s = stats.setdefault(name, [0, 0])
+        s[0] += 1
+        s[1] += status(c)[0] == "ok"
+    print(f"🧪 {len(alive)} of {len(candidates)} configs work. By source (tested / work):")
+    for name, (n, ok) in sorted(stats.items(), key=lambda x: -x[1][1]):
+        print(f"   {name}: {n} / {ok} ({ok * 100 // max(1, n)}%)")
+    if len(alive) < MIN_ALIVE:
+        print(f"⚠️ Only {len(alive)} passed (fewer than {MIN_ALIVE}): the test itself may be broken; keeping the untested list")
+        return None
+
+    old_keys = {server_key(c) for c in old_configs}
+    new_alive = [c for c in alive if server_key(c) not in old_keys]
+    new_alive.sort(key=lambda c: speed_rank(status(c)[2]))   # پایدار: توی هر دسته‌ی سرعت، ترتیب منبع‌ها می‌مونه
+    alive_by_key = {server_key(c): c for c in alive}
+    old_alive = [alive_by_key[server_key(c)] for c in old_configs if server_key(c) in alive_by_key]
+    untested = [c for c in candidates if status(c)[0] == "untested"]
+    fast = sum(1 for c in alive if speed_rank(status(c)[2]) == 0)
+    print(f"   new {len(new_alive)}, still working from the last list {len(old_alive)}, untested {len(untested)}, "
+          f"fast (≥1 MB/s from GitHub) {fast}")
+    return dedup(spread(new_alive) + old_alive + untested)
 
 
 if __name__ == "__main__":
@@ -207,13 +387,18 @@ if __name__ == "__main__":
 
     # 3. ترکیب هوشمند (جدیدها اول، قدیمی‌ها بعد)
     # یه سرور تکراری حساب می‌شه حتی با اسم دیگه، کانال دیگه، ترتیب پارامتر دیگه یا vmess با اسم داخلی دیگه
-    combined = []
-    seen = set()
-    for config in new_configs + old_configs:
-        key = server_key(config)
-        if key not in seen:
-            seen.add(key)
-            combined.append(config)
+    combined = dedup(new_configs + old_configs)
+
+    # 3.5. با تست: لیست‌های عمومی گیت‌هاب هم اضافه می‌شن و فقط کانفیگ‌هایی که واقعاً کار می‌کنن می‌مونن
+    if TESTER and XRAY:
+        candidates = dedup(new_configs + old_configs + get_list_configs(sources))[:MAX_CANDIDATES]
+        results = test_configs(candidates)
+        tested = build_tested_list(candidates, results, old_configs, sources) if results is not None else None
+        if tested is not None:
+            combined = tested
+    if DRY_RUN:
+        print(f"🧪 Dry run: {len(combined[:MAX_CONFIGS])} configs would be written; the list is not changed")
+        sys.exit(0)
 
     # 4. اعمال محدودیت (برش زدن لیست)
     if len(combined) > MAX_CONFIGS:

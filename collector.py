@@ -99,6 +99,36 @@ def bad_uuid(value):
 HEADERS = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"}
 
 
+SS_LEGACY = re.compile(r"^([\w.+-]+):(.+)@(\[[0-9a-fA-F:]+\]|[^@:\s/]+):(\d+)/?$")
+
+
+def fix_ss_link(link):
+    """لینک‌های ss:// که درست نوشته نشدن (بیشتر از لیست‌های عمومی):
+    - vless یا vmess که پیشوندشون اشتباهی ss:// شده (UUID به جای روش و رمز، یا JSON مثل vmess)
+    - شکل قدیمی ss که کل method:password@host:port با هم base64 شده؛ به شکل استاندارد امروزی (SIP002) برمی‌گرده"""
+    if not link.startswith("ss://"):
+        return link
+    body, sep, name = link[5:].partition("#")
+    if "@" in body:
+        user = unquote(body.split("@", 1)[0])
+        if UUID_HEX.match(user) and re.search(r"[?&](encryption|security|type)=", body):
+            return "vless://" + link[5:]
+        return link
+    data = body.split("?", 1)[0].rstrip("/").replace("-", "+").replace("_", "/")
+    try:
+        text = base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8").strip()
+    except Exception:
+        return link
+    if text.startswith("{") and '"add"' in text:
+        return "vmess://" + body.split("?", 1)[0] + sep + name
+    m = SS_LEGACY.match(text)
+    if not m:
+        return link
+    method, password, host, port = m.groups()
+    user = base64.urlsafe_b64encode(f"{method}:{password}".encode("utf-8")).decode("ascii").rstrip("=")
+    return f"ss://{user}@{host}:{port}" + sep + name
+
+
 def clean_link(link):
     """لینک رو یکدست می‌کنه تا برنامه بتونه بخونه و وصل بشه. لینک خراب یا ناقص = None"""
     link = link.strip()
@@ -109,6 +139,7 @@ def clean_link(link):
         if pair and link.count(pair) >= link.count(link[-1]):
             break
         link = link[:-1]
+    link = fix_ss_link(link)
     body, sep, name = link.partition('#')
     try:
         if body.startswith("vmess://"):
@@ -252,6 +283,8 @@ def get_list_configs(sources):
                     text = base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", "ignore")
                 except Exception:
                     pass
+            # بعضی لیست‌ها & رو به شکل HTML (&amp;) نوشتن و لینک‌ها خراب می‌شن
+            text = html.unescape(text)
             unique = {}
             for link in (c for c in (clean_link(m) for m in LINK_PATTERN.findall(text)) if c):
                 unique.setdefault(server_key(link), link)

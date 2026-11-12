@@ -76,7 +76,9 @@ async Task RunBatchAsync(List<Candidate> batch)
         var (proc, error) = await StartXrayAsync(batch);
         if (proc != null)
         {
-            try { await Task.WhenAll(batch.Select(async (x, i) => results[x.Link] = await Tester.TestAsync(Tester.BasePort + i))); }
+            // DERAFSH_BUILD_ONLY=1: only check that Xray accepts the configs (to see why some can't be used), no network
+            bool buildOnly = Environment.GetEnvironmentVariable("DERAFSH_BUILD_ONLY") == "1";
+            try { await Task.WhenAll(batch.Select(async (x, i) => results[x.Link] = buildOnly ? "untested" : await Tester.TestAsync(Tester.BasePort + i))); }
             finally { try { proc.Kill(true); proc.WaitForExit(5000); } catch { } proc.Dispose(); }
             return;
         }

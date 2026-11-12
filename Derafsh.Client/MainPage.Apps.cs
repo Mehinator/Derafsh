@@ -20,6 +20,7 @@ namespace Derafsh.Client
             IranDirectLabel.Text = "سایت‌های ایرانی بدون VPN (بانک‌ها، درگاه پرداخت، سایت‌های ‎.ir‎)";
             SemanticProperties.SetDescription(IranDirectCheck, "سایت‌های ایرانی بدون VPN");
 #endif
+            FragmentCheck.IsChecked = SessionConfig.FragmentTls;
             AppsList.ItemsSource = _appRows;
             (AppBypass.OnlySelected ? OnlyAppsMode : AllAppsMode).IsChecked = true;
             UpdateAppsHint();
@@ -27,6 +28,15 @@ namespace Derafsh.Client
         }
 
         private void OnIranDirectLabelTapped(object sender, TappedEventArgs e) => IranDirectCheck.IsChecked = !IranDirectCheck.IsChecked;
+        private void OnFragmentLabelTapped(object sender, TappedEventArgs e) => FragmentCheck.IsChecked = !FragmentCheck.IsChecked;
+
+        // تکه‌تکه کردن TLS: تست‌های بعدی و اتصال با تنظیم تازه؛ اگه وصلیم، همین الان
+        private void OnFragmentChanged(object sender, CheckedChangedEventArgs e)
+        {
+            if (!_optionsReady) return;
+            SessionConfig.FragmentTls = e.Value;
+            _ = ApplyRoutingChangeAsync();
+        }
 
         private void OnIranDirectChanged(object sender, CheckedChangedEventArgs e)
         {

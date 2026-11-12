@@ -626,18 +626,21 @@ namespace Derafsh.Client
         {
             var favs = ReadFavorites();
             s.IsFavorite = !s.IsFavorite;
-            if (s.IsFavorite) favs.Add(s.Config); else favs.Remove(s.Config);
+            if (s.IsFavorite) favs.Add(FavKey(s.Config)); else favs.Remove(FavKey(s.Config));
             try { File.WriteAllText(FavoritesPath, JsonSerializer.Serialize(favs.ToList())); } catch { }
 
             foreach (var x in RowsOf(s.Config)) x.IsFavorite = s.IsFavorite;
             ResortList();
         }
 
+        // ستاره‌دارها: لینک بدون اسم، چون اسم کانفیگ‌های لیست آنلاین هر بار ممکنه عوض بشه («🇩🇪 Berlin 2» → «🇩🇪 Berlin 3»)
         private HashSet<string> ReadFavorites()
         {
-            try { if (File.Exists(FavoritesPath)) return JsonSerializer.Deserialize<HashSet<string>>(File.ReadAllText(FavoritesPath)) ?? new(); } catch { }
+            try { if (File.Exists(FavoritesPath)) return (JsonSerializer.Deserialize<List<string>>(File.ReadAllText(FavoritesPath)) ?? new()).Select(FavKey).ToHashSet(); } catch { }
             return new();
         }
+
+        private static string FavKey(string link) => link.Split('#')[0].Trim();
 
         private static Dictionary<string, string> ReadJsonDict(string path)
         {
@@ -651,7 +654,7 @@ namespace Derafsh.Client
             foreach (var s in list)
             {
                 if (sources.TryGetValue(s.Config, out var src)) s.Source = src;
-                s.IsFavorite = favs.Contains(s.Config);
+                s.IsFavorite = favs.Contains(FavKey(s.Config));
                 s.GeminiStatus = _geminiCache.TryGetValue(s.Config, out var g) ? g : "";
                 s.Ping = _pingCache.TryGetValue(s.Config, out var p) ? p : -1;
                 s.Speed = _speedCache.TryGetValue(s.Config, out var sp) ? sp : -1;

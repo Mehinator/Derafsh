@@ -315,7 +315,7 @@ namespace Derafsh.Client
             // ستاره‌دارها، بعد اون‌هایی که روی همین اینترنت قبلاً کار کردن، بعد بقیه (لیست از جدید به قدیمه)؛
             // اون‌هایی که اخیراً روی همین اینترنت جواب ندادن آخر صف
             var queue = cloud.Where(c => !_pingCache.ContainsKey(c))
-                             .OrderByDescending(favs.Contains)
+                             .OrderByDescending(c => favs.Contains(FavKey(c)))
                              .ThenByDescending(c => Math.Round(NetworkHistory.Score(c)))
                              .ToList();
             int found = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);

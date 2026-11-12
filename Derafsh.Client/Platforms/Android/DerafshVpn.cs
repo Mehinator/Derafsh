@@ -48,7 +48,13 @@ namespace Derafsh.Client
             }
             if (intent?.Action == ActionSwitch)
             {
-                if (_guard != null) _ = _guard.SwitchToNextAsync(ConnectionGuard.ReasonManual);
+                // دکمه‌ی «تعویض سرور» توی برنامه یا توی همین اعلان
+                if (_guard != null)
+                {
+                    s_location = "در حال رفتن به یک سرور سالم دیگر…";
+                    UpdateNotification();
+                    _ = _guard.SwitchToNextAsync(ConnectionGuard.ReasonManual);
+                }
                 else ConnectionLost?.Invoke(ConnectionGuard.ReasonManual);
                 return StartCommandResult.NotSticky;
             }
@@ -149,10 +155,18 @@ namespace Derafsh.Client
             };
             _guard.Lost += reason =>
             {
-                if (reason is ConnectionGuard.ReasonDown or ConnectionGuard.ReasonOffline)
+                if (reason is ConnectionGuard.ReasonDown or ConnectionGuard.ReasonOffline or ConnectionGuard.ReasonManual)
                 {
-                    s_location = reason == ConnectionGuard.ReasonOffline ? "اینترنت گوشی قطع است؛ منتظر می‌ماند…" : "سرور جواب نمی‌دهد؛ دنبال سرور سالم…";
+                    s_location = reason switch
+                    {
+                        ConnectionGuard.ReasonOffline => "اینترنت گوشی قطع است؛ منتظر می‌ماند…",
+                        ConnectionGuard.ReasonManual => "سرور سالم دیگری پیدا نشد؛ روی همین سرور ماند",
+                        _ => "سرور جواب نمی‌دهد؛ دنبال سرور سالم…",
+                    };
                     UpdateNotification();
+                    // پیغام «پیدا نشد» چند ثانیه؛ بعد دوباره شهر همین سرور
+                    if (reason == ConnectionGuard.ReasonManual)
+                        _ = Task.Delay(8000).ContinueWith(_ => { if (IsRunning) { s_location = s_realLocation; UpdateNotification(); } });
                 }
                 ConnectionLost?.Invoke(reason);
             };
@@ -190,7 +204,7 @@ namespace Derafsh.Client
         // ---------- اعلان ثابت: سرور، شهر، سرعت، «قطع اتصال» ----------
         private const int NotificationId = 1;
         private const string ChannelId = "derafsh_vpn";
-        private static string? s_server, s_location;
+        private static string? s_server, s_location, s_realLocation;   // s_realLocation: شهر سرور، زیر پیغام‌های موقت
         private Timer? _statsTimer;
         private long _lastDown, _lastUp;
         private DateTime _lastAt;
@@ -199,7 +213,7 @@ namespace Derafsh.Client
         // صفحه‌ی اصلی بعد از وصل شدن، شهر و کشور سرور رو اینجا می‌ده
         public static void SetLocation(string? location)
         {
-            s_location = location;
+            s_location = s_realLocation = location;
             s_current?.UpdateNotification();
         }
 
@@ -240,6 +254,8 @@ namespace Derafsh.Client
             var flags = PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent;
             var open = PendingIntent.GetActivity(this, 0, new Intent(this, typeof(MainActivity)).SetFlags(ActivityFlags.SingleTop), flags);
             var stop = PendingIntent.GetService(this, 1, new Intent(this, typeof(DerafshVpnService)).SetAction(ActionStop), flags);
+            // «تعویض سرور» از همین اعلان، بدون باز کردن برنامه (مثلاً وسط ویدیو)
+            var next = PendingIntent.GetService(this, 2, new Intent(this, typeof(DerafshVpnService)).SetAction(ActionSwitch), flags);
             string text = string.IsNullOrEmpty(s_location) ? speed : $"{s_location}   ·   {speed}";
             return new NotificationCompat.Builder(this, ChannelId)
                 .SetSmallIcon(Resource.Drawable.ic_notify)!
@@ -251,6 +267,7 @@ namespace Derafsh.Client
                 .SetCategory(NotificationCompat.CategoryService)!
                 .SetColor(unchecked((int)0xFFF2C14E))!   // طلایی درفش
                 .SetContentIntent(open)!
+                .AddAction(0, "تعویض سرور", next)!
                 .AddAction(0, "قطع اتصال", stop)!
                 .Build()!;
         }

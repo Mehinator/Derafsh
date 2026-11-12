@@ -63,7 +63,9 @@
 - **عوض کردن سریع:** وقتی سرور قطع شود، ۸ سرور با هم تست می‌شوند و اولین سالم جایگزین می‌شود. اگر هیچ‌کدوم جواب ندهد، ۸ تای بعدی امتحان می‌شوند، تا ته لیست. کانفیگ‌های همان سرورِ مرده امتحان نمی‌شوند.
 - **وقتی اینترنت خود گوشی قطع است،** درفش سرورها را مرده حساب نمی‌کند و منتظر می‌ماند.
 - **کندی:** اگر سرور کند شود و زاپاس سریع‌تری آماده باشد، درفش خودکار به آن می‌رود.
-- **«تعویض سرور»:** این دکمه همین الان به یک سرور سالم دیگر می‌رود.
+- **«تعویض سرور»:** این دکمه همین الان به یک سرور سالم دیگر می‌رود. در اندروید همین دکمه در اعلان ثابت VPN هم هست، تا وسط ویدیو لازم نباشد برنامه را باز کنید.
+
+**تکه‌تکه کردن TLS** (در تنظیمات، پیش‌فرض روشن): اولین بسته‌ی رمزنگاری هر اتصال تا سرور (ClientHello، که اسم سایت در آن است) به چند تکه‌ی کوچک با چند میلی‌ثانیه فاصله فرستاده می‌شود. فیلتر اسم سایت را نمی‌خواند، اتصال را تشخیص نمی‌دهد و کند یا قطع نمی‌کند. برنامه‌هایی مثل MEH و MahsaNG هم همین کار را می‌کنند. اگر سروری با این گزینه وصل نشد، امتحانی خاموشش کنید.
 
 در اندروید، VPN در تمام این مدت روشن می‌ماند. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود. اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
 
@@ -122,7 +124,9 @@
 3. از حدود ۲۰۰۰ کانفیگ سالم، **۵۰۰ تای بهتر** را نگه می‌دارد:
    - **ترتیب:** اول سرعت کافی برای ویدیو، بعد رمزنگاری TLS یا Reality (کانفیگ‌های بدون رمزنگاری را فیلتر راحت پیدا می‌کند)، بعد اینکه چند اجرای پشت سر هم سالم مانده (کمتر وسط ویدیو می‌میرد)، بعد نزدیکی به ایران.
    - **مکان:** از هر شهر چند سرور حتماً در لیست می‌ماند تا انتخاب شهر خالی نماند.
-   - **تنوع:** از هر سرور حداکثر دو کانفیگ می‌آید، تا وقتی سروری می‌میرد، زاپاس‌ها با آن نمیرند.
+   - **بدون تکرار:** از هر سرور واقعی فقط یک کانفیگ می‌ماند. سرور واقعی یعنی همان کاربر و همان دامنه‌ی پشتش، حتی اگر لیست‌ها آن را با IP یا path دیگری گذاشته باشند. از هر رنج IP هم حداکثر سه تا می‌آید، تا وقتی یک اپراتور قطع می‌شود، زاپاس‌ها با آن قطع نشوند.
+   - **کم‌کاربرتر:** کانفیگی که در کانال‌ها و لیست‌های زیادی پخش شده، کاربر زیادی دارد و شلوغ است، پس پایین‌تر می‌رود.
+   - **اسم:** اسم‌های یکسان شماره می‌گیرند، مثلاً «🇩🇪 Berlin 1» و «🇩🇪 Berlin 2».
 
 این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد. خروجی چهار فایل است:
 
@@ -143,7 +147,7 @@
 
 **Derafsh** collects free V2Ray/Xray configs from public Telegram channels and public GitHub lists every 2 hours, and tests each one with Xray (through the app's own config builder, [`tools/ConfigTester`](tools/ConfigTester)) so dead ones never reach the list (GitHub Actions + [`collector.py`](collector.py)). The test also finds the country and city each config comes out in (configs are named like "🇩🇪 Berlin"), and the best 500 are kept. The ranking puts speed first, then TLS or REALITY over plain, then how many runs in a row a config kept working, then closeness to Iran. Every city keeps a few servers, and no server gets more than two entries.
 
-The app (in Persian) connects with one button. It tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers. You can limit it to a country or a city, or to servers that open Gemini. While connected, a guard inside the VPN service keeps a few tested spares. When your apps send but nothing comes back, or a running download stops, it checks the connection at once. If the server is dead, it tests 8 others at a time and moves to the first that answers, walking the whole list if it has to. Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android. News and releases: [t.me/DERAFSHVPN](https://t.me/DERAFSHVPN).
+The app (in Persian) connects with one button. It tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers. You can limit it to a country or a city, or to servers that open Gemini. While connected, a guard inside the VPN service keeps a few tested spares. When your apps send but nothing comes back, or a running download stops, it checks the connection at once. If the server is dead, it tests 8 others at a time and moves to the first that answers, walking the whole list if it has to. The TLS ClientHello to the server is sent in small, paced fragments (on by default) so the filter can't read the site name and slow the connection down, and "switch server" is also a button in the Android notification. Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android. News and releases: [t.me/DERAFSHVPN](https://t.me/DERAFSHVPN).
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.10.22** (the patterniha fork). Configs the engine can't start, or that don't really download, are dropped by the collector.

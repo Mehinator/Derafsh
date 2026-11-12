@@ -34,12 +34,14 @@ var budget = TimeSpan.FromMinutes(args.Length > 4 ? double.Parse(args[4], Cultur
 
 var results = new ConcurrentDictionary<string, string>();
 var service = new ConfigService();
+// DERAFSH_FRAGMENT=1: configs built with TLS fragmentation, as the app builds them by default (to check it doesn't break them)
+bool fragment = Environment.GetEnvironmentVariable("DERAFSH_FRAGMENT") == "1";
 var outbounds = new List<Candidate>();
 foreach (var link in links)
 {
     try
     {
-        var config = JsonNode.Parse(service.GenerateXrayConfig(link, Tester.BasePort))!;
+        var config = JsonNode.Parse(service.GenerateXrayConfig(link, Tester.BasePort, fragment: fragment))!;
         var proxy = config["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == "proxy")!.AsObject();
         outbounds.Add(new Candidate(link, (JsonObject)proxy.DeepClone()));
     }
@@ -120,6 +122,8 @@ async Task<(Process? proc, string error)> StartXrayAsync(List<Candidate> batch)
         outs.Add(outbound);
         rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray($"i{i}"), ["outboundTag"] = $"o{i}" });
     }
+    if (outs.Any(o => (string?)o!["streamSettings"]?["sockopt"]?["dialerProxy"] == "fragment"))
+        outs.Add(ConfigService.FragmentOutbound());   // one fragment outbound serves every config in the batch
     var config = new JsonObject
     {
         ["log"] = new JsonObject { ["loglevel"] = "error" },

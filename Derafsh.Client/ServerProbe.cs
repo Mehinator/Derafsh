@@ -9,12 +9,19 @@ namespace Derafsh.Client
     {
         private static readonly ConfigService s_service = new();
 
+        // تکه‌تکه کردن TLS (تنظیمات؛ پیش‌فرض روشن). تست‌ها هم با همین، تا نتیجه‌شون همون اتصال واقعی باشه.
+        public static bool FragmentTls
+        {
+            get => Preferences.Default.Get("tls_fragment", true);
+            set => Preferences.Default.Set("tls_fragment", value);
+        }
+
         // اتصال اصلی (پورت SessionPort) سایت‌های ایرانی رو مستقیم می‌فرسته، اگه گزینه‌اش روشنه؛ تست‌ها نه
         public static async Task<string> BuildAsync(string link, int port)
         {
             bool iranDirect = port == XrayProc.SessionPort && AppBypass.IranDirect;
             if (iranDirect) await LoadIranRangesAsync();
-            string json = s_service.GenerateXrayConfig(link, port, iranDirect);
+            string json = s_service.GenerateXrayConfig(link, port, iranDirect, FragmentTls);
 #if ANDROID
             json = await ConfigService.ResolveServerAddressAsync(json);
 #endif
@@ -88,6 +95,9 @@ namespace Derafsh.Client
                     outs.Add(outbound);
                     rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray($"i{i}"), ["outboundTag"] = $"o{i}" });
                 }
+                // کانفیگ‌هایی که با تکه‌تکه کردن TLS ساخته شدن، خروجی «fragment» رو لازم دارن (یکی برای همه بسه)
+                if (outs.Any(o => (string?)o!["streamSettings"]?["sockopt"]?["dialerProxy"] == "fragment"))
+                    outs.Add(ConfigService.FragmentOutbound());
                 var config = new JsonObject
                 {
                     ["log"] = new JsonObject { ["loglevel"] = "none" },

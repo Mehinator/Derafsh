@@ -94,7 +94,8 @@ namespace Derafsh.Client.Services
 
         // iranDirect: سایت‌های ایرانی (دامنه‌ی .ir و IPهای ایران) بدون VPN، با اینترنت خود دستگاه. بانک‌ها و درگاه پرداخت
         // (شاپرک) فقط IP ایران رو قبول می‌کنن و این سایت‌ها فیلتر هم نیستن. شبکه‌ی محلی (مودم، چاپگر) همیشه مستقیمه.
-        public string GenerateXrayConfig(string link, int localPort = 10809, bool iranDirect = false)
+        // fragment: تکه‌تکه کردن TLS تا سرور (FragmentOutbound پایین)
+        public string GenerateXrayConfig(string link, int localPort = 10809, bool iranDirect = false, bool fragment = false)
         {
             if (string.IsNullOrEmpty(link)) throw new FormatException("Link empty");
             link = link.Trim();
@@ -110,6 +111,17 @@ namespace Derafsh.Client.Services
                 "hysteria2" => Hysteria2(link),
                 _ => throw new FormatException($"Unsupported protocol: {protocol}"),
             };
+            bool useFragment = fragment && FragmentFits(outbound);
+            if (useFragment)
+            {
+                // اتصال تا سرور از راه خروجی «fragment» زده می‌شه؛ keep-alive هم همون‌جا (سوکت مال اونه)
+                var stream = outbound["streamSettings"]!.AsObject();
+                var sockopt = stream["sockopt"] as JsonObject ?? new JsonObject();
+                sockopt.Remove("tcpKeepAliveIdle");
+                sockopt.Remove("tcpKeepAliveInterval");
+                sockopt["dialerProxy"] = "fragment";
+                stream["sockopt"] = sockopt;
+            }
 
             var config = new JsonObject
             {
@@ -136,7 +148,28 @@ namespace Derafsh.Client.Services
                     ["rules"] = Rules(iranDirect),
                 },
             };
+            if (useFragment) config["outbounds"]!.AsArray().Add(FragmentOutbound());
             return config.ToJsonString();
+        }
+
+        // تکه‌تکه کردن TLS (مثل MEH و MahsaNG): اولین بسته‌ی دست‌دادن TLS تا سرور (ClientHello، که اسم سایت توشه) به تیکه‌های
+        // ۱۴ تا ۳۲ بایتی با ۲ تا ۵ میلی‌ثانیه فاصله فرستاده می‌شه. فیلتر اسم سایت رو نمی‌خونه، اتصال رو تشخیص نمی‌ده و کند یا قطع
+        // نمی‌کنه؛ برای هر اتصال تازه حدود ۵۰ میلی‌ثانیه بیشتر. سرور تیکه‌ها رو مثل همیشه سر هم می‌کنه.
+        public static JsonObject FragmentOutbound() => new()
+        {
+            ["tag"] = "fragment",
+            ["protocol"] = "freedom",
+            ["settings"] = new JsonObject { ["fragment"] = new JsonObject { ["packets"] = "tlshello", ["length"] = "14-32", ["interval"] = "2-5" } },
+            ["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["tcpNoDelay"] = true, ["tcpKeepAliveIdle"] = 15, ["tcpKeepAliveInterval"] = 5 } },
+        };
+
+        // فقط وقتی TLS یا Reality روی TCP هست (نه hysteria2 و نه h3 که UDP‌ان، نه کانفیگ بدون TLS که ClientHello نداره)
+        private static bool FragmentFits(JsonObject outbound)
+        {
+            if (outbound["streamSettings"] is not JsonObject stream) return false;
+            string security = (string?)stream["security"] ?? "", network = (string?)stream["network"] ?? "tcp";
+            if (security is not ("tls" or "reality") || network is "hysteria" or "kcp" or "quic") return false;
+            return stream["tlsSettings"]?["alpn"] is not JsonArray alpn || alpn.All(a => (string?)a != "h3");
         }
 
         // سایت‌های ایرانی پرکاربرد که دامنه‌شون .ir نیست (ویندوز اسم سایت رو می‌ده نه IP، پس قانون IP بهشون نمی‌رسه)

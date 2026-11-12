@@ -4,112 +4,35 @@ using Derafsh.Client.Models;
 
 namespace Derafsh.Client
 {
-    // کیفیت اتصال: سرور زاپاس آماده، رفتن خودکار به زاپاس وقتی سرور قطع بشه (ConnectionGuard)، و خبر نسخه‌ی تازه
+    // کیفیت اتصال: صف سرورهای زاپاس برای نگهبان اتصال (ConnectionGuard)، پیغام وقتی خودکار عوض شد، و خبر نسخه‌ی تازه
     public partial class MainPage
     {
-        // ---------- سرورهای زاپاس ----------
-        // تا وقتی وصلیم، دو سرور سالم دیگه (سریع‌ترین‌ها، و اگه گزینه‌ی Gemini روشنه فقط و فقط اون‌هایی که Gemini رو باز
-        // می‌کنن) آماده نگه داشته می‌شن: هر ۴ دقیقه دوباره تست می‌شن تا زاپاس کهنه نباشه.
-        private List<ConnectionGuard.Spare> _spares = new();
-        private bool _refreshingSpares;
-        private int _spareGen;
-        private IDispatcherTimer? _spareTimer;
-
-        private void StartSpareUpkeep()
+        // ---------- صف زاپاس‌ها ----------
+        // صفحه فقط می‌گه کدوم سرورها روی این اینترنت سالم بودن: بهترین اول، فقط مکان انتخابی، و با گزینه‌ی Gemini اون‌هایی
+        // که Gemini رو باز کردن اول (رد شده‌ها نه). خود نگهبان زاپاس‌ها رو تازه نگه می‌داره و عوض می‌کنه، حتی وقتی صفحه بسته‌ست.
+        private void UpdatePool()
         {
-            _spareTimer?.Stop();
-            _spareTimer = Dispatcher.CreateTimer();
-            _spareTimer.Interval = TimeSpan.FromMinutes(4);
-            _spareTimer.Tick += async (_, _) => await RefreshSparesAsync();
-            _spareTimer.Start();
-            _ = RefreshSparesAsync();
+            if (!isConnected) return;
+            string? current = CurrentLink();
+            IEnumerable<Server> working = WorkingServers().Where(s => s.Config != current);
+            if (RequireGemini)
+                working = working.Where(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)) < 2)
+                                 .OrderBy(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)));
+            ConnectionGuard.WritePool(working.Take(60).Select(s => new ConnectionGuard.Candidate(s.City, s.Config, Math.Max(0, _speedCache.GetValueOrDefault(s.Config, 0)))));
         }
 
-        private void StopSpareUpkeep()
-        {
-            _spareTimer?.Stop();
-            _spareTimer = null;
-            _spares = new();
-            ConnectionGuard.ClearSpares();
-            UpdateSpareLabel();
-        }
-
-        private async Task RefreshSparesAsync()
-        {
-            if (!isConnected || _refreshingSpares) return;
+        // لینک سروری که الان وصله (اندروید: سرویس VPN بعد از رفتن به زاپاس عوضش می‌کنه)
+        private string? CurrentLink() =>
 #if ANDROID
-            // کاربر داره ویدیو می‌بینه یا دانلود می‌کنه: تست سرورهای دیگه (که هر کدوم یه تکه دانلود دارن) همون اینترنت رو
-            // ازش می‌گیره و ویدیو گیر می‌کنه. اگه زاپاس داریم، این دور تست نمی‌شه (موقع تعویض، زاپاس دوباره امتحان می‌شه)
-            if (_spares.Count > 0 && DerafshVpnService.UserDownKbps >= ConnectionGuard.FlowingSpeed) return;
+            DerafshVpnService.CurrentLink ?? _currentServer?.Config;
+#else
+            _currentServer?.Config;
 #endif
-            _refreshingSpares = true;
-            try
-            {
-                string? current = _currentServer?.Config;
-                var working = WorkingServers().Where(s => s.Config != current).ToList();
-                // با گزینه‌ی Gemini: اون‌هایی که Gemini رو باز کردن اول، بعد تست‌نشده‌ها؛ اون‌هایی که باز نکردن اصلاً زاپاس نمی‌شن
-                if (RequireGemini)
-                    working = working.Where(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)) < 2)
-                                     .OrderBy(s => GeminiRank(_geminiCache.GetValueOrDefault(s.Config)))
-                                     .ThenBy(s => SpeedBucket(_speedCache.GetValueOrDefault(s.Config, -1))).ToList();
-                var candidates = working.Take(RequireGemini ? 8 : 6).ToList();
-                if (candidates.Count < 3 && !_discovering && !_isUpdating) _ = DiscoverAsync(fresh: false);
 
-                // دوباره تست: نتیجه‌ی قبلی ممکنه چند دقیقه کهنه باشه و کانفیگ رایگان تا حالا خاموش شده باشه
-                await Task.WhenAll(candidates.Select(s => PingSingle(s.Config)));
-                var alive = candidates.Where(s => _pingCache.TryGetValue(s.Config, out var p) && p is > 0 and < NoReply)
-                                      .OrderBy(s => SpeedBucket(_speedCache.GetValueOrDefault(s.Config, -1)))
-                                      .ThenBy(s => _pingCache[s.Config]).ToList();
-                if (RequireGemini)
-                {
-                    // تست Gemini کمی طول می‌کشه؛ اگه زاپاسی نداریم، اون‌هایی که قبلاً Gemini رو باز کردن همین الان زاپاس می‌شن
-                    var known = alive.Where(s => IsGeminiOk(_geminiCache.GetValueOrDefault(s.Config))).ToList();
-                    if (_spares.Count == 0 && known.Count > 0) await PublishSparesAsync(known);
-
-                    using (var gsem = new SemaphoreSlim(3))
-                        await Task.WhenAll(alive.Where(s => !_geminiCache.ContainsKey(s.Config)).Take(6)
-                            .Select(async s => { await gsem.WaitAsync(); try { await TestGemini(s.Config); } finally { gsem.Release(); } }));
-                    alive = alive.Where(s => IsGeminiOk(_geminiCache.GetValueOrDefault(s.Config))).ToList();
-                }
-                await PublishSparesAsync(alive);
-                // هنوز زاپاس نداریم (مثلاً هیچ‌کدوم Gemini رو باز نکرد): یه دقیقه دیگه سرورهای بعدی امتحان می‌شن، نه چهار دقیقه
-                if (_spares.Count == 0 && isConnected) Dispatcher.DispatchDelayed(TimeSpan.FromMinutes(1), () => _ = RefreshSparesAsync());
-            }
-            finally { _refreshingSpares = false; }
-        }
-
-        private async Task PublishSparesAsync(List<Server> alive)
-        {
-            int gen = ++_spareGen;
-            var spares = new List<ConnectionGuard.Spare>();
-            foreach (var s in alive.Take(2))
-            {
-                string path = Path.Combine(XrayProc.WorkDir, $"spare_{gen}_{spares.Count}.json");
-                try { await File.WriteAllTextAsync(path, await BuildXrayConfigAsync(s.Config, XrayProc.SessionPort)); spares.Add(new(s.City, s.Config, path, Math.Max(0, _speedCache.GetValueOrDefault(s.Config, 0)))); }
-                catch { }
-            }
-            if (!isConnected) { foreach (var x in spares) try { File.Delete(x.ConfigPath); } catch { } return; }
-
-            var old = _spares;
-            _spares = spares;
-            ConnectionGuard.WriteSpares(spares);
-            foreach (var x in old.Where(o => spares.All(n => n.ConfigPath != o.ConfigPath))) try { File.Delete(x.ConfigPath); } catch { }
-            UpdateSpareLabel();
-        }
-
-        // ترتیب برای انتخاب زاپاس با گزینه‌ی Gemini: باز می‌کنه، تست نشده، رد شده
+        // ترتیب صف زاپاس با گزینه‌ی Gemini: باز می‌کنه، تست نشده، رد شده
         private static int GeminiRank(string? status) => IsGeminiOk(status) ? 0 : string.IsNullOrEmpty(status) || status is "testing" or "timeout" or "failed" ? 1 : 2;
 
-        private void UpdateSpareLabel()
-        {
-            SpareLabel.IsVisible = ManualSwitchButton.IsVisible = isConnected;
-            SpareLabel.Text = _spares.Count == 0
-                ? (RequireGemini ? "در حال پیدا کردن سرور زاپاسی که Gemini را باز کند…" : "در حال آماده کردن سرور زاپاس…")
-                : $"سرور زاپاس آماده: {Q(_spares[0].Name)}" + (_spares[0].Speed > 0 ? $" · {Kbs(_spares[0].Speed)}" : "")
-                  + "  ·  اگر این سرور قطع یا کند شود، خودکار به زاپاس می‌رود";
-        }
-
-        // ---------- رفتن خودکار به زاپاس ----------
+        // ---------- رفتن خودکار به سرور دیگه ----------
         // (روی اندروید سرویس VPN خودش عوض می‌کنه و اینجا فقط صفحه به‌روز می‌شه)
         private void OnServerSwitched(ConnectionGuard.Spare spare, string reason)
         {
@@ -117,10 +40,14 @@ namespace Derafsh.Client
             string? oldName = _currentServer?.City;
             if (_currentServer != null)
             {
-                _pingCache[_currentServer.Config] = NoReply;   // سرور قطع‌شده دیگه انتخاب نمی‌شه
+                // سرور قبلی دیگه خودکار انتخاب نمی‌شه؛ فقط قطعی واقعی توی حافظه‌ی این اینترنت «بد» ثبت می‌شه
+                _pingCache[_currentServer.Config] = NoReply;
                 foreach (var x in RowsOf(_currentServer.Config)) x.Ping = NoReply;
-                NetworkHistory.Record(_currentServer.Config, ok: false);   // روی این اینترنت خوب نبود
-                NetworkHistory.Save();
+                if (reason == ConnectionGuard.ReasonDown)
+                {
+                    NetworkHistory.Record(_currentServer.Config, ok: false);
+                    NetworkHistory.Save();
+                }
             }
             var next = AllServers.FirstOrDefault(x => x.Config == spare.Link) ?? NewServer(spare.Link);
             if (next != null)
@@ -129,9 +56,7 @@ namespace Derafsh.Client
                 if (!_autoServer) foreach (var x in AllServers) x.IsSelected = x.Config == next.Config;
             }
             Preferences.Default.Set("connected_name", spare.Name);
-            _spares = _spares.Where(x => x.Link != spare.Link).ToList();
-            SetConnState(ConnState.Connected, $"{Q(spare.Name)}  ·  سرور زاپاس");
-            UpdateSpareLabel();
+            SetConnState(ConnState.Connected, Q(spare.Name));
             StatusLabel.Text = reason switch
             {
                 ConnectionGuard.ReasonManual => $"به سرور {Q(spare.Name)} رفتید",
@@ -139,6 +64,7 @@ namespace Derafsh.Client
                 _ => $"{Q(oldName)} قطع شد؛ خودکار به {Q(spare.Name)} رفت و وصل ماندید",
             };
             UpdateHome();
+            UpdatePool();
             _ = Task.Run(async () =>
             {
                 var (ip, location) = await ConnectionGuard.ExitLocationAsync();
@@ -148,35 +74,40 @@ namespace Derafsh.Client
                         SetConnState(ConnState.Connected, $"{Q(spare.Name)}  ·  {location}  ·  IP {ip}");
                 });
             });
-            _ = RefreshSparesAsync();
         }
 
         private void OnConnectionLost(string reason)
         {
             if (!isConnected) return;
-            StatusLabel.Text = reason == ConnectionGuard.ReasonManual
-                ? "سرور زاپاس جواب نداد؛ دنبال سرور سالم دیگری… چند لحظه بعد دوباره «تعویض سرور» را بزنید."
-                : "سرور جواب نمی‌دهد و زاپاس‌ها هم جواب ندادند؛ دنبال سرور سالم…";
-            _ = RefreshSparesAsync();
+            switch (reason)
+            {
+                case ConnectionGuard.ReasonSlow:
+                    return;   // زاپاس سریع‌تری جواب نداد؛ روی همین سرور می‌مونه
+                case ConnectionGuard.ReasonOffline:
+                    StatusLabel.Text = "اینترنت دستگاه قطع است. درفش منتظر می‌ماند و وقتی اینترنت برگشت، خودش سرور سالم پیدا می‌کند.";
+                    return;
+                case ConnectionGuard.ReasonManual:
+                    StatusLabel.Text = "فعلاً سرور سالم دیگری پیدا نشد. چند لحظه بعد دوباره «تعویض سرور» را بزنید.";
+                    return;
+            }
+            StatusLabel.Text = "سرور جواب نمی‌دهد و سرورهای سالم قبلی هم جواب ندادند؛ سرورهای لیست از نو تست می‌شوند…";
+            // سالم‌های قبلی مردن: لیست از نو روی همین اینترنت تست می‌شه و صف نگهبان پر می‌شه (نگهبان هم خودش بقیه‌ی لیست رو می‌گرده)
+            if (!_discovering && !_isUpdating && !_isTestingAll)
+                _ = DiscoverAsync(fresh: true).ContinueWith(_ => MainThread.BeginInvokeOnMainThread(UpdatePool));
         }
 
-        // «تعویض سرور»: همین الان برو روی سرور زاپاس (اگه آماده نیست، اول یکی پیدا می‌شه)
+        // «تعویض سرور»: همین الان برو روی یه سرور سالم دیگه (مثلاً وقتی ویدیو پخش نمی‌شه)
         private async void OnManualSwitchClicked(object sender, EventArgs e)
         {
             if (!isConnected) return;
             ManualSwitchButton.IsEnabled = false;
+            StatusLabel.Text = "در حال پیدا کردن سرور سالم دیگری…";
             try
             {
-                if (_spares.Count == 0)
-                {
-                    StatusLabel.Text = "سرور زاپاس هنوز آماده نیست؛ در حال پیدا کردن…";
-                    await RefreshSparesAsync();
-                    if (_spares.Count == 0) { StatusLabel.Text = RequireGemini ? "فعلاً سرور دیگری که Gemini را باز کند پیدا نشد. کمی بعد دوباره امتحان کنید." : "فعلاً سرور سالم دیگری پیدا نشد. کمی بعد دوباره امتحان کنید."; return; }
-                }
-                StatusLabel.Text = $"در حال رفتن به {Q(_spares[0].Name)}…";
+                UpdatePool();
 #if ANDROID
                 VpnController.SwitchNow();   // سرویس VPN عوض می‌کنه و نتیجه با ServerSwitched / ConnectionLost برمی‌گرده
-                await Task.Delay(1500);
+                await Task.Delay(3000);
 #else
                 if (_guard != null) await _guard.SwitchToNextAsync(ConnectionGuard.ReasonManual);
 #endif
@@ -190,7 +121,7 @@ namespace Derafsh.Client
         private void StartGuard()
         {
             _guard?.Dispose();
-            _guard = new ConnectionGuard(SwitchEngineAsync, () => _spares.Where(x => x.Link != _currentServer?.Config).ToList());
+            _guard = new ConnectionGuard(SwitchEngineAsync, () => _currentServer?.Config);
             _guard.Switched += (spare, reason) => MainThread.BeginInvokeOnMainThread(() => OnServerSwitched(spare, reason));
             _guard.Lost += reason => MainThread.BeginInvokeOnMainThread(() => OnConnectionLost(reason));
         }

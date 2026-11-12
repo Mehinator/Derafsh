@@ -9,28 +9,9 @@ namespace Derafsh.Client
     public partial class MainPage
     {
         // ---------- xray موقت برای تست یه کانفیگ ----------
-        // هر تست پورت آزاد خودش رو از سیستم‌عامل می‌گیره؛ پورت تصادفی بین تست‌های همزمان تکراری می‌شد و
-        // نتیجه‌ی یه کانفیگ به اسم کانفیگ دیگه ثبت می‌شد
-        private static readonly HashSet<int> s_testPorts = new();
-        private static int ReserveTestPort()
-        {
-            lock (s_testPorts)
-            {
-                for (int i = 0; i < 20; i++)
-                {
-                    var l = new TcpListener(System.Net.IPAddress.Loopback, 0);
-                    l.Start();
-                    int port = ((System.Net.IPEndPoint)l.LocalEndpoint).Port;
-                    l.Stop();
-                    if (port != 10809 && s_testPorts.Add(port)) return port;
-                }
-                throw new Exception("No free local port for the test.");
-            }
-        }
-
         private async Task<(XrayProc proc, int port, string configPath)> StartTestXray(string link)
         {
-            int port = ReserveTestPort();
+            int port = XrayProc.ReservePort();
             string configPath = Path.Combine(XrayProc.WorkDir, $"test_{port}.json");
             try
             {
@@ -47,36 +28,13 @@ namespace Derafsh.Client
             }
         }
 
-        // اتصال اصلی و زاپاس‌ها (پورت SessionPort) سایت‌های ایرانی رو مستقیم می‌فرستن، اگه گزینه‌اش روشنه؛ تست‌ها نه
-        private async Task<string> BuildXrayConfigAsync(string link, int port)
-        {
-            bool iranDirect = port == XrayProc.SessionPort && AppBypass.IranDirect;
-            if (iranDirect) await LoadIranRangesAsync();
-            string json = _configService.GenerateXrayConfig(link, port, iranDirect);
-#if ANDROID
-            json = await ConfigService.ResolveServerAddressAsync(json);
-#endif
-            return json;
-        }
-
-        // IPهای ایران (Resources/Raw/iran_ip.txt، از geoip.dat خود xray)
-        private static async Task LoadIranRangesAsync()
-        {
-            if (ConfigService.IranIpRanges.Count > 0) return;
-            try
-            {
-                using var stream = await FileSystem.OpenAppPackageFileAsync("iran_ip.txt");
-                using var reader = new StreamReader(stream);
-                ConfigService.IranIpRanges = (await reader.ReadToEndAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
-            }
-            catch { }
-        }
+        private static Task<string> BuildXrayConfigAsync(string link, int port) => SessionConfig.BuildAsync(link, port);
 
         // حتماً بعد از هر تست صدا زده بشه، وگرنه xray توی پس‌زمینه باز می‌مونه
         private static void StopTestXray(XrayProc? proc, int port, string? configPath)
         {
             proc?.Dispose();
-            lock (s_testPorts) s_testPorts.Remove(port);
+            XrayProc.ReleasePort(port);
             if (configPath == null) return;
             try { File.Delete(configPath); } catch { }
             try { File.Delete(Path.ChangeExtension(configPath, ".log")); } catch { }
@@ -87,7 +45,6 @@ namespace Derafsh.Client
         private IEnumerable<Server> RowsOf(string config) => AllServers.Where(x => x.Config == config);
 
         // ---------- جمینی ----------
-        private void OnGeminiTestClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = TestGemini(s.Config); }
         private async Task TestGemini(string config)
         {
             if (_geminiCache.TryGetValue(config, out var now) && now == "testing") return;
@@ -174,8 +131,6 @@ namespace Derafsh.Client
         // HTTPS، مثل باز کردن یه سایت واقعی؛ فقط جواب 204 قبوله (صفحه‌ی مسدودی یا captive با 200 «سالم» حساب نمی‌شه)
         private const string PingUrl = "https://www.gstatic.com/generate_204";
         private readonly HashSet<string> _pinging = new();
-
-        private void OnPingSingleItemClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = PingSingle(s.Config); }
 
         // quick: تست سریع خودکار (یه بار امتحان با صبر کوتاه)؛ وگرنه کامل (دو بار امتحان)
         private async Task PingSingle(string config, bool quick = false)
@@ -317,7 +272,8 @@ namespace Derafsh.Client
         }
 
         // ---------- تست خودکار لیست آنلاین ----------
-        // از جدیدترین‌ها (ستاره‌دارها اول) تست می‌شه تا TargetWorking تا سرور سالم پیدا بشه یا MaxTested تا تست بشه.
+        // به ترتیب لیست (بهترین‌ها اول؛ ستاره‌دارها و سالم‌های قبلی همین اینترنت جلوتر) تست می‌شه تا TargetWorking تا سرور
+        // سالم پیدا بشه یا MaxTested تا تست بشه. اگه مکانی انتخاب شده، فقط سرورهای همون‌جا.
         private const int TargetWorking = 20;
 #if ANDROID
         private const int MaxTested = 120, DiscoverParallel = 8;
@@ -333,16 +289,28 @@ namespace Derafsh.Client
         private async Task DiscoverAsync(bool fresh)
         {
             int gen = ++_discoverGen;   // اجرای قبلی (اگه هنوز در جریانه) دیگه ردیف اضافه نمی‌کنه
-            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().ToList();
-            if (cloud.Count == 0) return;
+            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().Where(c => Locations.Matches(c)).ToList();
+            if (cloud.Count == 0)
+            {
+                // توی مکان انتخابی سروری نیست (یا هنوز لیستی نیست): تست تموم‌شده حساب می‌شه تا «اتصال» منتظر نمونه
+                _discovering = false;
+                _discoveryDone = File.Exists(CloudPath);
+                UpdateOnlineHeader();
+                UpdateEmptyState();
+                UpdateHome();
+                return;
+            }
             if (fresh)
             {
                 foreach (var c in cloud) _pingCache.Remove(c);
                 LoadConfigs();
             }
 
+            // از همین الان «در حال تست»؛ وگرنه «اتصال» که منتظر تسته، تا جواب پیدا کردن اینترنت (پایین) یه تست دیگه راه می‌انداخت
+            _discovering = true;
             // کدوم اینترنت؟ تا سرورهایی که روی همین اینترنت خوب بودن اول تست بشن
             await NetworkHistory.DetectAsync();
+            if (gen != _discoverGen) return;   // یه تست تازه‌تر (مثلاً با مکان دیگه) جاش رو گرفت
             var favs = ReadFavorites();
             // ستاره‌دارها، بعد اون‌هایی که روی همین اینترنت قبلاً کار کردن، بعد بقیه (لیست از جدید به قدیمه)؛
             // اون‌هایی که اخیراً روی همین اینترنت جواب ندادن آخر صف
@@ -417,7 +385,8 @@ namespace Derafsh.Client
         {
             if (_onlineGroup == null) return;
             int n = _onlineGroup.Count(x => x.Ping is > 0 and < NoReply);
-            _onlineGroup.Name = $"آنلاین  ·  {Fa(n)} سرور سالم روی این اینترنت" + (_discovering ? "  ·  در حال تست…" : "");
+            string where = Locations.Selected.Length > 0 ? $"  ·  {Locations.Describe(Locations.Selected)}" : "";
+            _onlineGroup.Name = $"آنلاین{where}  ·  {Fa(n)} سرور سالم روی این اینترنت" + (_discovering ? "  ·  در حال تست…" : "");
         }
 
         private void ShowTestSummary()

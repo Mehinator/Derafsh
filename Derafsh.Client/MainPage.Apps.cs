@@ -17,7 +17,7 @@ namespace Derafsh.Client
 #if ANDROID
             ChooseAppsButton.IsVisible = true;
 #else
-            IranDirectLabel.Text = "سایت‌های ایرانی بدون VPN";
+            IranDirectLabel.Text = "سایت‌های ایرانی بدون VPN (بانک‌ها، درگاه پرداخت، سایت‌های ‎.ir‎)";
             SemanticProperties.SetDescription(IranDirectCheck, "سایت‌های ایرانی بدون VPN");
 #endif
             AppsList.ItemsSource = _appRows;
@@ -56,8 +56,7 @@ namespace Derafsh.Client
         // ---------- صفحه‌ی «برنامه‌ها و VPN» ----------
         private void OnOpenAppsClicked(object sender, EventArgs e)
         {
-            HomeView.IsVisible = false;
-            AppsView.IsVisible = true;
+            ShowView(AppsView);
             if (_allApps == null) _ = LoadAppsAsync();
         }
 
@@ -65,8 +64,7 @@ namespace Derafsh.Client
 
         private void CloseApps()
         {
-            AppsView.IsVisible = false;
-            HomeView.IsVisible = true;
+            ShowView(SettingsView);
             if (_appsChanged) { _appsChanged = false; _ = ApplyRoutingChangeAsync(); }
         }
 
@@ -136,8 +134,7 @@ namespace Derafsh.Client
 #else
                 if (!await SwitchEngineAsync(new ConnectionGuard.Spare(server.City, link, configPath))) throw new Exception();
 #endif
-                StatusLabel.Text = "تغییر اعمال شد.";
-                _ = RefreshSparesAsync();   // زاپاس‌ها هم با تنظیم تازه ساخته بشن
+                StatusLabel.Text = "تغییر اعمال شد.";   // زاپاس‌ها موقع رفتن با تنظیم تازه ساخته می‌شن
             }
             catch { StatusLabel.Text = "تغییر از اتصال بعدی اعمال می‌شود."; }
         }

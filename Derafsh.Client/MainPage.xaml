@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <!--
-    Two screens on one page:
-      HomeView     the simple screen: one round Connect button, the "Gemini must open" option, which server is used.
-      ServersView  the detailed screen: pick a list (Online / Personal / a saved list), test, save, add, choose a server.
+    Five views on one page, one visible at a time:
+      HomeView       the simple screen: one round Connect button and where it connects (a country or city, or a server picked by hand).
+      LocationsView  pick a country or a city: where the servers come out on the internet (what websites see).
+      ServersView    the detailed screen: pick a list (Online / Personal / a saved list), test, add, choose a server.
+                     Each row has one "more" button (test, Gemini, share, star, save, delete) instead of six.
+      SettingsView   the options (Iranian sites without VPN, Gemini only), the subscription link, the Telegram channel.
+      AppsView       (Android) which apps use the VPN; opened from Settings.
     The app is Persian, so the page flows right to left; ping numbers stay Latin (mono) so they line up.
     Android: the page is drawn edge to edge; the code pads RootGrid by the real status-bar / navigation-bar sizes
     (SafeAreaEdges=Container didn't keep the content out from under the status bar on a phone).
@@ -18,9 +22,6 @@
     <ContentPage.Resources>
         <ResourceDictionary>
             <local:BoolToColorConverter x:Key="SelectedStroke" TrueColor="{StaticResource Accent}" FalseColor="{StaticResource Hairline}" />
-            <!-- The Kaviani four-pointed star -->
-            <local:BoolToTextConverter x:Key="StarText" TrueText="✦" FalseText="✧" />
-            <local:BoolToTextConverter x:Key="FavoriteName" TrueText="حذف از علاقه‌مندی‌ها" FalseText="افزودن به علاقه‌مندی‌ها" />
             <local:PingToTextConverter x:Key="PingText" />
             <local:PingToColorConverter x:Key="PingColor" Untested="{StaticResource TextMuted}" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
             <local:SpeedToTextConverter x:Key="SpeedText" />
@@ -28,7 +29,7 @@
             <local:GeminiTextConverter x:Key="GeminiText" />
             <local:GeminiColorConverter x:Key="GeminiColor" Neutral="{StaticResource TextMuted}" Good="{StaticResource Success}" Warn="{StaticResource Warning}" Bad="{StaticResource Danger}" />
 
-            <!-- Desktop row: results and buttons at the end of the row -->
+            <!-- Desktop row: name and details, results, then one "more" button -->
             <DataTemplate x:Key="WideRow" x:DataType="models:Server">
                 <ViewCell>
                     <Border Margin="0,3" Padding="16,10" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
@@ -46,7 +47,7 @@
                             </VisualStateGroupList>
                         </VisualStateManager.VisualStateGroups>
 
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="6">
+                        <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="16" RowSpacing="4">
                             <Grid ColumnDefinitions="Auto,*">
                                 <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
                                 <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
@@ -54,8 +55,6 @@
                             <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
 
                             <HorizontalStackLayout Grid.Column="1" Spacing="16" HorizontalOptions="End">
-                                <Label Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
-                                       FontSize="12" VerticalOptions="Center" />
                                 <Label Text="{Binding Speed, Converter={StaticResource SpeedText}}" TextColor="{Binding Speed, Converter={StaticResource SpeedColor}}"
                                        FontFamily="{StaticResource FontMono}" FontSize="13" VerticalOptions="Center"
                                        ToolTipProperties.Text="سرعت دانلود از داخل این سرور؛ برای ویدیو دست‌کم ۱۵۰ کیلوبایت بر ثانیه لازم است" />
@@ -70,41 +69,31 @@
                                     </Label.Triggers>
                                 </Label>
                             </HorizontalStackLayout>
+                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
+                                   FontSize="12" HorizontalOptions="End" VerticalOptions="Center" />
 
-                            <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6" HorizontalOptions="End">
-                                <Button Text="پینگ" Style="{StaticResource RowButton}" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="سرعت همین سرور را تست می‌کند" />
-                                <Button Text="Gemini" Style="{StaticResource RowButton}" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="بررسی می‌کند Gemini (هوش مصنوعی گوگل) از طریق همین سرور باز می‌شود یا نه" />
-                                <Button Text="اشتراک" Style="{StaticResource RowButton}" Clicked="OnShareClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="QR و لینک این کانفیگ را نشان می‌دهد، برای اسکن با گوشی دیگر یا فرستادن" />
-                                <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="{Binding IsFavorite, Converter={StaticResource FavoriteName}}"
-                                        SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
-                                <Button Text="+ شخصی" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="این سرور را به لیست شخصی شما اضافه می‌کند" />
-                                <Button Text="حذف" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}"
-                                        ToolTipProperties.Text="این سرور را از لیست شخصی شما حذف می‌کند" />
-                            </HorizontalStackLayout>
+                            <Button Grid.Column="2" Grid.RowSpan="2" Text="⋯" Style="{StaticResource RowButton}" FontSize="18" WidthRequest="40" HeightRequest="36" Padding="0"
+                                    VerticalOptions="Center" Clicked="OnRowMoreClicked" CommandParameter="{Binding .}"
+                                    SemanticProperties.Description="کارهای این سرور"
+                                    ToolTipProperties.Text="تست سرعت، Gemini، اشتراک، ستاره، افزودن به لیست شخصی" />
                         </Grid>
                     </Border>
                 </ViewCell>
             </DataTemplate>
 
-            <!-- Phone row: name and ping, then details and Gemini result, then the buttons on their own line -->
+            <!-- Phone row: name and results, then details; the "more" button at the end -->
             <DataTemplate x:Key="CompactRow" x:DataType="models:Server">
                 <ViewCell>
-                    <Border Margin="0,4" Padding="14,12" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
+                    <Border Margin="0,4" Padding="14,10" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
                             Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
-                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+                        <Grid ColumnDefinitions="*,Auto,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="4">
                             <Grid ColumnDefinitions="Auto,*">
                                 <Label Text="✦" IsVisible="{Binding IsFavorite}" TextColor="{StaticResource Accent}" FontSize="14" VerticalOptions="Center" Margin="0,0,6,0" />
                                 <Label Grid.Column="1" Text="{Binding City}" FontFamily="{StaticResource FontStrong}" FontSize="15" LineBreakMode="TailTruncation" MaxLines="1" />
                             </Grid>
                             <HorizontalStackLayout Grid.Column="1" Spacing="10" HorizontalOptions="End">
                                 <Label Text="{Binding Speed, Converter={StaticResource SpeedText}}" TextColor="{Binding Speed, Converter={StaticResource SpeedColor}}"
-                                       FontFamily="{StaticResource FontMono}" FontSize="13" VerticalOptions="Center"
-                                       ToolTipProperties.Text="سرعت دانلود از داخل این سرور؛ برای ویدیو دست‌کم ۱۵۰ کیلوبایت بر ثانیه لازم است" />
+                                       FontFamily="{StaticResource FontMono}" FontSize="13" VerticalOptions="Center" />
                                 <Label Text="{Binding Ping, Converter={StaticResource PingText}}" TextColor="{Binding Ping, Converter={StaticResource PingColor}}"
                                        FontFamily="{StaticResource FontMono}" FontSize="13" HorizontalTextAlignment="End" VerticalOptions="Center">
                                     <Label.Triggers>
@@ -118,16 +107,10 @@
                             </HorizontalStackLayout>
                             <Label Grid.Row="1" Text="{Binding Meta}" Style="{StaticResource MetaLabel}" LineBreakMode="TailTruncation" MaxLines="1" VerticalOptions="Center" />
                             <Label Grid.Row="1" Grid.Column="1" Text="{Binding GeminiStatus, Converter={StaticResource GeminiText}}" TextColor="{Binding GeminiStatus, Converter={StaticResource GeminiColor}}"
-                                   FontSize="12" HorizontalTextAlignment="End" VerticalOptions="Center" />
-                            <HorizontalStackLayout Grid.Row="2" Grid.ColumnSpan="2" Spacing="8" Margin="0,4,0,0">
-                                <Button Text="پینگ" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnPingSingleItemClicked" CommandParameter="{Binding .}" />
-                                <Button Text="Gemini" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnGeminiTestClicked" CommandParameter="{Binding .}" />
-                                <Button Text="اشتراک" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnShareClicked" CommandParameter="{Binding .}" />
-                                <Button Text="{Binding IsFavorite, Converter={StaticResource StarText}}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnFavoriteClicked" CommandParameter="{Binding .}"
-                                        SemanticProperties.Description="{Binding IsFavorite, Converter={StaticResource FavoriteName}}" />
-                                <Button Text="+ شخصی" IsVisible="{Binding ShowSave}" Style="{StaticResource RowButton}" HeightRequest="36" Padding="14,0" Clicked="OnSaveToPersonalClicked" CommandParameter="{Binding .}" />
-                                <Button Text="حذف" IsVisible="{Binding IsRemovable}" Style="{StaticResource RowButtonDanger}" HeightRequest="36" Padding="14,0" Clicked="OnDeleteSingleItemClicked" CommandParameter="{Binding .}" />
-                            </HorizontalStackLayout>
+                                   FontSize="12" HorizontalOptions="End" VerticalOptions="Center" />
+                            <Button Grid.Column="2" Grid.RowSpan="2" Text="⋯" Style="{StaticResource RowButton}" FontSize="18" WidthRequest="44" HeightRequest="44" Padding="0"
+                                    VerticalOptions="Center" Clicked="OnRowMoreClicked" CommandParameter="{Binding .}"
+                                    SemanticProperties.Description="کارهای این سرور" />
                         </Grid>
                     </Border>
                 </ViewCell>
@@ -139,7 +122,6 @@
         <!-- The banner's crimson frame -->
         <BoxView Color="{StaticResource Crimson}" HeightRequest="2" />
 
-        <!-- ================= Home: the simple screen ================= -->
         <!-- A new version is on GitHub: one quiet line, the gold stays on Connect -->
         <Border x:Name="UpdateBanner" Grid.Row="1" IsVisible="False" Style="{StaticResource Card}" Stroke="{StaticResource Accent}"
                 Margin="16,10,16,0" Padding="14,8" MaximumWidthRequest="880">
@@ -152,17 +134,20 @@
             </Grid>
         </Border>
 
-        <Grid x:Name="HomeView" Grid.Row="2" RowDefinitions="Auto,*,Auto" Padding="20,16,20,8" MaximumWidthRequest="480">
+        <!-- ================= Home: the simple screen ================= -->
+        <Grid x:Name="HomeView" Grid.Row="2" RowDefinitions="Auto,*,Auto" RowSpacing="12" Padding="20,16,20,8" MaximumWidthRequest="480">
 
-            <!-- Brand + way to the detailed screen -->
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <!-- Brand; the two detailed screens -->
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
                 <Image Source="derafsh_logo.png" HeightRequest="40" WidthRequest="40" VerticalOptions="Center" SemanticProperties.Description="درفش کاویانی" />
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="0">
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="0" Margin="4,0,0,0">
                     <Label Text="درفش" FontFamily="{StaticResource FontPersian}" FontSize="22" />
                     <Label x:Name="BrandLabel" Text="DERAFSH" Style="{StaticResource BrandLatinLabel}" HorizontalOptions="Start" />
                 </VerticalStackLayout>
                 <Button x:Name="OpenServersButton" Grid.Column="2" Text="سرورها" Style="{StaticResource SecondaryButton}" Clicked="OnOpenServersClicked" VerticalOptions="Center"
                         ToolTipProperties.Text="لیست سرورها، تست، لیست‌های ذخیره‌شده و افزودن کانفیگ" />
+                <Button Grid.Column="3" Text="تنظیمات" Style="{StaticResource SecondaryButton}" Clicked="OnOpenSettingsClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="سایت‌های ایرانی بدون VPN، Gemini، لینک اشتراک و کانال تلگرام" />
             </Grid>
 
             <!-- The one action -->
@@ -175,51 +160,79 @@
                 <VerticalStackLayout Spacing="4">
                     <Label x:Name="ConnStateLabel" Text="وصل نیستید" Style="{StaticResource TitleLabel}" HorizontalTextAlignment="Center" />
                     <Label x:Name="ConnDetailLabel" TextColor="{StaticResource TextSecondary}" FontSize="13" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
-                    <!-- While connected: the spare that takes over if this server drops -->
-                    <Label x:Name="SpareLabel" IsVisible="False" Style="{StaticResource MetaLabel}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" MaxLines="2" />
                     <Button x:Name="ManualSwitchButton" IsVisible="False" Text="تعویض سرور" Style="{StaticResource SecondaryButton}" HorizontalOptions="Center"
-                            Clicked="OnManualSwitchClicked" Margin="0,6,0,0"
-                            ToolTipProperties.Text="همین الان به سرور زاپاس برو (مثلاً وقتی ویدیو پخش نمی‌شود)" />
-                </VerticalStackLayout>
-
-                <!-- Options: quiet, so the gold stays on Connect -->
-                <VerticalStackLayout Spacing="0" HorizontalOptions="Center">
-                    <HorizontalStackLayout Spacing="4">
-                        <CheckBox x:Name="IranDirectCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnIranDirectChanged"
-                                  SemanticProperties.Description="برنامه‌ها و سایت‌های ایرانی بدون VPN" />
-                        <Label x:Name="IranDirectLabel" Text="برنامه‌ها و سایت‌های ایرانی بدون VPN" Style="{StaticResource OptionLabel}">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnIranDirectLabelTapped" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                        <Button x:Name="ChooseAppsButton" Text="انتخاب برنامه‌ها" Style="{StaticResource LinkButton}" Clicked="OnOpenAppsClicked" VerticalOptions="Center"
-                                IsVisible="False" ToolTipProperties.Text="خودتان انتخاب کنید کدام برنامه‌ها بدون VPN کار کنند" />
-                    </HorizontalStackLayout>
-                    <HorizontalStackLayout Spacing="4">
-                        <CheckBox x:Name="GeminiCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnGeminiOptionChanged"
-                                  SemanticProperties.Description="فقط سرورهایی که Gemini، هوش مصنوعی گوگل، را باز می‌کنند" />
-                        <Label Text="فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند" Style="{StaticResource OptionLabel}">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnGeminiLabelTapped" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                    </HorizontalStackLayout>
+                            Clicked="OnManualSwitchClicked" Margin="0,8,0,0"
+                            ToolTipProperties.Text="همین الان به یک سرور سالم دیگر برو (مثلاً وقتی ویدیو پخش نمی‌شود)" />
                 </VerticalStackLayout>
             </VerticalStackLayout>
 
-            <!-- Which server Connect uses -->
+            <!-- Where Connect goes: a country or city, or the server picked by hand -->
             <Border Grid.Row="2" Style="{StaticResource Card}" Padding="16,12">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnOpenLocationsTapped" />
+                </Border.GestureRecognizers>
                 <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                     <VerticalStackLayout VerticalOptions="Center" Spacing="2">
-                        <Label Text="سرور" Style="{StaticResource MetaLabel}" />
-                        <Label x:Name="ServerChoiceLabel" Text="خودکار (سریع‌ترین)" FontFamily="{StaticResource FontStrong}" LineBreakMode="TailTruncation" MaxLines="1" />
+                        <Label x:Name="LocationCaptionLabel" Text="مکان سرور" Style="{StaticResource MetaLabel}" />
+                        <Label x:Name="LocationTitleLabel" Text="خودکار، هر کشوری" FontFamily="{StaticResource FontStrong}" LineBreakMode="TailTruncation" MaxLines="1" />
                     </VerticalStackLayout>
                     <Button x:Name="AutoServerButton" Grid.Column="1" Text="خودکار" Style="{StaticResource SecondaryButton}" Clicked="OnAutoServerClicked" IsVisible="False"
                             VerticalOptions="Center" ToolTipProperties.Text="برنامه خودش سریع‌ترین سرور را انتخاب کند" />
-                    <Button Grid.Column="2" Text="انتخاب سرور" Style="{StaticResource SecondaryButton}" Clicked="OnOpenServersClicked" VerticalOptions="Center"
-                            ToolTipProperties.Text="خودتان یک سرور از لیست انتخاب کنید" />
+                    <Button Grid.Column="2" Text="انتخاب مکان" Style="{StaticResource SecondaryButton}" Clicked="OnOpenLocationsClicked" VerticalOptions="Center"
+                            ToolTipProperties.Text="کشور یا شهری را انتخاب کنید که سرورها از آنجا به اینترنت وصل شوند" />
                 </Grid>
             </Border>
+        </Grid>
+
+        <!-- ================= Locations: a country or a city ================= -->
+        <Grid x:Name="LocationsView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10" Padding="20,16,20,8" MaximumWidthRequest="600">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnLocationsBackClicked" VerticalOptions="Center"
+                        ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
+                <Label Grid.Column="1" Text="مکان سرور" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
+            </Grid>
+            <Label Grid.Row="1" TextColor="{StaticResource TextSecondary}" FontSize="13" LineBreakMode="WordWrap"
+                   Text="جایی که سرور به اینترنت وصل می‌شود و سایت‌ها شما را آنجا می‌بینند. «سالم» یعنی روی همین اینترنت جواب داده است." />
+            <Entry x:Name="LocationSearch" Grid.Row="2" Placeholder="جستجو، مثلاً آلمان یا Berlin" TextChanged="OnLocationSearchChanged" ClearButtonVisibility="WhileEditing"
+                   TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextMuted}" BackgroundColor="{StaticResource Surface}"
+                   FontFamily="{StaticResource FontBody}" FontSize="14" />
+            <CollectionView x:Name="LocationsList" Grid.Row="3" SelectionMode="None">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="models:LocationRow">
+                        <Border Margin="0,3" Padding="0" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
+                                Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
+                            <Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Padding="14,10">
+                                <!-- cities sit under their country -->
+                                <BoxView WidthRequest="0" HeightRequest="1" Color="Transparent">
+                                    <BoxView.Triggers>
+                                        <DataTrigger TargetType="BoxView" Binding="{Binding IsCity}" Value="True">
+                                            <Setter Property="WidthRequest" Value="16" />
+                                        </DataTrigger>
+                                    </BoxView.Triggers>
+                                </BoxView>
+                                <Label Grid.Column="1" Text="{Binding Title}" FontFamily="{StaticResource FontStrong}" FontSize="15" VerticalOptions="Center"
+                                       LineBreakMode="TailTruncation" MaxLines="1">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsCity}" Value="True">
+                                            <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
+                                            <Setter Property="FontSize" Value="14" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <Label Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource MetaLabel}" VerticalOptions="Center" />
+                            </Grid>
+                            <!-- the whole row is one button: taps, keyboard and screen readers -->
+                            <Button Style="{StaticResource OverlayButton}" Clicked="OnLocationClicked" CommandParameter="{Binding .}"
+                                    SemanticProperties.Description="{Binding Title}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+                <CollectionView.EmptyView>
+                    <Label x:Name="LocationsEmptyLabel" Text="چیزی با این اسم پیدا نشد." TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,24" />
+                </CollectionView.EmptyView>
+            </CollectionView>
         </Grid>
 
         <!-- ================= Servers: the detailed screen ================= -->
@@ -238,7 +251,7 @@
                         FontFamily="{StaticResource FontBody}" FontSize="14" SemanticProperties.Description="انتخاب لیست سرورها" />
             </Grid>
 
-            <!-- What this list can do -->
+            <!-- What this list can do; the rarely used ones under "more" -->
             <FlexLayout x:Name="ActionsBar" Grid.Row="2" Wrap="Wrap" AlignItems="Center">
                 <Button x:Name="TestAllButton" Text="تست دوباره" Style="{StaticResource SecondaryButton}" Clicked="OnTestAgainClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="سرورهای این لیست را دوباره روی همین اینترنت تست می‌کند" />
@@ -246,14 +259,8 @@
                         ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۲ ساعت تازه می‌شوند)" />
                 <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را اضافه می‌کند" />
-                <Button x:Name="SaveListButton" Text="ذخیره به‌عنوان لیست" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="سرورهایی که الان جواب می‌دهند را با اسمی که خودتان می‌گذارید ذخیره می‌کند" />
-                <Button x:Name="ShareWorkingButton" Text="اشتراک سالم‌ها" Style="{StaticResource SecondaryButton}" Clicked="OnShareWorkingClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="لینک همه‌ی سرورهایی که الان جواب می‌دهند را یکجا به اشتراک می‌گذارد" />
-                <Button x:Name="ShareSubButton" Text="لینک اشتراک (QR)" Style="{StaticResource SecondaryButton}" Clicked="OnShareSubscriptionClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="لینک و QR اشتراک درفش، برای آیفون و برنامه‌های دیگر مثل Hiddify یا V2Box یا Streisand یا v2rayNG" />
-                <Button x:Name="DeleteListButton" Text="حذف این لیست" Style="{StaticResource SecondaryButton}" TextColor="{StaticResource Danger}" Clicked="OnDeleteSavedListClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="این لیست ذخیره‌شده را پاک می‌کند" />
+                <Button x:Name="ListMoreButton" Text="بیشتر…" Style="{StaticResource SecondaryButton}" Clicked="OnListMoreClicked" Margin="0,0,8,8"
+                        ToolTipProperties.Text="ذخیره‌ی سالم‌ها به‌عنوان لیست، اشتراک سالم‌ها، حذف لیست" />
             </FlexLayout>
 
             <!-- Server list -->
@@ -284,11 +291,82 @@
             </Border>
         </Grid>
 
+        <!-- ================= Settings ================= -->
+        <ScrollView x:Name="SettingsView" Grid.Row="2" IsVisible="False">
+            <VerticalStackLayout Padding="20,16,20,16" Spacing="12" MaximumWidthRequest="600">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                    <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnSettingsBackClicked" VerticalOptions="Center"
+                            ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
+                    <Label Grid.Column="1" Text="تنظیمات" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
+                </Grid>
+
+                <Label Text="اتصال" Style="{StaticResource SectionLabel}" Margin="0,8,0,0" />
+                <Border Style="{StaticResource Card}" Padding="12,8">
+                    <VerticalStackLayout Spacing="2">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
+                            <CheckBox x:Name="IranDirectCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnIranDirectChanged"
+                                      SemanticProperties.Description="برنامه‌ها و سایت‌های ایرانی بدون VPN" />
+                            <Label x:Name="IranDirectLabel" Grid.Column="1" Text="برنامه‌ها و سایت‌های ایرانی بدون VPN (بانک‌ها، درگاه پرداخت، سایت‌های &#x200E;.ir&#x200E;)" Style="{StaticResource OptionLabel}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnIranDirectLabelTapped" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+                        <Button x:Name="ChooseAppsButton" Text="انتخاب برنامه‌ها" Style="{StaticResource SecondaryButton}" Clicked="OnOpenAppsClicked"
+                                HorizontalOptions="Start" Margin="40,0,0,8" IsVisible="False"
+                                ToolTipProperties.Text="خودتان انتخاب کنید کدام برنامه‌ها بدون VPN کار کنند" />
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
+                            <CheckBox x:Name="GeminiCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnGeminiOptionChanged"
+                                      SemanticProperties.Description="فقط سرورهایی که Gemini، هوش مصنوعی گوگل، را باز می‌کنند" />
+                            <Label Grid.Column="1" Text="فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند" Style="{StaticResource OptionLabel}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnGeminiLabelTapped" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="اشتراک و خبرها" Style="{StaticResource SectionLabel}" Margin="0,8,0,0" />
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="لینک اشتراک درفش" FontFamily="{StaticResource FontStrong}" />
+                            <Label Text="برای آیفون و برنامه‌های دیگر: Hiddify، V2Box، Streisand، v2rayNG" Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="نمایش QR" Style="{StaticResource SecondaryButton}" Clicked="OnShareSubscriptionClicked" VerticalOptions="Center"
+                                ToolTipProperties.Text="لینک و QR اشتراک درفش؛ لیست هر ۲ ساعت خودکار تازه می‌شود" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="کانال تلگرام درفش" FontFamily="{StaticResource FontStrong}" />
+                            <Label Text="@DERAFSHVPN · خبر نسخه‌های تازه" Style="{StaticResource MetaLabel}" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="باز کردن کانال" Style="{StaticResource SecondaryButton}" Clicked="OnOpenTelegramClicked" VerticalOptions="Center"
+                                ToolTipProperties.Text="t.me/DERAFSHVPN را باز می‌کند" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="درفش در گیت‌هاب" FontFamily="{StaticResource FontStrong}" />
+                            <Label Text="کد برنامه و همه‌ی نسخه‌ها؛ با ستاره دادن کمک کنید بقیه هم پیدایش کنند" Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="باز کردن" Style="{StaticResource SecondaryButton}" Clicked="OnOpenGitHubClicked" VerticalOptions="Center"
+                                ToolTipProperties.Text="github.com/Mehinator/Derafsh را باز می‌کند" />
+                    </Grid>
+                </Border>
+                <Label x:Name="VersionLabel" Style="{StaticResource BrandLatinLabel}" HorizontalOptions="Center" Margin="0,8,0,0" />
+            </VerticalStackLayout>
+        </ScrollView>
+
         <!-- ================= Apps and VPN (Android): which apps use the VPN ================= -->
         <Grid x:Name="AppsView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,Auto,*" RowSpacing="10" Padding="20,16,20,8" MaximumWidthRequest="600">
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnAppsBackClicked" VerticalOptions="Center"
-                        ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
+                        ToolTipProperties.Text="بازگشت به تنظیمات" />
                 <Label Grid.Column="1" Text="برنامه‌ها و VPN" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
             </Grid>
             <!-- Two ways, like most VPN apps -->

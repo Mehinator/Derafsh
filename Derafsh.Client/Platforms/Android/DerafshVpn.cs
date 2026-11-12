@@ -24,9 +24,6 @@ namespace Derafsh.Client
         public const int SocksPort = 10809;
         private const int TunMtu = 8500;
 
-        // سرعت دانلود برنامه‌های کاربر از تونل (کیلوبایت بر ثانیه، میانگین چند ثانیه‌ی اخیر)
-        public static int UserDownKbps => s_current is { } s && IsRunning ? (int)s._downKbps : 0;
-
         public static bool IsRunning { get; private set; }
         public static string? LastError { get; private set; }
         public static event Action? StateChanged;
@@ -124,7 +121,6 @@ namespace Derafsh.Client
             _guard = null;
             _statsTimer?.Dispose();
             _statsTimer = null;
-            lock (_recent) _recent.Clear();
             Hev.Stop();
             _xray?.Dispose();
             _xray = null;
@@ -139,9 +135,8 @@ namespace Derafsh.Client
         // ---------- نگهبان اتصال ----------
         private void StartGuard()
         {
-            // سرعت دانلود ترافیک خود کاربر (از آمار تونل)، تا وقتی تند رد می‌شه تست سرعت زده نشه
-            _guard = new ConnectionGuard(SwitchEngineAsync, () => ConnectionGuard.ReadSpares().Where(x => x.Link != CurrentLink).ToList(),
-                                         () => (int)_downKbps, RecentlyActive);
+            // آمار تونل: نگهبان از روی ترافیک خود برنامه‌ها می‌فهمه ویدیو ایستاده یا چیزی برنمی‌گرده
+            _guard = new ConnectionGuard(SwitchEngineAsync, () => CurrentLink, Hev.Stats);
             _guard.Switched += (spare, reason) =>
             {
                 CurrentLink = spare.Link;
@@ -154,7 +149,11 @@ namespace Derafsh.Client
             };
             _guard.Lost += reason =>
             {
-                if (reason != ConnectionGuard.ReasonManual) { s_location = "سرور جواب نمی‌دهد؛ دنبال سرور سالم…"; UpdateNotification(); }
+                if (reason is ConnectionGuard.ReasonDown or ConnectionGuard.ReasonOffline)
+                {
+                    s_location = reason == ConnectionGuard.ReasonOffline ? "اینترنت گوشی قطع است؛ منتظر می‌ماند…" : "سرور جواب نمی‌دهد؛ دنبال سرور سالم…";
+                    UpdateNotification();
+                }
                 ConnectionLost?.Invoke(reason);
             };
         }
@@ -194,16 +193,8 @@ namespace Derafsh.Client
         private static string? s_server, s_location;
         private Timer? _statsTimer;
         private long _lastDown, _lastUp;
-        private double _downKbps;
         private DateTime _lastAt;
         private static DerafshVpnService? s_current;
-        // دانلودِ یه دقیقه‌ی اخیر (فقط ترافیک برنامه‌ها؛ تست‌های خود درفش از تونل رد نمی‌شن)
-        private readonly Queue<(DateTime at, long down)> _recent = new();
-
-        private bool RecentlyActive()
-        {
-            lock (_recent) return _recent.Count > 1 && _recent.Last().down - _recent.Peek().down >= 100 * 1024;
-        }
 
         // صفحه‌ی اصلی بعد از وصل شدن، شهر و کشور سرور رو اینجا می‌ده
         public static void SetLocation(string? location)
@@ -237,12 +228,6 @@ namespace Derafsh.Client
                 var (down, up) = Hev.Stats();
                 var now = DateTime.UtcNow;
                 double secs = Math.Max(0.2, (now - _lastAt).TotalSeconds);
-                _downKbps = _downKbps * 0.7 + (down - _lastDown) / secs / 1024 * 0.3;   // میانگین نرم چند ثانیه‌ی اخیر
-                lock (_recent)
-                {
-                    _recent.Enqueue((now, down));
-                    while (_recent.Count > 0 && now - _recent.Peek().at > TimeSpan.FromSeconds(60)) _recent.Dequeue();
-                }
                 string speed = $"↓ {Speed((down - _lastDown) / secs)}   ↑ {Speed((up - _lastUp) / secs)}";
                 (_lastDown, _lastUp, _lastAt) = (down, up, now);
                 NotificationManagerCompat.From(this).Notify(NotificationId, BuildNotification(speed));

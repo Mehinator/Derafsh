@@ -64,6 +64,11 @@ namespace Derafsh.Client.Services
 
                 // استخراج پرچم
                 string flag = ExtractFlag(name) ?? "🏳️";
+#if WINDOWS
+                // ویندوز پرچم ایموجی رو نشون نمی‌ده (دو حرف توی مربع)؛ کد دوحرفی جاش: «🇩🇪 Berlin» → «DE Berlin»
+                name = Regex.Replace(name, @"\uD83C[\uDDE6-\uDDFF]\uD83C[\uDDE6-\uDDFF]",
+                                     m => new string(new[] { (char)('A' + m.Value[1] - 0xDDE6), (char)('A' + m.Value[3] - 0xDDE6) }));
+#endif
 
                 return new Server { Config = link, City = name, Country = flag, Address = address.Trim('[', ']'), IsRemovable = isUser };
             }

@@ -5,13 +5,14 @@
 <h1 align="center">درفش · Derafsh</h1>
 
 <p align="center">
-  فیلترشکن رایگان درفش: کلاینت Xray / V2Ray برای ویندوز و اندروید، با کانفیگ‌های تازه که هر ۲ ساعت جمع و تست می‌شوند<br>
-  Derafsh: a free Xray / V2Ray VPN client for Windows and Android with fresh configs, collected and tested every 2 hours
+  فیلترشکن رایگان درفش: کلاینت Xray / V2Ray برای ویندوز و اندروید، با ۵۰۰ کانفیگ تازه که هر ۲ ساعت جمع و تست می‌شوند و انتخاب کشور و شهر<br>
+  Derafsh: a free Xray / V2Ray VPN client for Windows and Android with 500 fresh configs, collected and tested every 2 hours, and a choice of country and city
 </p>
 
 <p align="center">
   <a href="https://github.com/Mehinator/Derafsh/releases/latest"><b>⬇ دانلود آخرین نسخه / Download the latest release</b></a><br>
-  <a href="#آیفون-و-آیپد">آیفون و آیپد: لینک اشتراک / iPhone: subscription link</a>
+  <a href="#آیفون-و-آیپد">آیفون و آیپد: لینک اشتراک / iPhone: subscription link</a><br>
+  <a href="https://t.me/DERAFSHVPN">کانال تلگرام درفش / Telegram channel: @DERAFSHVPN</a>
 </p>
 
 <p align="center">
@@ -36,27 +37,35 @@
 
 ### طرز استفاده
 
-برنامه دو صفحه دارد:
+**صفحه‌ی اصلی** یک دکمه‌ی گرد **اتصال** دارد. درفش خودش سرورها را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و به سریع‌ترین سروری که جواب بدهد وصل می‌شود. زیر آن، **مکان سرور** است: خودکار (هر کشوری)، یا یک کشور (مثلاً آلمان) یا یک شهر (مثلاً برلین). با انتخاب مکان، فقط سرورهای همان‌جا تست و انتخاب می‌شوند، و اگر سرور قطع شود، درفش هم فقط به سرورهای همان‌جا می‌رود. مکان یعنی جایی که سرور به اینترنت وصل می‌شود و سایت‌ها شما را آنجا می‌بینند. اگر در شهر انتخابی سروری جواب ندهد، درفش می‌پرسد به جای دیگری از همان کشور وصل شود یا نه.
 
-**صفحه‌ی اصلی** فقط یک دکمه‌ی گرد **اتصال** دارد. درفش خودش سرورها را روی **همان اینترنتی که الان وصل هستید** تست می‌کند و به سریع‌ترین سروری که جواب بدهد وصل می‌شود. اگر تیک **«فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند»** را بزنید، هم سروری که وصل می‌شوید و هم سرورهای زاپاس همه Gemini را باز می‌کنند.
+**تنظیمات** (دکمه‌ی بالای صفحه):
 
-**برنامه‌ها و سایت‌های ایرانی بدون VPN** (تیک دوم، پیش‌فرض روشن): سایت‌های ایرانی (دامنه‌ی ‎.ir‎، چند سایت پرکاربرد مثل دیجی‌کالا و آپارات، و IPهای ایران) با اینترنت خود دستگاه باز می‌شوند؛ بانک‌ها و درگاه پرداخت فقط IP ایران را قبول می‌کنند. در اندروید، برنامه‌های ایرانی و بانکی هم خودکار بدون VPN می‌مانند.
-
-**انتخاب برنامه‌ها** (اندروید، کنار همان تیک): خودتان انتخاب کنید کدام برنامه‌ها از VPN استفاده کنند. دو حالت دارد: «همه‌ی برنامه‌ها با VPN، جز آن‌هایی که خاموش کنید» یا «فقط برنامه‌هایی که روشن کنید با VPN». تغییرها همان لحظه اعمال می‌شوند.
+- **برنامه‌ها و سایت‌های ایرانی بدون VPN** (پیش‌فرض روشن): سایت‌های ایرانی (دامنه‌ی ‎.ir‎، چند سایت پرکاربرد مثل دیجی‌کالا و آپارات، و IPهای ایران) با اینترنت خود دستگاه باز می‌شوند؛ بانک‌ها و درگاه پرداخت فقط IP ایران را قبول می‌کنند. در اندروید، برنامه‌های ایرانی و بانکی هم خودکار بدون VPN می‌مانند.
+- **انتخاب برنامه‌ها** (اندروید): خودتان انتخاب کنید کدام برنامه‌ها از VPN استفاده کنند. دو حالت دارد: «همه‌ی برنامه‌ها با VPN، جز آن‌هایی که خاموش کنید» یا «فقط برنامه‌هایی که روشن کنید با VPN».
+- **فقط سرورهایی که Gemini (هوش مصنوعی گوگل) را باز می‌کنند**: هم سروری که وصل می‌شوید و هم سرورهای زاپاس Gemini را باز می‌کنند.
+- **لینک اشتراک (QR)** برای آیفون و برنامه‌های دیگر، و **کانال تلگرام درفش** ([@DERAFSHVPN](https://t.me/DERAFSHVPN)).
 
 **صفحه‌ی سرورها** (دکمه‌ی «سرورها» بالای صفحه) برای کارهای بیشتر است. از منوی **لیست** یکی را انتخاب کنید:
 
 | لیست | چه چیزی نشان می‌دهد | دکمه‌ها |
 |---|---|---|
-| **آنلاین** | سرورهای رایگانی که روی همین اینترنت جواب می‌دهند، سریع‌ترین بالا | **تست دوباره** · **دریافت لیست تازه** · **ذخیره به‌عنوان لیست** |
-| **شخصی** | کانفیگ‌هایی که خودتان اضافه کرده‌اید | **تست دوباره** · **افزودن کانفیگ** · **ذخیره به‌عنوان لیست** |
-| **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **حذف این لیست** |
+| **آنلاین** | سرورهای رایگانی که روی همین اینترنت جواب می‌دهند (در مکان انتخابی)، سریع‌ترین بالا | **تست دوباره** · **دریافت لیست تازه** · **بیشتر…** |
+| **شخصی** | کانفیگ‌هایی که خودتان اضافه کرده‌اید | **تست دوباره** · **افزودن کانفیگ** · **بیشتر…** |
+| **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **بیشتر…** |
 
-روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌های هر سرور: **پینگ** (سرعت)، **Gemini** (آیا Gemini باز می‌شود)، **اشتراک** (فرستادن لینک کانفیگ برای دیگران)، **✧** (علاقه‌مندی) و **+ شخصی** (افزودن به لیست شخصی). زیر هر سرور آدرس آن و کانال تلگرامی که از آن آمده نوشته شده است.
+**بیشتر…** این‌ها را دارد: ذخیره‌ی سالم‌ها به‌عنوان لیست، اشتراک همه‌ی سالم‌ها، و حذف لیست ذخیره‌شده. روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌ی **⋯** کنار هر سرور این کارها را دارد: تست سرعت و پینگ، بررسی Gemini، اشتراک (QR و لینک)، ستاره، و افزودن به لیست شخصی یا حذف از آن. زیر هر سرور پروتکل، آدرس، کشور و منبع آن نوشته شده است.
 
-با دکمه‌ی **«اشتراک سالم‌ها»** در صفحه‌ی سرورها، لینک همه‌ی سرورهایی که الان جواب می‌دهند یکجا برای دیگران فرستاده می‌شود.
+**وصل ماندن:** کانفیگ‌های رایگان زود قطع یا کند می‌شوند. نگهبان اتصال درفش در اندروید داخل خود سرویس VPN کار می‌کند، پس با بسته بودن برنامه هم کار می‌کند:
 
-**وصل ماندن:** کانفیگ‌های رایگان زود قطع یا کند می‌شوند. تا وقتی وصل هستید، درفش دو سرور سالم دیگر را به‌عنوان **زاپاس** آماده نگه می‌دارد (هر ۴ دقیقه دوباره تست می‌شوند) و هر ۱۰ ثانیه اتصال را از داخل خودش امتحان می‌کند. اگر سرور جواب ندهد، یا **کند شود** (مثلاً ویدیو وسط پخش بایستد: سرعت دو بار پشت سر هم زیر ۲۰ کیلوبایت بر ثانیه و زاپاس سریع‌تر باشد)، خودکار به زاپاس می‌رود و وصل می‌مانید؛ در اندروید VPN روشن می‌ماند، حتی وقتی برنامه بسته است. هر وقت خودتان خواستید، دکمه‌ی **«تعویض سرور»** زیر اسم زاپاس همین الان به آن می‌رود. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود و اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
+- **قطعی زود پیدا می‌شود:** اگر برنامه‌ها چیزی بفرستند و چیزی برنگردد، یا دانلودی که در جریان بود ناگهان قطع شود (مثلاً ویدیو بایستد)، درفش همان لحظه اتصال را امتحان می‌کند. اگر دو سایت مختلف پشت سر هم جواب ندهند، سرور مرده حساب می‌شود.
+- **زاپاس‌ها همیشه تازه‌اند:** هر ۲ دقیقه چند سرور سالم دیگر با هم امتحان می‌شوند.
+- **عوض کردن سریع:** وقتی سرور قطع شود، ۸ سرور با هم تست می‌شوند و اولین سالم جایگزین می‌شود. اگر هیچ‌کدوم جواب ندهد، ۸ تای بعدی امتحان می‌شوند، تا ته لیست. کانفیگ‌های همان سرورِ مرده امتحان نمی‌شوند.
+- **وقتی اینترنت خود گوشی قطع است،** درفش سرورها را مرده حساب نمی‌کند و منتظر می‌ماند.
+- **کندی:** اگر سرور کند شود و زاپاس سریع‌تری آماده باشد، درفش خودکار به آن می‌رود.
+- **«تعویض سرور»:** این دکمه همین الان به یک سرور سالم دیگر می‌رود.
+
+در اندروید، VPN در تمام این مدت روشن می‌ماند. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود. اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
 
 **سرعت، نه فقط پینگ:** پینگ خوب یعنی سرور جواب می‌دهد، نه اینکه ویدیو را روان پخش کند. درفش سرعت دانلود هر سرور را هم اندازه می‌گیرد (کنار هر سرور، مثلاً «۲۴۰ KB/s») و سرورهایی را که برای ویدیو سریع‌اند (۱۵۰ KB/s به بالا) اول انتخاب می‌کند. سروری که فقط به پینگ جواب می‌دهد ولی چیزی دانلود نمی‌کند (در تست، نصف سرورهای پینگ‌دار) سالم حساب نمی‌شود. QUIC (UDP 443) بسته می‌شود تا اینستاگرام و یوتیوب از راه پایدارتر TCP بروند؛ روی سرورهای رایگان QUIC معمولاً همان چیزی است که ویدیو را وسط پخش نگه می‌دارد.
 
@@ -109,15 +118,19 @@
 اسکریپت [`collector.py`](collector.py) هر ۲ ساعت روی GitHub Actions اجرا می‌شود:
 
 1. صفحه‌ی عمومی چند کانال تلگرام و چند لیست عمومی گیت‌هاب را می‌خواند (فهرست در همان فایل؛ از جمله [SoliSpirit](https://github.com/SoliSpirit/v2ray-configs)، [barry-far](https://github.com/barry-far/V2ray-Config)، [mhcfpTopic](https://github.com/mhcfpTopic/config)، [PSG](https://github.com/itsyebekhe/PSG) و [rzashakeri](https://github.com/rzashakeri/v2ray-configs)).
-2. هر کانفیگ را با خود Xray تست می‌کند، با همان کدی که برنامه با آن وصل می‌شود ([`tools/ConfigTester`](tools/ConfigTester)): باید از داخل آن جواب گوگل بیاید و واقعاً دانلود کند.
-3. مرده‌ها، خراب‌ها و تکراری‌ها را حذف می‌کند. تازه‌ها اول می‌آیند و سرورهای مختلف جلوتر پخش می‌شوند.
+2. هر کانفیگ را با خود Xray تست می‌کند، با همان کدی که برنامه با آن وصل می‌شود ([`tools/ConfigTester`](tools/ConfigTester)): باید از داخل آن جواب گوگل بیاید و واقعاً دانلود کند. از داخل همان کانفیگ، کشور و شهری را هم که سرور از آن به اینترنت وصل می‌شود پیدا می‌کند و اسم کانفیگ را مثلاً «🇩🇪 Berlin» می‌گذارد. کانفیگ‌هایی که از خود ایران بیرون می‌آیند کنار می‌روند، چون فیلتر را دور نمی‌زنند.
+3. از حدود ۲۰۰۰ کانفیگ سالم، **۵۰۰ تای بهتر** را نگه می‌دارد:
+   - **ترتیب:** اول سرعت کافی برای ویدیو، بعد رمزنگاری TLS یا Reality (کانفیگ‌های بدون رمزنگاری را فیلتر راحت پیدا می‌کند)، بعد اینکه چند اجرای پشت سر هم سالم مانده (کمتر وسط ویدیو می‌میرد)، بعد نزدیکی به ایران.
+   - **مکان:** از هر شهر چند سرور حتماً در لیست می‌ماند تا انتخاب شهر خالی نماند.
+   - **تنوع:** از هر سرور حداکثر دو کانفیگ می‌آید، تا وقتی سروری می‌میرد، زاپاس‌ها با آن نمیرند.
 
-این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد. خروجی سه فایل است:
+این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد. خروجی چهار فایل است:
 
 | فایل | محتوا |
 |---|---|
-| [`derafsh_servers.txt`](derafsh_servers.txt) | لیست کانفیگ‌ها، جدیدترین‌ها اول |
+| [`derafsh_servers.txt`](derafsh_servers.txt) | لیست کانفیگ‌ها، بهترین‌ها اول |
 | [`derafsh_sources.json`](derafsh_sources.json) | منبع هر کانفیگ (کانال تلگرام یا لیست گیت‌هاب) |
+| [`derafsh_locations.json`](derafsh_locations.json) | کشور و شهر هر کانفیگ، برای «مکان سرور» |
 | [`derafsh_sub.txt`](derafsh_sub.txt) | همان لیست به شکل اشتراک استاندارد (base64) برای اپ‌های دیگر |
 
 ### نکته‌ی امنیتی
@@ -128,7 +141,9 @@
 
 ## English
 
-**Derafsh** collects free V2Ray/Xray configs from public Telegram channels and public GitHub lists every 2 hours, and tests each one with Xray (through the app's own config builder, [`tools/ConfigTester`](tools/ConfigTester)) so dead ones never reach the list (GitHub Actions + [`collector.py`](collector.py)). The app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
+**Derafsh** collects free V2Ray/Xray configs from public Telegram channels and public GitHub lists every 2 hours, and tests each one with Xray (through the app's own config builder, [`tools/ConfigTester`](tools/ConfigTester)) so dead ones never reach the list (GitHub Actions + [`collector.py`](collector.py)). The test also finds the country and city each config comes out in (configs are named like "🇩🇪 Berlin"), and the best 500 are kept. The ranking puts speed first, then TLS or REALITY over plain, then how many runs in a row a config kept working, then closeness to Iran. Every city keeps a few servers, and no server gets more than two entries.
+
+The app (in Persian) connects with one button. It tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers. You can limit it to a country or a city, or to servers that open Gemini. While connected, a guard inside the VPN service keeps a few tested spares. When your apps send but nothing comes back, or a running download stops, it checks the connection at once. If the server is dead, it tests 8 others at a time and moves to the first that answers, walking the whole list if it has to. Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android. News and releases: [t.me/DERAFSHVPN](https://t.me/DERAFSHVPN).
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.10.22** (the patterniha fork). Configs the engine can't start, or that don't really download, are dropped by the collector.

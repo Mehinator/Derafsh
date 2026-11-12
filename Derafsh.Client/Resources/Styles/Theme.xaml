@@ -17,6 +17,9 @@
     <Color x:Key="SurfaceHover">#2A2035</Color>
     <Color x:Key="Hairline">#2E2438</Color>
     <Color x:Key="BorderStrong">#4B3E59</Color>
+    <!-- a light tint over a row-sized button (hover / press), so the row under it still shows -->
+    <Color x:Key="OverlayHover">#14FFFFFF</Color>
+    <Color x:Key="OverlayPressed">#22FFFFFF</Color>
     <!-- QR codes stay dark on white so every camera can read them, even in this dark theme -->
     <Color x:Key="QrPaper">#FFFFFF</Color>
 
@@ -258,6 +261,37 @@
 
     <!-- Note: the template's implicit Button style (Styles.xaml) still merges into these keyed styles,
          so every style here resets MinimumHeightRequest / MinimumWidthRequest itself. -->
+
+    <!-- A transparent button over a whole row (e.g. a location): the row reacts to taps, the keyboard and screen readers.
+         Hover and press only tint the row a little. -->
+    <Style x:Key="OverlayButton" TargetType="Button">
+        <Setter Property="BackgroundColor" Value="Transparent" />
+        <Setter Property="BorderWidth" Value="0" />
+        <Setter Property="CornerRadius" Value="8" />
+        <Setter Property="Text" Value="" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="MinimumHeightRequest" Value="0" />
+        <Setter Property="MinimumWidthRequest" Value="0" />
+        <Setter Property="HorizontalOptions" Value="Fill" />
+        <Setter Property="VerticalOptions" Value="Fill" />
+        <Setter Property="VisualStateManager.VisualStateGroups">
+            <VisualStateGroupList>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource OverlayHover}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters>
+                            <Setter Property="BackgroundColor" Value="{StaticResource OverlayPressed}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateGroupList>
+        </Setter>
+    </Style>
 
     <!-- Segmented tabs (selected state is set in code) -->
     <Style x:Key="TabButton" TargetType="Button">

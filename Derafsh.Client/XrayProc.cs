@@ -122,6 +122,26 @@ namespace Derafsh.Client
             return false;
         }
 
+        // پورت آزاد برای xray تست: از سیستم‌عامل گرفته می‌شه؛ پورت تصادفی بین تست‌های همزمان تکراری می‌شد و نتیجه‌ی یه
+        // کانفیگ به اسم کانفیگ دیگه ثبت می‌شد. بعد از تست ReleasePort.
+        private static readonly HashSet<int> s_ports = new();
+        public static int ReservePort()
+        {
+            lock (s_ports)
+            {
+                for (int i = 0; i < 20; i++)
+                {
+                    var l = new TcpListener(IPAddress.Loopback, 0);
+                    l.Start();
+                    int port = ((IPEndPoint)l.LocalEndpoint).Port;
+                    l.Stop();
+                    if (port != SessionPort && s_ports.Add(port)) return port;
+                }
+                throw new Exception("No free local port for the test.");
+            }
+        }
+        public static void ReleasePort(int port) { lock (s_ports) s_ports.Remove(port); }
+
         // HttpClient از راه پراکسی SOCKS محلی xray؛ SocketsHttpHandler روی ویندوز و اندروید هر دو SOCKS رو پشتیبانی می‌کنه
         public static HttpClient SocksClient(int port, TimeSpan? timeout = null)
         {

@@ -1,7 +1,7 @@
 # GitHub Pages: mehinator.github.io/Derafsh shows README.md (so search engines find Derafsh) and also serves
 # derafsh_servers.txt, derafsh_sources.json and derafsh_sub.txt as another mirror of the config list.
 title: "درفش · Derafsh — فیلترشکن رایگان (Xray / V2Ray) برای ویندوز و اندروید"
-description: "Derafsh (درفش): free Xray / V2Ray VPN client for Windows and Android with fresh configs, collected and tested every 2 hours. فیلترشکن رایگان با کانفیگ‌های تازه."
+description: "Derafsh (درفش): free Xray / V2Ray VPN client for Windows and Android with 500 fresh configs, tested every 2 hours, and a choice of country and city. فیلترشکن رایگان با کانفیگ‌های تازه و انتخاب کشور و شهر."
 lang: fa
 plugins:
   - jekyll-sitemap

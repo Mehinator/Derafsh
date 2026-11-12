@@ -11,10 +11,12 @@ using Microsoft.Win32;
 
 namespace Derafsh.Client
 {
-    // صفحه‌ی اصلی: دو نما روی یک صفحه
-    //   HomeView: دکمه‌ی گرد اتصال، گزینه‌های «ایرانی‌ها بدون VPN» و «فقط Gemini»، سرور (خودکار یا انتخاب کاربر)
-    //   AppsView (اندروید): کدوم برنامه‌ها از VPN استفاده کنن
-    //   ServersView: لیست‌ها (آنلاین / شخصی / ذخیره‌شده‌ها)، تست، ذخیره، افزودن کانفیگ، انتخاب سرور
+    // صفحه‌ی اصلی: چند نما روی یک صفحه، هر بار یکی
+    //   HomeView: دکمه‌ی گرد اتصال، «تعویض سرور»، و مکان سرور (یه کشور یا شهر، یا سروری که کاربر دستی زده)
+    //   LocationsView: انتخاب کشور یا شهر (MainPage.Locations.cs)
+    //   ServersView: لیست‌ها (آنلاین / شخصی / ذخیره‌شده‌ها)، تست، افزودن کانفیگ، انتخاب سرور
+    //   SettingsView: «ایرانی‌ها بدون VPN»، «فقط Gemini»، لینک اشتراک، کانال تلگرام
+    //   AppsView (اندروید): کدوم برنامه‌ها از VPN استفاده کنن (از تنظیمات)
     // تست سرورها: MainPage.Testing.cs؛ لیست‌های ذخیره‌شده: MainPage.Lists.cs
     public partial class MainPage : ContentPage
     {
@@ -32,6 +34,7 @@ namespace Derafsh.Client
         };
         // لینک اشتراک برای برنامه‌های دیگر (v2rayNG، Hiddify، V2Box، Streisand)
         public const string SubscriptionUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt";
+        private const string TelegramUrl = "https://t.me/DERAFSHVPN", GitHubUrl = "https://github.com/Mehinator/Derafsh";
         private string CloudPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_configs.txt");
         private string CloudSourcesPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_sources.json");
         private string UserPath => Path.Combine(FileSystem.AppDataDirectory, "user_configs.txt");
@@ -70,6 +73,7 @@ namespace Derafsh.Client
             BindingContext = this;
             ServerListView.ItemsSource = ServerGroups;
             BrandLabel.Text = $"DERAFSH  ·  {typeof(MainPage).Assembly.GetName().Version?.ToString(3)}";
+            VersionLabel.Text = BrandLabel.Text;
             GeminiCheck.IsChecked = Preferences.Default.Get("require_gemini", false);
             InitIranOption();
             RefreshListPicker();
@@ -140,22 +144,32 @@ namespace Derafsh.Client
         }
 #endif
 
-        private void OnOpenServersClicked(object sender, EventArgs e) => ShowServers(true);
-        private void OnBackToHomeClicked(object sender, EventArgs e) => ShowServers(false);
+        private void OnOpenServersClicked(object sender, EventArgs e) => ShowView(ServersView);
+        private void OnBackToHomeClicked(object sender, EventArgs e) => ShowView(HomeView);
+        private void OnOpenSettingsClicked(object sender, EventArgs e) => ShowView(SettingsView);
+        private void OnSettingsBackClicked(object sender, EventArgs e) => ShowView(HomeView);
 
-        private void ShowServers(bool show)
+        private void ShowView(View view)
         {
-            ServersView.IsVisible = show;
-            HomeView.IsVisible = !show;
-            if (!show) UpdateHome();
+            foreach (var v in new View[] { HomeView, LocationsView, ServersView, SettingsView, AppsView }) v.IsVisible = v == view;
+            if (view == HomeView) UpdateHome();
         }
 
-        // دکمه‌ی برگشت اندروید: از صفحه‌ی سرورها به صفحه‌ی اصلی، نه بیرون از برنامه
+        // دکمه‌ی برگشت اندروید: به صفحه‌ی قبلی، نه بیرون از برنامه
         protected override bool OnBackButtonPressed()
         {
-            if (ServersView.IsVisible) { ShowServers(false); return true; }
             if (AppsView.IsVisible) { CloseApps(); return true; }
+            if (!HomeView.IsVisible) { ShowView(HomeView); return true; }
             return base.OnBackButtonPressed();
+        }
+
+        private async void OnOpenTelegramClicked(object sender, EventArgs e) => await OpenLinkAsync(TelegramUrl);
+        private async void OnOpenGitHubClicked(object sender, EventArgs e) => await OpenLinkAsync(GitHubUrl);
+
+        private async Task OpenLinkAsync(string url)
+        {
+            try { await Launcher.OpenAsync(url); }
+            catch { StatusLabel.Text = $"باز نشد. این آدرس را خودتان باز کنید: {url}"; }
         }
 
         private static T Res<T>(string key) => Application.Current!.Resources.TryGetValue(key, out var v) && v is T t ? t : default!;
@@ -196,8 +210,6 @@ namespace Derafsh.Client
             bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
             RefreshButton.IsVisible = online;
             AddConfigButton.IsVisible = personal;
-            SaveListButton.IsVisible = online || personal;
-            DeleteListButton.IsVisible = !online && !personal;
         }
 
         private void LoadConfigs()
@@ -215,10 +227,10 @@ namespace Derafsh.Client
             }
             else if (_currentList == ListOnline)
             {
-                // فقط کانفیگ‌هایی که روی همین اینترنت جواب دادن (تست خودکار) به‌علاوه‌ی ستاره‌دارها
+                // فقط کانفیگ‌هایی که روی همین اینترنت جواب دادن (تست خودکار)، توی مکان انتخابی، به‌علاوه‌ی ستاره‌دارها
                 var list = _configService.ParseFile(CloudPath, false).DistinctBy(x => x.Config).ToList();
                 Decorate(list, _cloudSources, favs);
-                _onlineGroup = new ServerGroup("", Ordered(list.Where(x => x.IsFavorite || x.Ping is > 0 and < NoReply)));
+                _onlineGroup = new ServerGroup("", Ordered(list.Where(x => x.IsFavorite || (x.Ping is > 0 and < NoReply && Locations.Matches(x.Config)))));
                 ServerGroups.Add(_onlineGroup);
                 UpdateOnlineHeader();
             }
@@ -250,6 +262,8 @@ namespace Derafsh.Client
             {
                 ListPersonal => ("هنوز کانفیگ شخصی ندارید", "با «افزودن کانفیگ» لینک‌های خودتان را اضافه کنید، یا در لیست آنلاین روی «+ شخصی» بزنید."),
                 ListOnline when _isUpdating => ("در حال تست سرورها روی اینترنت شما…", "اول جدیدترین کانفیگ‌ها دانلود می‌شوند. سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
+                ListOnline when _discoveryDone && !_discovering && Locations.Selected.Length > 0 =>
+                    ($"در {Locations.Describe(Locations.Selected)} فعلاً سروری روی این اینترنت جواب نداد", "در صفحه‌ی اصلی مکان دیگری انتخاب کنید، یا «تست دوباره» را بزنید."),
                 ListOnline when _discovering || (!_discoveryDone && File.Exists(CloudPath)) => ("در حال تست سرورها روی اینترنت شما…", "سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
                 ListOnline when !File.Exists(CloudPath) => ("هنوز لیستی دانلود نشده", "«دریافت لیست تازه» را بزنید."),
                 ListOnline => ("فعلاً هیچ سروری روی این اینترنت جواب نداد", "«تست دوباره» را بزنید، یا کمی بعد «دریافت لیست تازه»."),
@@ -296,10 +310,11 @@ namespace Derafsh.Client
             if (!ok) await FetchListThroughServerAsync();
         }
 
-        private async Task SaveListAsync((string list, string? sources) data)
+        private async Task SaveListAsync((string list, string? sources, string? locations) data)
         {
             await File.WriteAllTextAsync(CloudPath, data.list);
             if (data.sources != null) await File.WriteAllTextAsync(CloudSourcesPath, data.sources);
+            if (data.locations != null) await File.WriteAllTextAsync(Locations.FilePath, data.locations);
             _discoverGen++;   // تست خودکارِ لیست قبلی دیگه ردیف اضافه نمی‌کنه
             _discovering = false;
             LoadConfigs();
@@ -327,7 +342,7 @@ namespace Derafsh.Client
         private async Task FetchListThroughServerAsync()
         {
             if (!_listDownloadFailed || _isUpdating) return;
-            var best = isConnected ? null : WorkingServers().FirstOrDefault();
+            var best = isConnected ? null : WorkingServers(anyLocation: true).FirstOrDefault();
             if (!isConnected && best == null) return;
             _isUpdating = true;
             XrayProc? proc = null; int port = XrayProc.SessionPort; string? configPath = null;
@@ -349,17 +364,74 @@ namespace Derafsh.Client
             await DiscoverAsync(fresh: false);
         }
 
-        private static async Task<(string list, string? sources)> DownloadListAsync(bool useSystemProxy = false, int? socksPort = null)
+        private static async Task<(string list, string? sources, string? locations)> DownloadListAsync(bool useSystemProxy = false, int? socksPort = null)
         {
             var timeout = TimeSpan.FromSeconds(socksPort != null ? 25 : useSystemProxy ? 12 : 20);
             using var client = socksPort is int port ? XrayProc.SocksClient(port, timeout)
                                                      : new HttpClient(new HttpClientHandler { UseProxy = useSystemProxy }) { Timeout = timeout };
-            // لیست کامل حدود ۲۰۰۰ خطه؛ کمتر از ۲۰۰ یعنی نصفه رسیده (بعضی آینه‌ها فایل بزرگ رو نصفه می‌دن)
-            string list = await FetchAnyMirrorAsync(client, "derafsh_servers.txt", text => text.Count(c => c == '\n') >= 200 && text.Contains("://"));
-            string? sources = null;
-            // فایل منبع اختیاریه؛ اگه نبود، برنامه بدون اون کار می‌کنه
-            try { sources = await FetchAnyMirrorAsync(client, "derafsh_sources.json", text => text.TrimStart().StartsWith('{') && text.TrimEnd().EndsWith('}')); } catch { }
-            return (list, sources);
+            var (list, mirror) = await FetchNewestListAsync(client);
+            // منبع هر کانفیگ و مکانش (کشور و شهر) اختیاری‌ان؛ از همون آینه‌ای که لیست اومد، تا با همون نسخه جور باشن
+            string? sources = await FetchJsonAsync(client, mirror, "derafsh_sources.json");
+            string? locations = await FetchJsonAsync(client, mirror, "derafsh_locations.json");
+            return (list, sources, locations);
+        }
+
+        private static bool IsJsonObject(string text) => text.TrimStart().StartsWith('{') && text.TrimEnd().EndsWith('}');
+
+        private static async Task<string?> FetchJsonAsync(HttpClient client, string mirror, string file)
+        {
+            try
+            {
+                string text = await client.GetStringAsync(mirror + file);
+                if (IsJsonObject(text)) return text;
+            }
+            catch { }
+            try { return await FetchAnyMirrorAsync(client, file, IsJsonObject); } catch { return null; }
+        }
+
+        // لیست از همه‌ی آینه‌ها با هم. بعضی آینه‌ها (fastly، gcore، githack) تا مدتی نسخه‌ی قبلی رو می‌دن؛ بعد از اولین جواب
+        // سالم، ۲ ثانیه برای بقیه صبر می‌شه و تازه‌ترین برداشته می‌شه (زمان ساخت توی خط اول: «# Derafsh 2026-11-12T15:09:20Z»).
+        // لیست کامل ۵۰۰ خطه؛ کمتر از ۲۰۰ یعنی نصفه رسیده (بعضی آینه‌ها فایل بزرگ رو نصفه می‌دن).
+        private static async Task<(string text, string mirror)> FetchNewestListAsync(HttpClient client)
+        {
+            var cts = new CancellationTokenSource(client.Timeout);
+            async Task<(string? text, string mirror)> Fetch(string mirror)
+            {
+                try
+                {
+                    using var res = await client.GetAsync(mirror + "derafsh_servers.txt", HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                    if (!res.IsSuccessStatusCode) return (null, mirror);
+                    string text = await res.Content.ReadAsStringAsync(cts.Token);
+                    return (text.Count(c => c == '\n') >= 200 && text.Contains("://") ? text : null, mirror);
+                }
+                catch { return (null, mirror); }
+            }
+            var pending = ListMirrors.Select(Fetch).ToList();
+            (string text, string mirror)? best = null;
+            DateTime? graceEnd = null;
+            while (pending.Count > 0)
+            {
+                var next = Task.WhenAny(pending);
+                if (graceEnd is { } end)
+                {
+                    var left = end - DateTime.UtcNow;
+                    if (left <= TimeSpan.Zero || await Task.WhenAny(next, Task.Delay(left)) != next) break;
+                }
+                var done = await next;
+                pending.Remove(done);
+                var (text, mirror) = await done;
+                if (text == null) continue;
+                if (best == null || string.CompareOrdinal(Stamp(text), Stamp(best.Value.text)) > 0) best = (text, mirror);
+                graceEnd ??= DateTime.UtcNow.AddSeconds(2);
+            }
+            cts.Cancel();
+            return best ?? throw new HttpRequestException("No mirror answered.");
+
+            static string Stamp(string list)
+            {
+                var m = Regex.Match(list.Length > 200 ? list[..200] : list, @"^# Derafsh (\S+)");
+                return m.Success ? m.Groups[1].Value : "";   // لیست‌های قدیمی این خط رو ندارن
+            }
         }
 
         // همه‌ی آینه‌ها با هم؛ اولین جوابی که سالم برسه برداشته می‌شه و بقیه لغو می‌شن
@@ -417,12 +489,9 @@ namespace Derafsh.Client
         // ---------- اشتراک‌گذاری کانفیگ‌ها ----------
 
         // اشتراک یک کانفیگ: QR (برای اسکن با گوشی دیگه) به‌علاوه‌ی «کپی لینک» و «فرستادن»
-        private async void OnShareClicked(object sender, EventArgs e)
-        {
-            if (sender is not Button btn || btn.CommandParameter is not Server s) return;
+        private async Task ShareServerAsync(Server s) =>
             await Navigation.PushModalAsync(new QrPage(string.IsNullOrEmpty(s.City) ? "کانفیگ" : s.City, s.Config,
                 "با دوربین برنامه‌ی VPN یک گوشی دیگر اسکن کنید، مثلاً v2rayNG یا Hiddify یا V2Box یا Streisand. یا لینک را کپی کنید یا بفرستید."));
-        }
 
         // لینک اشتراک درفش (برای آیفون و برنامه‌های دیگر)، با QR
         private async void OnShareSubscriptionClicked(object sender, EventArgs e) =>
@@ -432,7 +501,7 @@ namespace Derafsh.Client
         // اشتراک همه‌ی سرورهایی که الان جواب می‌دن، یکجا (هر لینک در یک خط)
         private async void OnShareWorkingClicked(object sender, EventArgs e)
         {
-            var working = WorkingServers().Select(s => s.Config).Distinct().ToList();
+            var working = WorkingServers(anyLocation: true).Select(s => s.Config).Distinct().ToList();
             if (!working.Any())
             {
                 await DisplayAlertAsync("هنوز سرور سالمی نیست", "فقط سرورهایی اشتراک گذاشته می‌شوند که در تست جواب داده‌اند. صبر کنید تست تمام شود، یا «تست دوباره» را بزنید.", "باشه");
@@ -450,9 +519,45 @@ namespace Derafsh.Client
             catch { StatusLabel.Text = "اشتراک‌گذاری انجام نشد."; }
         }
 
-        // ---------- دکمه‌های هر ردیف ----------
+        // ---------- کارهای هر ردیف (دکمه‌ی «⋯») و کارهای کم‌استفاده‌ی لیست («بیشتر…») ----------
 
-        private void OnSaveToPersonalClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = SaveToPersonal(s); }
+        private async void OnRowMoreClicked(object sender, EventArgs e)
+        {
+            if (sender is not Button { CommandParameter: Server s }) return;
+            const string Connect = "اتصال به همین سرور", Test = "تست سرعت و پینگ", Gemini = "بررسی Gemini", ShareIt = "اشتراک: QR و لینک",
+                         Save = "افزودن به لیست شخصی", Delete = "حذف از لیست شخصی";
+            string star = s.IsFavorite ? "برداشتن ستاره" : "ستاره (همیشه اول لیست)";
+            var buttons = new List<string> { Connect, Test, Gemini, ShareIt, star };
+            if (s.ShowSave) buttons.Add(Save);
+            string? choice = await DisplayActionSheetAsync(s.City, "لغو", s.IsRemovable ? Delete : null, buttons.ToArray());
+            switch (choice)
+            {
+                case Connect: SelectServer(s); break;
+                case Test: _ = PingSingle(s.Config); break;
+                case Gemini: _ = TestGemini(s.Config); break;
+                case ShareIt: await ShareServerAsync(s); break;
+                case Save: await SaveToPersonal(s); break;
+                case Delete: await DeleteServer(s); break;
+                default: if (choice == star) ToggleFavorite(s); break;
+            }
+        }
+
+        private async void OnListMoreClicked(object sender, EventArgs e)
+        {
+            bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
+            const string SaveList = "ذخیره‌ی سالم‌ها به‌عنوان لیست", ShareWorking = "اشتراک همه‌ی سالم‌ها", DeleteList = "حذف این لیست";
+            var buttons = new List<string>();
+            if (online || personal) buttons.Add(SaveList);
+            buttons.Add(ShareWorking);
+            string? choice = await DisplayActionSheetAsync("این لیست", "لغو", online || personal ? null : DeleteList, buttons.ToArray());
+            switch (choice)
+            {
+                case SaveList: OnSaveListClicked(sender, e); break;
+                case ShareWorking: OnShareWorkingClicked(sender, e); break;
+                case DeleteList: OnDeleteSavedListClicked(sender, e); break;
+            }
+        }
+
         private async Task SaveToPersonal(Server s)
         {
             try
@@ -465,7 +570,6 @@ namespace Derafsh.Client
             catch { StatusLabel.Text = "این کانفیگ ذخیره نشد."; }
         }
 
-        private void OnDeleteSingleItemClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) _ = DeleteServer(s); }
         private async Task DeleteServer(Server s)
         {
             if (!await DisplayAlertAsync("این کانفیگ حذف شود؟", $"{Q(s.City)} از لیست شخصی شما حذف می‌شود.", "حذف", "لغو")) return;
@@ -485,6 +589,11 @@ namespace Derafsh.Client
         {
             if (e.SelectedItem is not Server s) return;
             ServerListView.SelectedItem = null;   // انتخاب رو خودمون با حاشیه‌ی طلایی نشون می‌دیم
+            SelectServer(s);
+        }
+
+        private void SelectServer(Server s)
+        {
             if (!_autoServer && _currentServer?.Config == s.Config) return;
             ChooseServer(s);
             if (isConnected)
@@ -513,7 +622,6 @@ namespace Derafsh.Client
             StatusLabel.Text = "سرور خودکار انتخاب می‌شود: سریع‌ترین سروری که روی این اینترنت جواب بدهد.";
         }
 
-        private void OnFavoriteClicked(object sender, EventArgs e) { if (sender is Button btn && btn.CommandParameter is Server s) ToggleFavorite(s); }
         private void ToggleFavorite(Server s)
         {
             var favs = ReadFavorites();
@@ -561,23 +669,19 @@ namespace Derafsh.Client
         {
             Preferences.Default.Set("require_gemini", e.Value);
             UpdateHome();
-            // وصلیم: زاپاس‌های قبلی ممکنه Gemini رو باز نکنن؛ از نو انتخاب می‌شن
-            if (isConnected)
-            {
-                _spares = new();
-                ConnectionGuard.ClearSpares();
-                UpdateSpareLabel();
-                _ = RefreshSparesAsync();
-            }
+            UpdatePool();   // وصلیم: صف زاپاس‌های نگهبان با همین گزینه
         }
 
-        // متن‌های صفحه‌ی اصلی: کدوم سرور استفاده می‌شه
+        // متن‌های صفحه‌ی اصلی: «اتصال» کجا وصل می‌شه (یه کشور یا شهر، یا سروری که کاربر دستی زده)
         private void UpdateHome()
         {
-            AutoServerButton.IsVisible = !_autoServer;
-            ServerChoiceLabel.Text = _currentServer == null ? "خودکار (سریع‌ترین)"
-                : _autoServer ? (isConnected ? $"خودکار  ·  {Q(_currentServer.City)}" : "خودکار (سریع‌ترین)")
-                : _currentServer.City;
+            bool manual = !_autoServer && _currentServer != null;
+            AutoServerButton.IsVisible = manual;
+            LocationCaptionLabel.Text = manual ? "سروری که خودتان انتخاب کردید" : "مکان سرور";
+            string selected = Locations.Selected;
+            LocationTitleLabel.Text = manual ? _currentServer!.City
+                : selected.Length == 0 ? "خودکار، هر کشوری"
+                : $"{Locations.Flag(Locations.Split(selected).cc)} {Locations.Describe(selected)}".Trim();
             if (!isConnected && !_connecting) SetConnState(ConnState.Disconnected);
         }
 
@@ -594,7 +698,8 @@ namespace Derafsh.Client
             {
                 case ConnState.Finding:
                     text = "لغو"; stateText = "در حال پیدا کردن سرور…";
-                    detail ??= RequireGemini ? "سرورها روی همین اینترنت تست می‌شوند، همراه با Gemini" : "سرورها روی همین اینترنت تست می‌شوند";
+                    detail ??= (Locations.Selected.Length > 0 ? $"سرورهای {Locations.Describe(Locations.Selected)} روی همین اینترنت تست می‌شوند" : "سرورها روی همین اینترنت تست می‌شوند")
+                               + (RequireGemini ? "، همراه با Gemini" : "");
                     mini = stateText;
                     break;
                 case ConnState.Connecting:
@@ -621,7 +726,7 @@ namespace Derafsh.Client
             ConnRing.Stroke = new SolidColorBrush(Res<Color>(on ? "Success" : busy ? "Warning" : "Hairline"));
             ConnStateLabel.Text = stateText;
             ConnDetailLabel.Text = detail;
-            SpareLabel.IsVisible = ManualSwitchButton.IsVisible = on;
+            ManualSwitchButton.IsVisible = on;
 
             MiniDot.Color = Res<Color>(on ? "Success" : busy ? "Warning" : "TextMuted");
             MiniStateLabel.Text = mini;
@@ -636,8 +741,10 @@ namespace Derafsh.Client
                 return $"سرور انتخابی شما: {Q(_currentServer.City)}" + (_currentServer.Ping is > 0 and < NoReply ? $"  ·  {Ms(_currentServer.Ping)}" : "");
             var best = WorkingServers().FirstOrDefault();
             if (best != null && !RequireGemini) return $"بهترین سرور الان: {Q(best.City)}  ·  " + (best.Speed > 0 ? $"{Kbs(best.Speed)}  ·  " : "") + Ms(best.Ping);
-            if (_discovering) return "سرورها روی همین اینترنت تست می‌شوند…";
-            return RequireGemini ? "سریع‌ترین سروری که Gemini را باز کند انتخاب می‌شود" : "سریع‌ترین سروری که روی همین اینترنت جواب بدهد انتخاب می‌شود";
+            if (_discovering)
+                return Locations.Selected.Length > 0 ? $"سرورهای {Locations.Describe(Locations.Selected)} روی همین اینترنت تست می‌شوند…" : "سرورها روی همین اینترنت تست می‌شوند…";
+            string where = Locations.Selected.Length > 0 ? $" در {Locations.Describe(Locations.Selected)}" : "";
+            return RequireGemini ? $"سریع‌ترین سروری{where} که Gemini را باز کند انتخاب می‌شود" : $"سریع‌ترین سروری{where} که روی همین اینترنت جواب بدهد انتخاب می‌شود";
         }
 
         private async void OnConnectButtonClicked(object sender, EventArgs e)
@@ -684,6 +791,25 @@ namespace Derafsh.Client
                 if (!searching && !_discoveryDone) { _ = DiscoverAsync(fresh: false); searching = true; }
                 if (!searching || sw.Elapsed > TimeSpan.FromMinutes(3))
                 {
+                    // توی مکان انتخابی هیچی جواب نداد: کل همون کشور، یا هر کشوری
+                    string selected = Locations.Selected;
+                    if (selected.Length > 0 && !(RequireGemini && working.Any()))
+                    {
+                        var (cc, city) = Locations.Split(selected);
+                        string wider = $"هر شهری در {Locations.CountryName(cc)}", anywhere = "خودکار، هر کشوری";
+                        var options = city.Length > 0 ? new[] { wider, anywhere } : new[] { anywhere };
+                        string? pick = await DisplayActionSheetAsync($"در {Locations.Describe(selected)} فعلاً سروری روی این اینترنت جواب نداد. کجا وصل شود؟",
+                                                                     "لغو", null, options);
+                        if (pick != wider && pick != anywhere) { StatusLabel.Text = "اتصال لغو شد. می‌توانید مکان دیگری انتخاب کنید."; return null; }
+                        Locations.Selected = pick == anywhere ? "" : cc;
+                        UpdateHome();
+                        LoadConfigs();
+                        _discoveryDone = false;
+                        _ = DiscoverAsync(fresh: false);
+                        SetConnState(ConnState.Finding);
+                        sw.Restart();
+                        continue;
+                    }
                     await DisplayAlertAsync("سرور مناسبی پیدا نشد",
                         RequireGemini && working.Any()
                             ? "سرورهایی که روی این اینترنت جواب می‌دهند Gemini را باز نکردند. تیک Gemini را بردارید، یا کمی بعد دوباره امتحان کنید."
@@ -697,8 +823,8 @@ namespace Derafsh.Client
             return null;
         }
 
-        // سرورهای سالم روی همین اینترنت از همه‌ی لیست‌ها (آنلاین، شخصی، ذخیره‌شده‌ها)، سریع‌ترین اول
-        private List<Server> WorkingServers()
+        // سرورهای سالم روی همین اینترنت از همه‌ی لیست‌ها (آنلاین، شخصی، ذخیره‌شده‌ها)، سریع‌ترین اول؛ فقط مکان انتخابی
+        private List<Server> WorkingServers(bool anyLocation = false)
         {
             var configs = new List<string>();
             try { if (File.Exists(UserPath)) configs.AddRange(File.ReadAllLines(UserPath).Select(l => l.Trim())); } catch { }
@@ -707,6 +833,7 @@ namespace Derafsh.Client
             // سرعت مهم‌تر از پینگه (ویدیو با سرعت کم وسطش می‌ایسته)؛ بعد اون‌هایی که روی همین اینترنت قبلاً خوب بودن؛ بعد پینگ
             return configs.Distinct()
                 .Where(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply)
+                .Where(c => anyLocation || Locations.Matches(c))
                 .OrderBy(c => SpeedBucket(_speedCache.GetValueOrDefault(c, -1)))
                 .ThenByDescending(c => NetworkHistory.Score(c) > 0.5)
                 .ThenBy(c => _pingCache[c])
@@ -738,7 +865,7 @@ namespace Derafsh.Client
 
                 string configPath = Path.Combine(XrayProc.WorkDir, "config.json");
                 await File.WriteAllTextAsync(configPath, await BuildXrayConfigAsync(target.Config, XrayProc.SessionPort));
-                ConnectionGuard.ClearSpares();
+                ConnectionGuard.CleanupFiles();
 
 #if ANDROID
                 // اندروید: سرویس VPN خودش xray و تونل رو بالا میاره (و نگهبان اتصال رو)
@@ -772,7 +899,7 @@ namespace Derafsh.Client
                 StatusLabel.Text = "";
                 UpdateHome();
                 StartGuard();
-                StartSpareUpkeep();
+                UpdatePool();
                 if (_listDownloadFailed) _ = FetchListThroughServerAsync();
                 if (_updateTag == null) _ = CheckForUpdateAsync();   // شاید گیت‌هاب قبل از اتصال جواب نداده بود
                 return true;
@@ -796,7 +923,6 @@ namespace Derafsh.Client
             {
                 isConnected = false;
                 if (_autoServer) _currentServer = null;
-                StopSpareUpkeep();
                 SetConnState(ConnState.Disconnected);
                 UpdateHome();
             }
@@ -815,7 +941,6 @@ namespace Derafsh.Client
         private void Disconnect()
         {
             StopGuard();
-            StopSpareUpkeep();
 #if ANDROID
             VpnController.Stop();
 #else
@@ -830,8 +955,17 @@ namespace Derafsh.Client
         private static void KillXray()
         {
 #if WINDOWS
-            // xray‌هایی که از اجرای قبلی مونده‌ن؛ xray‌های تستِ همین الان دست نمی‌خورن
-            foreach (var p in Process.GetProcessesByName("xray")) try { if (!XrayProc.IsTestProcess(p.Id)) p.Kill(); } catch { }
+            // xray‌های خود درفش که از اجرای قبلی مونده‌ن؛ xray‌های تستِ همین الان دست نمی‌خورن، و xray برنامه‌های دیگه
+            // (مثلاً v2rayN که کاربر کنار درفش داره) هم نه: قبلاً هر xray روی سیستم بسته می‌شد
+            string own = Path.GetFullPath(XrayProc.EnginePath);
+            foreach (var p in Process.GetProcessesByName("xray"))
+                try
+                {
+                    if (XrayProc.IsTestProcess(p.Id)) continue;
+                    string? path = p.MainModule?.FileName;
+                    if (path != null && string.Equals(Path.GetFullPath(path), own, StringComparison.OrdinalIgnoreCase)) p.Kill();
+                }
+                catch { }
 #endif
         }
 

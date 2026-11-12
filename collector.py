@@ -54,10 +54,9 @@ GITHUB_LISTS = [
     ("ALIILAPRO", "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt", 300),
     ("arshiacomplus", "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/mix/sub.html", 200),
     ("Masir_Sefid", "https://raw.githubusercontent.com/masir-sefid/Sub/main/@Masir_Sefid.txt", 200),
-    # از ۱۲ نوامبر ۲۰۲۶ (همه همون روز به‌روز شده بودن)
-    ("MatinGhanbari", "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/super-sub.txt", 300),
+    # از ۱۲ نوامبر ۲۰۲۶. اولین تست: 4n0nymou3 ۳۸٪، mahdibland ۲۷٪، TGParse ۱۲٪ سالم. MatinGhanbari (super-sub، ۲٪) و
+    # V2RayRoot (vless، ۱٪) فقط وقت تست رو می‌گرفتن و برداشته شدن.
     ("4n0nymou3", "https://raw.githubusercontent.com/4n0nymou3/multi-proxy-config-fetcher/main/configs/proxy_configs_tested.txt", 300),
-    ("V2RayRoot", "https://raw.githubusercontent.com/V2RayRoot/V2RayConfig/main/Config/vless.txt", 300),
     ("TGParse", "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/vless", 400),
     ("mahdibland", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt", 300),
 ]

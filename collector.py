@@ -5,6 +5,7 @@ import sys
 import json
 import html
 import base64
+import time
 import shlex
 import bisect
 import hashlib
@@ -592,10 +593,16 @@ def build_tested_list(candidates, results, old_configs, sources):
 
     out, locations = [], {}
     for c in final:
-        l = loc(c) if status(c).status == "ok" else None
-        new = with_name(c, f"{flag(l[0])} {l[1] or l[0]}") if l else c
+        r = status(c)
+        l = loc(c) if r.status == "ok" else None
         if l:
+            new = with_name(c, f"{flag(l[0])} {l[1] or l[0]}")
             locations[new] = f"{l[0]}|{l[1]}"
+        elif r.status == "ok" and r.asn == CDN_ASN:
+            # خروجی کلادفلر: مکان ثابت نداره، ولی اسمش (به جای تبلیغ کانال) دست‌کم می‌گه چیه
+            new = with_name(c, "Cloudflare")
+        else:
+            new = c
         src = sources.get(c) or sources.get(c + "#")
         if src:
             sources[new] = src
@@ -681,6 +688,9 @@ if __name__ == "__main__":
     # 5. ذخیره نهایی
     if final_list:
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+            # زمان ساخت: بعضی آینه‌ها (fastly، gcore، githack) تا مدتی نسخه‌ی قبلی رو می‌دن؛ برنامه از بین آینه‌ها تازه‌ترین رو
+            # برمی‌داره. خطی که با # شروع می‌شه کانفیگ نیست و برنامه‌ها (و همین اسکریپت) ازش رد می‌شن.
+            f.write(f"# Derafsh {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}\n")
             for config in final_list:
                 f.write(config + "\n")
         with open(SUB_FILE, "w", encoding="ascii") as f:

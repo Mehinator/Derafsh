@@ -86,11 +86,13 @@ SUB_FILE = "derafsh_sub.txt"
 # سقف تعداد کانفیگ: ۵۰۰ تای بهتر، نه ۲۰۰۰ تا که گوشی وقتش رو سر تست‌شون بذاره
 MAX_CONFIGS = 500
 PER_EXIT = 2          # از هر سرور (IP خروجی) حداکثر دوتا، تا وقتی یه سرور می‌میره زاپاس‌ها هم باهاش نمیرن
-CITY_RESERVE = 3      # از هر شهر چندتای بهتر حتماً توی لیست، تا انتخاب شهر (مثلاً برلین) خالی نمونه
-COUNTRY_RESERVE = 15  # ... ولی از هر کشور حداکثر این‌قدر از راه سهم شهرها
-RESERVE_SHARE = 0.4   # سهم شهرها حداکثر ۴۰٪ لیست؛ بقیه فقط به ترتیب کیفیت
+CITY_RESERVE = 6      # از هر شهر تا این‌قدر از بهترین‌هاش، تا انتخاب شهر توی برنامه (مثلاً برلین) خالی نمونه
+COUNTRY_RESERVE = 30  # ... ولی از هر کشور حداکثر این‌قدر از راه سهم شهرها
+RESERVE_SHARE = 0.6   # سهم شهرها حداکثر ۶۰٪ لیست، نوبتی (اول یکی از هر شهر، بعد دومی...)؛ بقیه فقط به ترتیب کیفیت
 IRAN_KEEP = 25        # سرورهای داخل ایران (واسط) که از بیرون قابل تست نیستن، ته لیست
 CDN_ASN = 13335       # خروجی کلادفلر (مثلاً Workers): مکانش به جای کاربر بستگی داره، پس مکان ثابت نداره
+# خروجی توی این کشورها به درد کاربر ایرانی نمی‌خوره: ترافیک از خود ایران بیرون می‌آد و فیلتر سر جاشه
+USELESS_EXITS = {"IR"}
 # کشورهای دور از ایران (پینگ بالا)؛ بقیه (اروپا، ترکیه، خاورمیانه، قفقاز، ...) نزدیک حساب می‌شن
 FAR_COUNTRIES = {"US", "CA", "MX", "BR", "AR", "CL", "CO", "PE", "JP", "KR", "CN", "HK", "TW", "SG", "MY", "TH", "VN",
                  "ID", "PH", "AU", "NZ", "ZA", "NG", "KE"}
@@ -499,6 +501,11 @@ def build_tested_list(candidates, results, old_configs, sources):
     کانفیگ‌هایی که مکانشون معلومه اسم تازه می‌گیرن، مثلاً «🇩🇪 Berlin».
     None یعنی خیلی کم جواب دادن و احتمالاً خود تست خراب بوده"""
     status = lambda c: results.get(c, UNTESTED)
+    exits_iran = [c for c in candidates if status(c).status == "ok" and status(c).country in USELESS_EXITS]
+    if exits_iran:
+        print(f"   {len(exits_iran)} working configs come out in Iran (useless against the filter); left out")
+        for c in exits_iran:
+            results[c] = results[c]._replace(status="dead")
     alive = [c for c in candidates if status(c).status == "ok"]
 
     stats = {}
@@ -547,14 +554,24 @@ def build_tested_list(candidates, results, old_configs, sources):
             per_city[l] = per_city.get(l, 0) + 1
             per_country[l[0]] = per_country.get(l[0], 0) + 1
 
-    # ۱. چندتای بهتر از هر شهر
+    # ۱. سهم شهرها، نوبتی: بهترینِ هر شهر، بعد دومیِ هر شهر، ...؛ توی هر نوبت شهرهای کم‌سرور اول (مثلاً برلین با ۶ سرور
+    # سالم در کل). شهرهای پرسرور (آمستردام با ۳۰۰) از راه ترتیب کیفیت (پایین) به اندازه‌ی کافی توی لیست میان.
+    by_city = {}
     for c in ranked:
-        if len(picked) >= MAX_CONFIGS * RESERVE_SHARE:
-            break
         l = loc(c)
-        if l and per_exit.get(exit_of(c), 0) < PER_EXIT and per_city.get(l, 0) < CITY_RESERVE \
-                and per_country.get(l[0], 0) < COUNTRY_RESERVE:
-            take(c)
+        if l:
+            by_city.setdefault(l, []).append(c)
+    city_order = sorted(by_city.items(), key=lambda x: len(x[1]))   # پایدار: هم‌اندازه‌ها به ترتیب بهترین کانفیگشون
+    for turn in range(CITY_RESERVE):
+        for l, group in city_order:
+            if len(picked) >= MAX_CONFIGS * RESERVE_SHARE:
+                break
+            # نوبت این شهر: اولین کانفیگ بعدیش که سرورش هنوز سهمش پر نشده
+            if per_city.get(l, 0) > turn or per_country.get(l[0], 0) >= COUNTRY_RESERVE:
+                continue
+            c = next((x for x in group if x not in chosen and per_exit.get(exit_of(x), 0) < PER_EXIT), None)
+            if c:
+                take(c)
     # ۲. بقیه به ترتیب کیفیت، از هر سرور حداکثر PER_EXIT؛ اگه کم اومد، بدون این سقف
     for cap in (PER_EXIT, None):
         for c in ranked:

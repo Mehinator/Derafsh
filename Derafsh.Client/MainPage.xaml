@@ -243,7 +243,7 @@
                 <Button x:Name="TestAllButton" Text="تست دوباره" Style="{StaticResource SecondaryButton}" Clicked="OnTestAgainClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="سرورهای این لیست را دوباره روی همین اینترنت تست می‌کند" />
                 <Button x:Name="RefreshButton" Text="دریافت لیست تازه" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۴ ساعت تازه می‌شوند)" />
+                        ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۲ ساعت تازه می‌شوند)" />
                 <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را اضافه می‌کند" />
                 <Button x:Name="SaveListButton" Text="ذخیره به‌عنوان لیست" Style="{StaticResource SecondaryButton}" Clicked="OnSaveListClicked" Margin="0,0,8,8"

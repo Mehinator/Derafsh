@@ -6,7 +6,9 @@ import json
 import html
 import base64
 import shlex
+import bisect
 import tempfile
+import ipaddress
 import subprocess
 from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
@@ -32,24 +34,28 @@ TELEGRAM_PAGES = 2
 # لیست‌های عمومی گیت‌هاب (جمع‌کننده‌های دیگه که هر ۱۵ دقیقه تا ۴ ساعت تازه می‌شن و از صدها کانال جمع می‌کنن؛
 # همون‌هایی که برنامه‌هایی مثل MEH VPN هم می‌گیرن). فقط وقتی اضافه می‌شن که تست (پایین) اجرا بشه، چون بیشترشون
 # مرده‌ان و بدون تست فقط لیست رو شلوغ می‌کنن.
+# عدد سوم: از هر لیست چندتای اول. از تست ۱۲ نوامبر ۲۰۲۶ (درصد سالم از گیت‌هاب): mhcfp ۸۷٪، barry-far ۳۷٪،
+# MohammadBahemmat ۳۳٪، SoliSpirit ۹٪، ALIILAPRO ۷٪، PSG و arshiacomplus ۶٪؛ پرسالم‌ها کامل، کم‌سالم‌ها کمتر.
 GITHUB_LISTS = [
-    ("rzashakeri", "https://raw.githubusercontent.com/rzashakeri/v2ray-configs/main/configs/all.txt"),
-    ("mhcfp", "https://raw.githubusercontent.com/mhcfpTopic/config/main/xray_final.txt"),
-    ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/Tested.txt"),
-    ("PSG", "https://raw.githubusercontent.com/itsyebekhe/PSG/main/config.txt"),
-    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vless.txt"),
-    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/trojan.txt"),
-    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vmess.txt"),
-    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/ss.txt"),
-    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub1.txt"),
-    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub2.txt"),
-    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub3.txt"),
-    ("ALIILAPRO", "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt"),
-    ("arshiacomplus", "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/mix/sub.html"),
-    ("Masir_Sefid", "https://raw.githubusercontent.com/masir-sefid/Sub/main/@Masir_Sefid.txt"),
+    ("rzashakeri", "https://raw.githubusercontent.com/rzashakeri/v2ray-configs/main/configs/all.txt", 500),
+    ("mhcfp", "https://raw.githubusercontent.com/mhcfpTopic/config/main/xray_final.txt", 3000),
+    ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/Tested.txt", 500),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub1.txt", 500),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub2.txt", 500),
+    ("barry-far", "https://raw.githubusercontent.com/barry-far/V2ray-Config/main/Sub3.txt", 500),
+    ("PSG", "https://raw.githubusercontent.com/itsyebekhe/PSG/main/config.txt", 200),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vless.txt", 300),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/trojan.txt", 300),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/vmess.txt", 300),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Protocols/ss.txt", 300),
+    ("ALIILAPRO", "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt", 300),
+    ("arshiacomplus", "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/mix/sub.html", 200),
+    ("Masir_Sefid", "https://raw.githubusercontent.com/masir-sefid/Sub/main/@Masir_Sefid.txt", 200),
 ]
-PER_LIST = 500          # از هر لیست، چندتای اول
 MAX_CANDIDATES = 7000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۱۵ دقیقه)
+
+# IPهای ایران (همون فایل برنامه): سروری که توی ایرانه (مثلاً سرور واسط) از بیرون ایران قابل قضاوت نیست
+IRAN_IP_FILE = os.path.join("Derafsh.Client", "Resources", "Raw", "iran_ip.txt")
 
 # تست قبل از ساختن لیست: برنامه‌ی tools/ConfigTester هر لینک رو با کد خود درفش (ConfigService) به Xray تبدیل می‌کنه و
 # از داخلش generate_204 گوگل و یه دانلود واقعی رو امتحان می‌کنه. فقط اون‌هایی که جواب می‌دن توی لیست می‌مونن.
@@ -233,7 +239,7 @@ def get_list_configs(sources):
     """کانفیگ‌های لیست‌های عمومی گیت‌هاب (متن ساده یا base64)"""
     per_list = []
     print("🚀 Fetching public GitHub lists...")
-    for name, url in GITHUB_LISTS:
+    for name, url, cap in GITHUB_LISTS:
         try:
             response = requests.get(url, timeout=30, headers=HEADERS)
             if response.status_code != 200:
@@ -249,7 +255,7 @@ def get_list_configs(sources):
             unique = {}
             for link in (c for c in (clean_link(m) for m in LINK_PATTERN.findall(text)) if c):
                 unique.setdefault(server_key(link), link)
-            links = list(unique.values())[:PER_LIST]
+            links = list(unique.values())[:cap]
             for link in links:
                 sources.setdefault(link, name)
             per_list.append(links)
@@ -271,15 +277,26 @@ def test_configs(links):
         f.write("\n".join(links) + "\n")
     print(f"🧪 Testing {len(links)} configs with Xray...")
     try:
-        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "200", "18"], check=True, timeout=25 * 60)
+        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "300", "18"], check=True, timeout=25 * 60)
         results = {}
+        reasons = {}
         with open(results_path, encoding="utf-8") as f:
             for line in f:
                 parts = line.rstrip("\n").split("\t")
-                if len(parts) >= 2:
-                    ping = int(parts[2]) if len(parts) > 3 else 0
-                    kbps = int(parts[3]) if len(parts) > 3 else 0
-                    results[parts[0]] = (parts[1], ping, kbps)
+                if len(parts) < 2:
+                    continue
+                if parts[1] == "ok" and len(parts) > 3:
+                    results[parts[0]] = ("ok", int(parts[2]), int(parts[3]))
+                else:
+                    results[parts[0]] = (parts[1], 0, 0)
+                    if parts[1] == "invalid":
+                        why = parts[2] if len(parts) > 2 else "?"
+                        reasons[why] = reasons.get(why, 0) + 1
+        # چیزهایی که برنامه هنوز نمی‌تونه باهاشون وصل بشه (برای بهتر کردن ConfigService)
+        if reasons:
+            print("   Configs the app can't use yet, most common reasons:")
+            for why, n in sorted(reasons.items(), key=lambda x: -x[1])[:10]:
+                print(f"     {n} × {why}")
         return results
     except Exception as e:
         print(f"❌ Tester failed: {e}")
@@ -309,6 +326,39 @@ def spread(links, per_key=2):
 def speed_rank(kbps):
     # سرعت از گیت‌هاب (۱۵۰ کیلوبایت): بیشتر توان خود سرور رو نشون می‌ده، نه سرعتی که از ایران می‌گیره
     return 0 if kbps >= 1000 else 1 if kbps >= 300 else 2
+
+
+def load_iran_ranges():
+    """بازه‌های IP ایران به شکل (شروع، پایان) مرتب، برای جست‌وجوی دودویی"""
+    ranges = []
+    try:
+        with open(IRAN_IP_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or ":" in line:
+                    continue
+                net = ipaddress.ip_network(line, strict=False)
+                ranges.append((int(net.network_address), int(net.broadcast_address)))
+    except Exception as e:
+        print(f"   ⚠️ Iranian IP ranges not loaded: {e}")
+    ranges.sort()
+    return ranges
+
+
+def iran_hosted(link, ranges, starts):
+    """سرور توی ایرانه (IP ایران یا دامنه‌ی .ir)؛ از بیرون ایران معلوم نیست کار می‌کنه یا نه"""
+    key = server_key(link)
+    if not isinstance(key, tuple):
+        return False
+    host = str(key[1] if key[0] == "vmess" else key[2]).strip("[]").lower()
+    if host.endswith(".ir"):
+        return True
+    try:
+        ip = int(ipaddress.IPv4Address(host))
+    except ValueError:
+        return False
+    i = bisect.bisect_right(starts, ip) - 1
+    return i >= 0 and ranges[i][0] <= ip <= ranges[i][1]
 
 
 def dedup(links):
@@ -347,10 +397,14 @@ def build_tested_list(candidates, results, old_configs, sources):
     alive_by_key = {server_key(c): c for c in alive}
     old_alive = [alive_by_key[server_key(c)] for c in old_configs if server_key(c) in alive_by_key]
     untested = [c for c in candidates if status(c)[0] == "untested"]
+    # سرورهای داخل ایران که از گیت‌هاب جواب ندادن، آخر لیست می‌مونن (شاید فقط از داخل ایران باز باشن)
+    ranges = load_iran_ranges()
+    starts = [r[0] for r in ranges]
+    iran = [c for c in candidates if status(c)[0] == "dead" and iran_hosted(c, ranges, starts)]
     fast = sum(1 for c in alive if speed_rank(status(c)[2]) == 0)
     print(f"   new {len(new_alive)}, still working from the last list {len(old_alive)}, untested {len(untested)}, "
-          f"fast (≥1 MB/s from GitHub) {fast}")
-    return dedup(spread(new_alive) + old_alive + untested)
+          f"servers in Iran kept untested {len(iran)}, fast (≥1 MB/s from GitHub) {fast}")
+    return dedup(spread(new_alive) + old_alive + untested + iran)
 
 
 if __name__ == "__main__":

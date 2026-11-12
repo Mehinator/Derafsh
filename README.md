@@ -5,13 +5,17 @@
 <h1 align="center">درفش · Derafsh</h1>
 
 <p align="center">
-  فیلترشکن رایگان درفش: کلاینت Xray / V2Ray برای ویندوز و اندروید، با کانفیگ‌های تازه از تلگرام — هر ۴ ساعت<br>
-  Derafsh: a free Xray / V2Ray VPN client for Windows and Android with fresh configs from Telegram, refreshed every 4 hours
+  فیلترشکن رایگان درفش: کلاینت Xray / V2Ray برای ویندوز و اندروید، با کانفیگ‌های تازه که هر ۲ ساعت جمع و تست می‌شوند<br>
+  Derafsh: a free Xray / V2Ray VPN client for Windows and Android with fresh configs, collected and tested every 2 hours
 </p>
 
 <p align="center">
   <a href="https://github.com/Mehinator/Derafsh/releases/latest"><b>⬇ دانلود آخرین نسخه / Download the latest release</b></a><br>
   <a href="#آیفون-و-آیپد">آیفون و آیپد: لینک اشتراک / iPhone: subscription link</a>
+</p>
+
+<p align="center">
+  اگر درفش به کارتان آمد، با ستاره (<b>★ Star</b> بالای همین صفحه) کمک کنید بقیه هم پیدایش کنند.
 </p>
 
 <p align="center"><img src="docs/screenshot.png" width="720" alt="Derafsh on Windows"></p>
@@ -77,7 +81,7 @@
 
 نیازمندی: اندروید ۶ به بعد.
 
-اگر می‌خواهید از برنامه‌ی دیگری استفاده کنید، همین لیست را می‌توانید در **v2rayNG**، **Hiddify** یا **NekoBox** هم اضافه کنید؛ هر ۴ ساعت خودکار به‌روز می‌شود:
+اگر می‌خواهید از برنامه‌ی دیگری استفاده کنید، همین لیست را می‌توانید در **v2rayNG**، **Hiddify** یا **NekoBox** هم اضافه کنید؛ هر ۲ ساعت خودکار به‌روز می‌شود:
 
 1. در برنامه به بخش **Subscription group setting** (تنظیمات اشتراک) بروید و **+** را بزنید.
 2. این آدرس را وارد کنید:
@@ -96,18 +100,24 @@
    https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt
    ```
    <img src="docs/sub-qr.png" width="180" alt="QR لینک اشتراک درفش">
-3. لیست را به‌روز کنید، سرورها را تست کنید (**Ping** یا **Test**) و به یکی از سریع‌ها وصل شوید. لیست هر ۴ ساعت خودکار تازه می‌شود.
+3. لیست را به‌روز کنید، سرورها را تست کنید (**Ping** یا **Test**) و به یکی از سریع‌ها وصل شوید. لیست هر ۲ ساعت خودکار تازه می‌شود.
 
 این برنامه‌ها مثل درفش سرورها را روی اینترنت خود شما نمی‌سنجند، پس بعضی از سرورهای لیست جواب نمی‌دهند؛ اول تست کنید و یکی از سالم‌ها را انتخاب کنید.
 
 ### کانفیگ‌ها از کجا می‌آیند؟
 
-اسکریپت [`collector.py`](collector.py) هر ۴ ساعت روی GitHub Actions اجرا می‌شود: صفحه‌ی عمومی چند کانال تلگرام (فهرست در همان فایل) را می‌خواند، لینک‌های خراب و تکراری را حذف می‌کند و سه فایل می‌سازد:
+اسکریپت [`collector.py`](collector.py) هر ۲ ساعت روی GitHub Actions اجرا می‌شود:
+
+1. صفحه‌ی عمومی چند کانال تلگرام و چند لیست عمومی گیت‌هاب را می‌خواند (فهرست در همان فایل؛ از جمله [SoliSpirit](https://github.com/SoliSpirit/v2ray-configs)، [barry-far](https://github.com/barry-far/V2ray-Config)، [mhcfpTopic](https://github.com/mhcfpTopic/config)، [PSG](https://github.com/itsyebekhe/PSG) و [rzashakeri](https://github.com/rzashakeri/v2ray-configs)).
+2. هر کانفیگ را با خود Xray تست می‌کند، با همان کدی که برنامه با آن وصل می‌شود ([`tools/ConfigTester`](tools/ConfigTester)): باید از داخل آن جواب گوگل بیاید و واقعاً دانلود کند.
+3. مرده‌ها، خراب‌ها و تکراری‌ها را حذف می‌کند. تازه‌ها اول می‌آیند و سرورهای مختلف جلوتر پخش می‌شوند.
+
+این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد. خروجی سه فایل است:
 
 | فایل | محتوا |
 |---|---|
 | [`derafsh_servers.txt`](derafsh_servers.txt) | لیست کانفیگ‌ها، جدیدترین‌ها اول |
-| [`derafsh_sources.json`](derafsh_sources.json) | منبع (کانال) هر کانفیگ |
+| [`derafsh_sources.json`](derafsh_sources.json) | منبع هر کانفیگ (کانال تلگرام یا لیست گیت‌هاب) |
 | [`derafsh_sub.txt`](derafsh_sub.txt) | همان لیست به شکل اشتراک استاندارد (base64) برای اپ‌های دیگر |
 
 ### نکته‌ی امنیتی
@@ -118,10 +128,10 @@
 
 ## English
 
-**Derafsh** collects free V2Ray/Xray configs from public Telegram channels every 4 hours (GitHub Actions + [`collector.py`](collector.py)), and the app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
+**Derafsh** collects free V2Ray/Xray configs from public Telegram channels and public GitHub lists every 2 hours, and tests each one with Xray (through the app's own config builder, [`tools/ConfigTester`](tools/ConfigTester)) so dead ones never reach the list (GitHub Actions + [`collector.py`](collector.py)). The app (in Persian) connects with one button: it tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers, optionally only ones that open Gemini. While connected it keeps two tested spares and moves to one when the server drops or slows to a crawl, or when you press "switch server". Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android.
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
-- **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.3.27**. Configs the engine can't start are dropped by the collector.
+- **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.10.22** (the patterniha fork). Configs the engine can't start, or that don't really download, are dropped by the collector.
 - **Other apps:** the same list works as a subscription in v2rayNG, Hiddify or NekoBox: `https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt`.
 - **iPhone / iPad:** no iOS app yet; add the same subscription URL in Hiddify, V2Box or Streisand from the App Store, or scan [this QR code](docs/sub-qr.png).
 - **Safety:** these are free servers run by unknown people. Prefer HTTPS sites and don't enter important passwords over them.

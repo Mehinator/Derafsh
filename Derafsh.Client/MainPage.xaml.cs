@@ -93,9 +93,9 @@ namespace Derafsh.Client
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 LoadConfigs();
-                // لیست آنلاین هر 4 ساعت روی گیت‌هاب آپدیت می‌شه؛ اگه نسخه ما قدیمی‌تره اول دانلود (که خودش تست رو شروع می‌کنه)،
+                // لیست آنلاین هر ۲ ساعت روی گیت‌هاب آپدیت می‌شه؛ اگه نسخه ما قدیمی‌تره اول دانلود (که خودش تست رو شروع می‌کنه)،
                 // وگرنه همین الان تست خودکار روی همین اینترنت
-                if (!File.Exists(CloudPath) || File.GetLastWriteTime(CloudPath) < DateTime.Now.AddHours(-4)) await UpdateOnlineConfigs();
+                if (!File.Exists(CloudPath) || File.GetLastWriteTime(CloudPath) < DateTime.Now.AddHours(-2)) await UpdateOnlineConfigs();
                 else await DiscoverAsync(fresh: false);
             });
         }
@@ -427,7 +427,7 @@ namespace Derafsh.Client
         // لینک اشتراک درفش (برای آیفون و برنامه‌های دیگر)، با QR
         private async void OnShareSubscriptionClicked(object sender, EventArgs e) =>
             await Navigation.PushModalAsync(new QrPage("لینک اشتراک درفش", SubscriptionUrl,
-                "برای آیفون و برنامه‌های دیگر: این QR را در Hiddify یا V2Box یا Streisand یا v2rayNG اسکن کنید، یا لینک را به‌عنوان اشتراک اضافه کنید. لیست هر ۴ ساعت خودکار تازه می‌شود."));
+                "برای آیفون و برنامه‌های دیگر: این QR را در Hiddify یا V2Box یا Streisand یا v2rayNG اسکن کنید، یا لینک را به‌عنوان اشتراک اضافه کنید. لیست هر ۲ ساعت خودکار تازه می‌شود."));
 
         // اشتراک همه‌ی سرورهایی که الان جواب می‌دن، یکجا (هر لینک در یک خط)
         private async void OnShareWorkingClicked(object sender, EventArgs e)
@@ -687,7 +687,7 @@ namespace Derafsh.Client
                     await DisplayAlertAsync("سرور مناسبی پیدا نشد",
                         RequireGemini && working.Any()
                             ? "سرورهایی که روی این اینترنت جواب می‌دهند Gemini را باز نکردند. تیک Gemini را بردارید، یا کمی بعد دوباره امتحان کنید."
-                            : "فعلاً هیچ سروری روی این اینترنت جواب نداد. کمی بعد دوباره «اتصال» را بزنید؛ لیست هر ۴ ساعت تازه می‌شود.",
+                            : "فعلاً هیچ سروری روی این اینترنت جواب نداد. کمی بعد دوباره «اتصال» را بزنید؛ لیست هر ۲ ساعت تازه می‌شود.",
                         "باشه");
                     return null;
                 }

@@ -9,7 +9,8 @@
 // dead everywhere (most of a public list after a few hours), and the phone tests the rest on its own network.
 //
 // usage: ConfigTester <links.txt> <results.tsv> <xray> [batch size] [minutes]
-// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s>", "dead", "invalid" or "untested" (tab separated)
+// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s>", "dead", "invalid <why>" or "untested"
+// (tab separated)
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
@@ -41,7 +42,7 @@ foreach (var link in links)
         var proxy = config["outbounds"]!.AsArray().First(o => (string?)o!["tag"] == "proxy")!.AsObject();
         outbounds.Add(new Candidate(link, (JsonObject)proxy.DeepClone()));
     }
-    catch { results[link] = "invalid"; }   // the app can't build it either
+    catch (Exception ex) { results[link] = Invalid("app: " + ex.Message); }   // the app can't build it either
 }
 Console.WriteLine($"{links.Count} links, {outbounds.Count} buildable");
 
@@ -79,16 +80,17 @@ async Task RunBatchAsync(List<Candidate> batch)
             finally { try { proc.Kill(true); proc.WaitForExit(5000); } catch { } proc.Dispose(); }
             return;
         }
-        var m = Regex.Match(error, @"with tag o(\d+)\b");
+        var m = Regex.Match(error, @"with tag o(\d+)\b(.*)");
         if (m.Success && int.TryParse(m.Groups[1].Value, out int bad) && bad < batch.Count)
         {
-            results[batch[bad].Link] = "invalid";
+            // the last part of Xray's message is the actual reason, e.g. unknown "fingerprint": xyz
+            results[batch[bad].Link] = Invalid("xray: " + m.Groups[2].Value.Split(" > ").Last());
             batch = batch.Where((_, i) => i != bad).ToList();
             continue;
         }
         if (batch.Count == 1)
         {
-            results[batch[0].Link] = "invalid";
+            results[batch[0].Link] = Invalid("xray: " + error.Split('\n').LastOrDefault(l => l.Contains("Failed") || l.Contains("failed"))?.Split(" > ").Last());
             return;
         }
         int half = batch.Count / 2;
@@ -147,6 +149,13 @@ async Task<(Process? proc, string error)> StartXrayAsync(List<Candidate> batch)
     try { proc.Kill(true); proc.WaitForExit(5000); } catch { }
     proc.Dispose();
     lock (output) return (null, output.ToString());
+}
+
+// "invalid" plus why (one line, for the collector's summary of what the app can't use yet)
+static string Invalid(string? reason)
+{
+    string why = Regex.Replace(reason ?? "", @"\s+", " ").Trim();
+    return "invalid\t" + (why.Length > 140 ? why[..140] : why);
 }
 
 record Candidate(string Link, JsonObject Outbound);

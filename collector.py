@@ -12,7 +12,7 @@ import hashlib
 import tempfile
 import ipaddress
 import subprocess
-from collections import namedtuple
+from collections import Counter, namedtuple
 from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
@@ -86,7 +86,8 @@ SUB_FILE = "derafsh_sub.txt"
 
 # سقف تعداد کانفیگ: ۵۰۰ تای بهتر، نه ۲۰۰۰ تا که گوشی وقتش رو سر تست‌شون بذاره
 MAX_CONFIGS = 500
-PER_EXIT = 2          # از هر سرور (IP خروجی) حداکثر دوتا، تا وقتی یه سرور می‌میره زاپاس‌ها هم باهاش نمیرن
+PER_EXIT = 2          # از هر IP خروجی حداکثر دوتا، تا وقتی یه سرور می‌میره زاپاس‌ها هم باهاش نمیرن
+PER_GROUP = 3         # از هر رنج IP خروجی (/24، معمولاً یه اپراتور) حداکثر سه‌تا؛ در یه اجرا ۳۲ کانفیگ از یه رنج اومده بود
 CITY_RESERVE = 6      # از هر شهر تا این‌قدر از بهترین‌هاش، تا انتخاب شهر توی برنامه (مثلاً برلین) خالی نمونه
 COUNTRY_RESERVE = 30  # ... ولی از هر کشور حداکثر این‌قدر از راه سهم شهرها
 RESERVE_SHARE = 0.6   # سهم شهرها حداکثر ۶۰٪ لیست، نوبتی (اول یکی از هر شهر، بعد دومی...)؛ بقیه فقط به ترتیب کیفیت
@@ -418,6 +419,33 @@ def with_name(link, name):
     return body + "#" + quote(name, safe="")
 
 
+def backend_key(link):
+    """«همون سرور»: کاربر (uuid یا رمز) و دامنه‌ی پشتش (sni یا host)، یا آدرس اگه دامنه نداره. یه سرور که لیست‌ها با چند
+    آدرس (IPهای مختلف کلادفلر)، چند path یا fingerprint گذاشتن یکی حساب می‌شه؛ توی یه اجرا ۱۵۹ کانفیگ این‌طوری تکراری بودن.
+    Reality: sni فقط اسم سایت پوششیه (بین سرورهای مختلف یکیه)، پس خود آدرس."""
+    key = server_key(link)
+    if not isinstance(key, tuple):
+        return key
+    if key[0] == "vmess":
+        # ("vmess", add, port, id, net, type, host, path, tls, sni)
+        return ("vmess", key[3], key[9] or key[6] or key[1])
+    # [scheme, user, host, port] + KEY_PARAMS: type, security, sni, host, ...
+    front = key[2] if key[5] == "reality" else (key[6] or key[7] or key[2])
+    return (key[0], key[1], front)
+
+
+def link_name(link):
+    """اسم فعلی کانفیگ (vmess: فیلد ps داخل لینک)"""
+    body, _, frag = link.partition("#")
+    if body.startswith("vmess://"):
+        try:
+            data = body[8:]
+            return str(json.loads(base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8-sig")).get("ps") or "")
+        except Exception:
+            return ""
+    return unquote(frag)
+
+
 def stat_key(link):
     return hashlib.sha1(repr(server_key(link)).encode("utf-8")).hexdigest()[:12]
 
@@ -485,6 +513,16 @@ def iran_hosted(link, ranges, starts):
     return i >= 0 and ranges[i][0] <= ip <= ranges[i][1]
 
 
+def dedup_by(links, key):
+    out, seen = [], set()
+    for link in links:
+        k = key(link)
+        if k not in seen:
+            seen.add(k)
+            out.append(link)
+    return out
+
+
 def dedup(links):
     out, seen = [], set()
     for link in links:
@@ -543,13 +581,33 @@ def build_tested_list(candidates, results, old_configs, sources):
                 l is not None and l[0] in FAR_COUNTRIES, r.ping)
 
     ranked = sorted(alive, key=rank)
-    picked, chosen, per_exit, per_city, per_country = [], set(), {}, {}, {}
+    picked, chosen, backends, per_exit, per_group, per_city, per_country = [], set(), set(), {}, {}, {}, {}
     exit_of = lambda c: status(c).ip or spread_key(c)
+
+    def group_of(c):
+        """رنج IP خروجی (/24)؛ خروجی کلادفلر یا نامعلوم: خود سرور"""
+        r = status(c)
+        if r.ip and r.asn != CDN_ASN:
+            try:
+                if ipaddress.ip_address(r.ip).version == 4:
+                    return "ip:" + ".".join(r.ip.split(".")[:3])
+                return "ip6:" + ":".join(r.ip.split(":")[:4])
+            except ValueError:
+                pass
+        return backend_key(c)
+
+    def allowed(c, relaxed=False):
+        """از هر سرور واقعی فقط یکی (همیشه)؛ از هر IP خروجی دوتا و هر رنج سه‌تا (مگه وقتی کم اومده)"""
+        if c in chosen or backend_key(c) in backends:
+            return False
+        return relaxed or (per_exit.get(exit_of(c), 0) < PER_EXIT and per_group.get(group_of(c), 0) < PER_GROUP)
 
     def take(c):
         picked.append(c)
         chosen.add(c)
+        backends.add(backend_key(c))
         per_exit[exit_of(c)] = per_exit.get(exit_of(c), 0) + 1
+        per_group[group_of(c)] = per_group.get(group_of(c), 0) + 1
         l = loc(c)
         if l:
             per_city[l] = per_city.get(l, 0) + 1
@@ -570,15 +628,15 @@ def build_tested_list(candidates, results, old_configs, sources):
             # نوبت این شهر: اولین کانفیگ بعدیش که سرورش هنوز سهمش پر نشده
             if per_city.get(l, 0) > turn or per_country.get(l[0], 0) >= COUNTRY_RESERVE:
                 continue
-            c = next((x for x in group if x not in chosen and per_exit.get(exit_of(x), 0) < PER_EXIT), None)
+            c = next((x for x in group if allowed(x)), None)
             if c:
                 take(c)
-    # ۲. بقیه به ترتیب کیفیت، از هر سرور حداکثر PER_EXIT؛ اگه کم اومد، بدون این سقف
-    for cap in (PER_EXIT, None):
+    # ۲. بقیه به ترتیب کیفیت؛ اگه با سقف IP و رنج کم اومد، بدون اون دوتا (ولی باز هم از هر سرور یکی)
+    for relaxed in (False, True):
         for c in ranked:
             if len(picked) >= MAX_CONFIGS:
                 break
-            if c not in chosen and (cap is None or per_exit.get(exit_of(c), 0) < cap):
+            if allowed(c, relaxed):
                 take(c)
     picked.sort(key=rank)
 
@@ -586,23 +644,34 @@ def build_tested_list(candidates, results, old_configs, sources):
     # اون‌هایی که وقت نشد تست بشن
     ranges = load_iran_ranges()
     starts = [r[0] for r in ranges]
-    iran = [c for c in candidates if status(c).status == "dead" and iran_hosted(c, ranges, starts)][:IRAN_KEEP]
-    untested = [c for c in candidates if status(c).status == "untested"]
+    iran = [c for c in candidates if status(c).status == "dead" and iran_hosted(c, ranges, starts)]
+    iran = [c for c in dedup_by(iran, backend_key) if backend_key(c) not in backends][:IRAN_KEEP]
+    untested = [c for c in dedup_by(candidates, backend_key) if status(c).status == "untested" and backend_key(c) not in backends]
     final = picked[:MAX_CONFIGS - len(iran)] + iran
     final += untested[:MAX_CONFIGS - len(final)]
 
-    out, locations = [], {}
-    for c in final:
+    # اسم: مکان («🇩🇪 Berlin»)، یا «Cloudflare» برای خروجی کلادفلر (مکان ثابت نداره)، وگرنه اسم خودش. اسم‌های یکسان
+    # شماره می‌گیرن («🇩🇪 Berlin 1»، «🇩🇪 Berlin 2»)، وگرنه ردیف‌ها تکراری به نظر می‌اومدن.
+    def base_name(c):
         r = status(c)
         l = loc(c) if r.status == "ok" else None
         if l:
-            new = with_name(c, f"{flag(l[0])} {l[1] or l[0]}")
+            return f"{flag(l[0])} {l[1] or l[0]}"
+        if r.status == "ok" and r.asn == CDN_ASN:
+            return "Cloudflare"
+        return link_name(c).strip()
+
+    names = [base_name(c) for c in final]
+    repeats, seen = Counter(n for n in names if n), {}
+    out, locations = [], {}
+    for c, name in zip(final, names):
+        if name and repeats[name] > 1:
+            seen[name] = seen.get(name, 0) + 1
+            name = f"{name} {seen[name]}"
+        new = with_name(c, name) if name and name != link_name(c) else c
+        l = loc(c) if status(c).status == "ok" else None
+        if l:
             locations[new] = f"{l[0]}|{l[1]}"
-        elif r.status == "ok" and r.asn == CDN_ASN:
-            # خروجی کلادفلر: مکان ثابت نداره، ولی اسمش (به جای تبلیغ کانال) دست‌کم می‌گه چیه
-            new = with_name(c, "Cloudflare")
-        else:
-            new = c
         src = sources.get(c) or sources.get(c + "#")
         if src:
             sources[new] = src
@@ -620,6 +689,7 @@ def build_tested_list(candidates, results, old_configs, sources):
         l = loc(c)
         if l:
             all_cities[l] = all_cities.get(l, 0) + 1
+    print(f"   Same server more than once among the working: {len(alive) - len({backend_key(c) for c in alive})} (one kept each)")
     print(f"   In the list: {len(in_list)} working, {len(iran)} in Iran (untested), {len(final) - len(in_list) - len(iran)} untested; "
           f"plain (no TLS) {sum(map(is_plain, in_list))}, worked 6+ runs in a row {sum(streak[c] >= 6 for c in in_list)}, "
           f"2+ runs {sum(streak[c] >= 2 for c in in_list)}, location known {sum(cities.values())}")

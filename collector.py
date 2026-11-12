@@ -7,9 +7,11 @@ import html
 import base64
 import shlex
 import bisect
+import hashlib
 import tempfile
 import ipaddress
 import subprocess
+from collections import namedtuple
 from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
@@ -65,6 +67,9 @@ TESTER = os.environ.get("DERAFSH_TESTER")   # مثلاً "dotnet tester/ConfigTe
 XRAY = os.environ.get("DERAFSH_XRAY")
 DRY_RUN = bool(os.environ.get("DERAFSH_DRY_RUN"))   # فقط تست و آمار، لیست عوض نمی‌شه
 MIN_ALIVE = 150   # کمتر از این زنده بود یعنی تست خودش درست کار نکرده؛ لیست مثل قبل ساخته می‌شه
+# چند اجرای پشت سر هم هر کانفیگ سالم بوده (کش GitHub Actions، توی ریپو نمی‌ره). کانفیگی که چند روزه زنده مونده کمتر
+# وسط ویدیو می‌میره تا کانفیگی که همین الان توی یه کانال گذاشتن و تا چند ساعت دیگه پر یا بسته می‌شه.
+STATS_FILE = os.environ.get("DERAFSH_STATS")
 
 # فایل خروجی
 OUTPUT_FILE = "derafsh_servers.txt"
@@ -72,11 +77,23 @@ OUTPUT_FILE = "derafsh_servers.txt"
 # فایل منبع: هر کانفیگ به کدوم کانال تلگرام تعلق داره
 SOURCES_FILE = "derafsh_sources.json"
 
+# مکان هر کانفیگ («DE|Berlin»): جایی که ترافیک ازش بیرون می‌آد و سایت‌ها می‌بینن، برای انتخاب کشور و شهر توی برنامه
+LOCATIONS_FILE = "derafsh_locations.json"
+
 # لینک اشتراک (subscription) استاندارد base64، برای v2rayNG / Hiddify / NekoBox روی اندروید
 SUB_FILE = "derafsh_sub.txt"
 
-# سقف تعداد کانفیگ (که سنگین نشه)
-MAX_CONFIGS = 2000
+# سقف تعداد کانفیگ: ۵۰۰ تای بهتر، نه ۲۰۰۰ تا که گوشی وقتش رو سر تست‌شون بذاره
+MAX_CONFIGS = 500
+PER_EXIT = 2          # از هر سرور (IP خروجی) حداکثر دوتا، تا وقتی یه سرور می‌میره زاپاس‌ها هم باهاش نمیرن
+CITY_RESERVE = 3      # از هر شهر چندتای بهتر حتماً توی لیست، تا انتخاب شهر (مثلاً برلین) خالی نمونه
+COUNTRY_RESERVE = 15  # ... ولی از هر کشور حداکثر این‌قدر از راه سهم شهرها
+RESERVE_SHARE = 0.4   # سهم شهرها حداکثر ۴۰٪ لیست؛ بقیه فقط به ترتیب کیفیت
+IRAN_KEEP = 25        # سرورهای داخل ایران (واسط) که از بیرون قابل تست نیستن، ته لیست
+CDN_ASN = 13335       # خروجی کلادفلر (مثلاً Workers): مکانش به جای کاربر بستگی داره، پس مکان ثابت نداره
+# کشورهای دور از ایران (پینگ بالا)؛ بقیه (اروپا، ترکیه، خاورمیانه، قفقاز، ...) نزدیک حساب می‌شن
+FAR_COUNTRIES = {"US", "CA", "MX", "BR", "AR", "CL", "CO", "PE", "JP", "KR", "CN", "HK", "TW", "SG", "MY", "TH", "VN",
+                 "ID", "PH", "AU", "NZ", "ZA", "NG", "KE"}
 
 # فقط پروتکل‌هایی که برنامه درفش می‌تونه باهاشون وصل بشه
 # مهم: (?:...) لازمه. با پرانتز معمولی، re.findall فقط اسم پروتکل (مثلاً "vless") رو برمی‌گردوند
@@ -298,8 +315,13 @@ def get_list_configs(sources):
     return interleave(per_list)
 
 
+# نتیجه‌ی تست یه کانفیگ؛ مکان (کشور، شهر، شبکه، IP خروجی) فقط برای سالم‌ها و اگه پیدا شد
+Result = namedtuple("Result", "status ping kbps country city asn ip")
+UNTESTED = Result("untested", 0, 0, "", "", 0, "")
+
+
 def test_configs(links):
-    """نتیجه‌ی تست هر لینک: {لینک: (وضعیت، پینگ، سرعت)}؛ None یعنی تست اجرا نشد"""
+    """نتیجه‌ی تست هر لینک: {لینک: Result}؛ None یعنی تست اجرا نشد"""
     if not TESTER or not XRAY:
         print("ℹ️ No tester (DERAFSH_TESTER / DERAFSH_XRAY): the list is built without testing")
         return None
@@ -319,9 +341,11 @@ def test_configs(links):
                 if len(parts) < 2:
                     continue
                 if parts[1] == "ok" and len(parts) > 3:
-                    results[parts[0]] = ("ok", int(parts[2]), int(parts[3]))
+                    loc = (parts + [""] * 8)[4:8]
+                    results[parts[0]] = Result("ok", int(parts[2]), int(parts[3]), loc[0].upper(), loc[1],
+                                               int(loc[2]) if loc[2].isdigit() else 0, loc[3])
                 else:
-                    results[parts[0]] = (parts[1], 0, 0)
+                    results[parts[0]] = UNTESTED._replace(status=parts[1])
                     if parts[1] == "invalid":
                         why = parts[2] if len(parts) > 2 else "?"
                         reasons[why] = reasons.get(why, 0) + 1
@@ -346,19 +370,83 @@ def spread_key(link):
     return (key[2], key[6] or key[7])
 
 
-def spread(links, per_key=2):
-    """از هر سرور حداکثر دوتا پشت سر هم اول لیست؛ بقیه‌ی همون سرور آخر، تا گوشی اول سرورهای مختلف رو تست کنه"""
-    first, rest, count = [], [], {}
-    for link in links:
-        k = spread_key(link)
-        count[k] = count.get(k, 0) + 1
-        (first if count[k] <= per_key else rest).append(link)
-    return first + rest
-
-
 def speed_rank(kbps):
-    # سرعت از گیت‌هاب (۱۵۰ کیلوبایت): بیشتر توان خود سرور رو نشون می‌ده، نه سرعتی که از ایران می‌گیره
-    return 0 if kbps >= 1000 else 1 if kbps >= 300 else 2
+    # سرعت از گیت‌هاب (۱۵۰ کیلوبایت): بیشتر توان خود سرور رو نشون می‌ده، نه سرعتی که از ایران می‌گیره؛
+    # ۳۰۰ کیلوبایت بر ثانیه برای ویدیو بسه، بیشترش از ایران فرقی نمی‌کنه
+    return 0 if kbps >= 300 else 1
+
+
+def is_plain(link):
+    """بدون TLS یا Reality (Shadowsocks ساده، vmess یا vless بدون tls): فیلتر ایران راحت تشخیصش می‌ده"""
+    key = server_key(link)
+    if not isinstance(key, tuple):
+        return False
+    scheme = key[0]
+    if scheme == "vmess":
+        return key[8] not in ("tls", "reality")
+    if scheme in ("trojan", "hysteria2"):
+        return key[5] == "none"
+    if scheme == "vless":
+        return key[5] not in ("tls", "reality", "xtls")
+    return True
+
+
+def flag(cc):
+    """پرچم ایموجی از کد دوحرفی کشور (DE → 🇩🇪)"""
+    return "".join(chr(0x1F1E6 + ord(c) - 65) for c in cc) if re.fullmatch(r"[A-Z]{2}", cc or "") else ""
+
+
+def location_of(r):
+    """(کشور، شهر) جایی که ترافیک این کانفیگ بیرون می‌آد؛ None اگه معلوم نیست، یا خروجی کلادفلره (مکانش به جای
+    کاربر بستگی داره: از گیت‌هاب آمریکا، از ایران اروپا)"""
+    if r.status != "ok" or not re.fullmatch(r"[A-Z]{2}", r.country or "") or r.asn == CDN_ASN:
+        return None
+    return (r.country, r.city or "")
+
+
+def with_name(link, name):
+    """همون کانفیگ با اسم تازه (vmess اسمش داخل خود لینکه، فیلد ps)"""
+    body = link.split("#", 1)[0]
+    if body.startswith("vmess://"):
+        data = body[8:]
+        info = json.loads(base64.b64decode(data + "=" * (-len(data) % 4)).decode("utf-8-sig"))
+        info["ps"] = name
+        return "vmess://" + base64.b64encode(json.dumps(info, ensure_ascii=False).encode("utf-8")).decode()
+    return body + "#" + quote(name, safe="")
+
+
+def stat_key(link):
+    return hashlib.sha1(repr(server_key(link)).encode("utf-8")).hexdigest()[:12]
+
+
+def load_streaks(old_configs):
+    """چند اجرای پشت سر هم هر کانفیگ سالم بوده، تا اجرای قبلی"""
+    if STATS_FILE and os.path.exists(STATS_FILE):
+        try:
+            with open(STATS_FILE, encoding="utf-8") as f:
+                return json.load(f)["streak"]
+        except Exception as e:
+            print(f"   ⚠️ Streaks not loaded: {e}")
+    # هنوز آماری نیست: کانفیگ‌های لیست قبلی توی اجرای قبل سالم بودن
+    return {stat_key(c): 1 for c in old_configs}
+
+
+def save_streaks(streaks):
+    if not STATS_FILE or DRY_RUN:
+        return
+    os.makedirs(os.path.dirname(STATS_FILE) or ".", exist_ok=True)
+    with open(STATS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"streak": streaks}, f)
+
+
+def load_locations_file():
+    """مکان‌های لیست قبلی: {لینک: "DE|Berlin"}"""
+    try:
+        with open(LOCATIONS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
 
 
 def load_iran_ranges():
@@ -405,18 +493,20 @@ def dedup(links):
 
 
 def build_tested_list(candidates, results, old_configs, sources):
-    """لیست نهایی از کانفیگ‌های سالم: تازه‌ها اول (سریع‌ترها جلوتر، سرورهای مختلف پخش)، بعد سالم‌های لیست قبلی به
-    همون ترتیب قبلی، بعد اون‌هایی که وقت نشد تست بشن. مرده‌ها و خراب‌ها حذف می‌شن.
+    """لیست نهایی (حداکثر MAX_CONFIGS) و مکان هر کانفیگ ({لینک: "DE|Berlin"}).
+    ترتیب کیفیت: سرعت کافی، بعد TLS یا Reality (نه ساده)، بعد چند اجرا پشت سر هم سالم مونده، بعد نزدیک به ایران، بعد پینگ.
+    از هر شهر چندتای بهتر حتماً هست (انتخاب شهر توی برنامه)، و از هر سرور حداکثر دوتا (زاپاس‌ها با هم نمیرن).
+    کانفیگ‌هایی که مکانشون معلومه اسم تازه می‌گیرن، مثلاً «🇩🇪 Berlin».
     None یعنی خیلی کم جواب دادن و احتمالاً خود تست خراب بوده"""
-    status = lambda c: results.get(c, ("untested", 0, 0))
-    alive = [c for c in candidates if status(c)[0] == "ok"]
+    status = lambda c: results.get(c, UNTESTED)
+    alive = [c for c in candidates if status(c).status == "ok"]
 
     stats = {}
     for c in candidates:
         name = sources.get(c) or sources.get(c + '#') or "?"
         s = stats.setdefault(name, [0, 0])
         s[0] += 1
-        s[1] += status(c)[0] == "ok"
+        s[1] += status(c).status == "ok"
     print(f"🧪 {len(alive)} of {len(candidates)} configs work. By source (tested / work):")
     for name, (n, ok) in sorted(stats.items(), key=lambda x: -x[1][1]):
         print(f"   {name}: {n} / {ok} ({ok * 100 // max(1, n)}%)")
@@ -424,20 +514,95 @@ def build_tested_list(candidates, results, old_configs, sources):
         print(f"⚠️ Only {len(alive)} passed (fewer than {MIN_ALIVE}): the test itself may be broken; keeping the untested list")
         return None
 
-    old_keys = {server_key(c) for c in old_configs}
-    new_alive = [c for c in alive if server_key(c) not in old_keys]
-    new_alive.sort(key=lambda c: speed_rank(status(c)[2]))   # پایدار: توی هر دسته‌ی سرعت، ترتیب منبع‌ها می‌مونه
-    alive_by_key = {server_key(c): c for c in alive}
-    old_alive = [alive_by_key[server_key(c)] for c in old_configs if server_key(c) in alive_by_key]
-    untested = [c for c in candidates if status(c)[0] == "untested"]
-    # سرورهای داخل ایران که از گیت‌هاب جواب ندادن، آخر لیست می‌مونن (شاید فقط از داخل ایران باز باشن)
+    prev = load_streaks(old_configs)
+    streak = {c: prev.get(stat_key(c), 0) + 1 for c in alive}
+    save_streaks({stat_key(c): n for c, n in streak.items()})
+
+    # مکان: از همین تست؛ اگه این بار پیدا نشد، از لیست قبلی (همون سرور)
+    old_locations = {}
+    for link, value in load_locations_file().items():
+        cc, _, city = str(value).partition("|")
+        if cc:
+            old_locations[server_key(link)] = (cc, city)
+
+    def loc(c):
+        r = status(c)
+        return location_of(r) if r.country else old_locations.get(server_key(c))
+
+    def rank(c):
+        r, l, n = status(c), loc(c), streak[c]
+        return (speed_rank(r.kbps), is_plain(c), 0 if n >= 6 else 1 if n >= 2 else 2,
+                l is not None and l[0] in FAR_COUNTRIES, r.ping)
+
+    ranked = sorted(alive, key=rank)
+    picked, chosen, per_exit, per_city, per_country = [], set(), {}, {}, {}
+    exit_of = lambda c: status(c).ip or spread_key(c)
+
+    def take(c):
+        picked.append(c)
+        chosen.add(c)
+        per_exit[exit_of(c)] = per_exit.get(exit_of(c), 0) + 1
+        l = loc(c)
+        if l:
+            per_city[l] = per_city.get(l, 0) + 1
+            per_country[l[0]] = per_country.get(l[0], 0) + 1
+
+    # ۱. چندتای بهتر از هر شهر
+    for c in ranked:
+        if len(picked) >= MAX_CONFIGS * RESERVE_SHARE:
+            break
+        l = loc(c)
+        if l and per_exit.get(exit_of(c), 0) < PER_EXIT and per_city.get(l, 0) < CITY_RESERVE \
+                and per_country.get(l[0], 0) < COUNTRY_RESERVE:
+            take(c)
+    # ۲. بقیه به ترتیب کیفیت، از هر سرور حداکثر PER_EXIT؛ اگه کم اومد، بدون این سقف
+    for cap in (PER_EXIT, None):
+        for c in ranked:
+            if len(picked) >= MAX_CONFIGS:
+                break
+            if c not in chosen and (cap is None or per_exit.get(exit_of(c), 0) < cap):
+                take(c)
+    picked.sort(key=rank)
+
+    # سرورهای داخل ایران که از گیت‌هاب جواب ندادن (شاید فقط از داخل ایران باز باشن) چندتایی ته لیست، و اگه جا موند،
+    # اون‌هایی که وقت نشد تست بشن
     ranges = load_iran_ranges()
     starts = [r[0] for r in ranges]
-    iran = [c for c in candidates if status(c)[0] == "dead" and iran_hosted(c, ranges, starts)]
-    fast = sum(1 for c in alive if speed_rank(status(c)[2]) == 0)
-    print(f"   new {len(new_alive)}, still working from the last list {len(old_alive)}, untested {len(untested)}, "
-          f"servers in Iran kept untested {len(iran)}, fast (≥1 MB/s from GitHub) {fast}")
-    return dedup(spread(new_alive) + old_alive + untested + iran)
+    iran = [c for c in candidates if status(c).status == "dead" and iran_hosted(c, ranges, starts)][:IRAN_KEEP]
+    untested = [c for c in candidates if status(c).status == "untested"]
+    final = picked[:MAX_CONFIGS - len(iran)] + iran
+    final += untested[:MAX_CONFIGS - len(final)]
+
+    out, locations = [], {}
+    for c in final:
+        l = loc(c) if status(c).status == "ok" else None
+        new = with_name(c, f"{flag(l[0])} {l[1] or l[0]}") if l else c
+        if l:
+            locations[new] = f"{l[0]}|{l[1]}"
+        src = sources.get(c) or sources.get(c + "#")
+        if src:
+            sources[new] = src
+        out.append(new)
+
+    in_list = [c for c in final if status(c).status == "ok"]
+    countries, cities = {}, {}
+    for c in in_list:
+        l = loc(c)
+        if l:
+            countries[l[0]] = countries.get(l[0], 0) + 1
+            cities[l] = cities.get(l, 0) + 1
+    all_cities = {}
+    for c in alive:
+        l = loc(c)
+        if l:
+            all_cities[l] = all_cities.get(l, 0) + 1
+    print(f"   In the list: {len(in_list)} working, {len(iran)} in Iran (untested), {len(final) - len(in_list) - len(iran)} untested; "
+          f"plain (no TLS) {sum(map(is_plain, in_list))}, worked 6+ runs in a row {sum(streak[c] >= 6 for c in in_list)}, "
+          f"2+ runs {sum(streak[c] >= 2 for c in in_list)}, location known {sum(cities.values())}")
+    print(f"   Countries ({len(countries)}): " + ", ".join(f"{k} {v}" for k, v in sorted(countries.items(), key=lambda x: -x[1])))
+    print(f"   Cities ({len(cities)} in the list, {len(all_cities)} among all working): " +
+          ", ".join(f"{k[1] or '?'} ({k[0]}) {v}/{all_cities.get(k, 0)}" for k, v in sorted(cities.items(), key=lambda x: -x[1])[:60]))
+    return out, locations
 
 
 if __name__ == "__main__":
@@ -475,6 +640,7 @@ if __name__ == "__main__":
     # 3. ترکیب هوشمند (جدیدها اول، قدیمی‌ها بعد)
     # یه سرور تکراری حساب می‌شه حتی با اسم دیگه، کانال دیگه، ترتیب پارامتر دیگه یا vmess با اسم داخلی دیگه
     combined = dedup(new_configs + old_configs)
+    locations = None   # None: تست اجرا نشد؛ مکان‌های قبلی برای همون لینک‌ها می‌مونن
 
     # 3.5. با تست: لیست‌های عمومی گیت‌هاب هم اضافه می‌شن و فقط کانفیگ‌هایی که واقعاً کار می‌کنن می‌مونن
     if TESTER and XRAY:
@@ -482,7 +648,7 @@ if __name__ == "__main__":
         results = test_configs(candidates)
         tested = build_tested_list(candidates, results, old_configs, sources) if results is not None else None
         if tested is not None:
-            combined = tested
+            combined, locations = tested
     if DRY_RUN:
         print(f"🧪 Dry run: {len(combined[:MAX_CONFIGS])} configs would be written; the list is not changed")
         sys.exit(0)
@@ -507,6 +673,11 @@ if __name__ == "__main__":
         final_sources = {c: sources.get(c) or sources[c + '#'] for c in final_list if c in sources or c + '#' in sources}
         with open(SOURCES_FILE, "w", encoding="utf-8") as f:
             json.dump(final_sources, f, ensure_ascii=False, indent=1)
+        if locations is None:
+            old = load_locations_file()
+            locations = {c: old[c] for c in final_list if c in old}
+        with open(LOCATIONS_FILE, "w", encoding="utf-8") as f:
+            json.dump({c: locations[c] for c in final_list if c in locations}, f, ensure_ascii=False, indent=1)
         print("💾 Update Complete!")
     else:
         print("⚠️ No configs found.")

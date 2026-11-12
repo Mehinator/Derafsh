@@ -9,8 +9,9 @@
 // dead everywhere (most of a public list after a few hours), and the phone tests the rest on its own network.
 //
 // usage: ConfigTester <links.txt> <results.tsv> <xray> [batch size] [minutes]
-// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s>", "dead", "invalid <why>" or "untested"
-// (tab separated)
+// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s> <country> <city> <ASN> <exit IP>", "dead",
+// "invalid <why>" or "untested" (tab separated). Where a working config comes out on the internet (what websites see,
+// for the app's location choice) is looked up through the config itself; empty fields when the lookup failed.
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
@@ -196,8 +197,42 @@ static class Tester
 
         int kbps = await DownloadKbpsAsync(client, SpeedUrl, 8);
         if (kbps <= 0) kbps = await DownloadKbpsAsync(client, SpeedFallbackUrl, 8);
-        return kbps > 0 ? $"ok\t{ping}\t{kbps}" : "dead";
+        if (kbps <= 0) return "dead";
+        var (country, city, asn, ip) = await LocateAsync(client);
+        return $"ok\t{ping}\t{kbps}\t{Clean(country)}\t{Clean(city)}\t{asn}\t{Clean(ip)}";
     }
+
+    // Where the config comes out on the internet: Cloudflare's own lookup of the exit IP first (its city is the most
+    // accurate one in tests, and the connection to speed.cloudflare.com is already open), then ipwho.is for servers that
+    // can't reach Cloudflare's sites (e.g. ones running on Cloudflare Workers)
+    private static async Task<(string? country, string? city, long asn, string? ip)> LocateAsync(HttpClient client)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "https://speed.cloudflare.com/meta");
+            request.Headers.Referrer = new Uri("https://speed.cloudflare.com/");   // without it the answer is {}
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            using var res = await client.SendAsync(request, cts.Token);
+            var j = JsonNode.Parse(await res.Content.ReadAsStringAsync(cts.Token));
+            string? country = (string?)j?["country"];
+            if (!string.IsNullOrEmpty(country))
+                return (country, (string?)j?["city"], j?["asn"]?.GetValueKind() == System.Text.Json.JsonValueKind.Number ? (long)j["asn"]! : 0, (string?)j?["clientIp"]);
+        }
+        catch { }
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            using var res = await client.GetAsync("https://ipwho.is/", cts.Token);
+            var j = JsonNode.Parse(await res.Content.ReadAsStringAsync(cts.Token));
+            if (j?["success"]?.GetValueKind() == System.Text.Json.JsonValueKind.True)
+                return ((string?)j["country_code"], (string?)j["city"],
+                        j["connection"]?["asn"]?.GetValueKind() == System.Text.Json.JsonValueKind.Number ? (long)j["connection"]!["asn"]! : 0, (string?)j["ip"]);
+        }
+        catch { }
+        return (null, null, 0, null);
+    }
+
+    private static string Clean(string? s) => Regex.Replace(s ?? "", @"[\t\r\n]+", " ").Trim();
 
     private static async Task<HttpStatusCode?> StatusAsync(HttpClient client, string url, int seconds)
     {

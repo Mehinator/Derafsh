@@ -36,3 +36,6 @@ Derafsh.Client/Core/geosite.dat
 Derafsh.Client/Core/xray.version
 # local patch files
 *.patch
+
+# Config streaks between collector runs (GitHub Actions cache, not the repo)
+.stats/

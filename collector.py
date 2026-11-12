@@ -54,8 +54,18 @@ GITHUB_LISTS = [
     ("ALIILAPRO", "https://raw.githubusercontent.com/ALIILAPRO/v2rayNG-Config/main/sub.txt", 300),
     ("arshiacomplus", "https://raw.githubusercontent.com/arshiacomplus/v2rayExtractor/refs/heads/main/mix/sub.html", 200),
     ("Masir_Sefid", "https://raw.githubusercontent.com/masir-sefid/Sub/main/@Masir_Sefid.txt", 200),
+    # از ۱۲ نوامبر ۲۰۲۶ (همه همون روز به‌روز شده بودن)
+    ("MatinGhanbari", "https://raw.githubusercontent.com/MatinGhanbari/v2ray-configs/main/subscriptions/v2ray/super-sub.txt", 300),
+    ("4n0nymou3", "https://raw.githubusercontent.com/4n0nymou3/multi-proxy-config-fetcher/main/configs/proxy_configs_tested.txt", 300),
+    ("V2RayRoot", "https://raw.githubusercontent.com/V2RayRoot/V2RayConfig/main/Config/vless.txt", 300),
+    ("TGParse", "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/vless", 400),
+    ("mahdibland", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt", 300),
 ]
-MAX_CANDIDATES = 7000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۱۵ دقیقه)
+
+# هر سرور توی چندتا کانال و لیست پخش شده: {backend_key: {اسم منبع}}. کانفیگی که همه جا گذاشتن، کاربر زیادی داره و
+# شلوغه؛ توی ترتیب پایین‌تر می‌ره (build_tested_list)
+SHARED = {}
+MAX_CANDIDATES = 7000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۱۸ دقیقه)
 
 # IPهای ایران (همون فایل برنامه): سروری که توی ایرانه (مثلاً سرور واسط) از بیرون ایران قابل قضاوت نیست
 IRAN_IP_FILE = os.path.join("Derafsh.Client", "Resources", "Raw", "iran_ip.txt")
@@ -279,6 +289,7 @@ def get_new_configs(sources):
             links = list(unique.values())
             for link in links:
                 sources.setdefault(link, name)
+                SHARED.setdefault(backend_key(link), set()).add(name)
             per_channel.append(links)
             print(f"   ✅ {name}: Found {len(links)}")
         except Exception as e:
@@ -312,6 +323,7 @@ def get_list_configs(sources):
             links = list(unique.values())[:cap]
             for link in links:
                 sources.setdefault(link, name)
+                SHARED.setdefault(backend_key(link), set()).add(name)
             per_list.append(links)
             print(f"   ✅ {name}: Found {len(links)} ({url.rsplit('/', 1)[-1]})")
         except Exception as e:
@@ -336,7 +348,7 @@ def test_configs(links):
         f.write("\n".join(links) + "\n")
     print(f"🧪 Testing {len(links)} configs with Xray...")
     try:
-        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "300", "18"], check=True, timeout=25 * 60)
+        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "300", "20"], check=True, timeout=27 * 60)
         results = {}
         reasons = {}
         with open(results_path, encoding="utf-8") as f:
@@ -575,9 +587,13 @@ def build_tested_list(candidates, results, old_configs, sources):
         r = status(c)
         return location_of(r) if r.country else old_locations.get(server_key(c))
 
+    def shared_tier(c):
+        n = len(SHARED.get(backend_key(c), ()))
+        return 0 if n <= 2 else 1 if n <= 4 else 2
+
     def rank(c):
         r, l, n = status(c), loc(c), streak[c]
-        return (speed_rank(r.kbps), is_plain(c), 0 if n >= 6 else 1 if n >= 2 else 2,
+        return (speed_rank(r.kbps), is_plain(c), shared_tier(c), 0 if n >= 6 else 1 if n >= 2 else 2,
                 l is not None and l[0] in FAR_COUNTRIES, r.ping)
 
     ranked = sorted(alive, key=rank)
@@ -690,6 +706,8 @@ def build_tested_list(candidates, results, old_configs, sources):
         if l:
             all_cities[l] = all_cities.get(l, 0) + 1
     print(f"   Same server more than once among the working: {len(alive) - len({backend_key(c) for c in alive})} (one kept each)")
+    spread_counts = Counter(len(SHARED.get(backend_key(c), ())) for c in alive)
+    print("   Working servers by how many channels/lists shared them: " + ", ".join(f"{k}: {v}" for k, v in sorted(spread_counts.items())))
     print(f"   In the list: {len(in_list)} working, {len(iran)} in Iran (untested), {len(final) - len(in_list) - len(iran)} untested; "
           f"plain (no TLS) {sum(map(is_plain, in_list))}, worked 6+ runs in a row {sum(streak[c] >= 6 for c in in_list)}, "
           f"2+ runs {sum(streak[c] >= 2 for c in in_list)}, location known {sum(cities.values())}")

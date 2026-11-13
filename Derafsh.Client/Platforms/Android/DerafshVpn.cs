@@ -22,9 +22,7 @@ namespace Derafsh.Client
         public const string ActionStop = "com.derafsh.client.STOP";
         public const string ActionSwitch = "com.derafsh.client.SWITCH";   // دکمه‌ی «تعویض سرور»: همین الان برو روی زاپاس
         public const int SocksPort = 10809;
-        // ۱۵۰۰، مثل قبل از ۱.۹.۲. با ۸۵۰۰ (پیش‌فرض نمونه‌ی hev) دانلودهای طولانی داخل تونل بعد از چندصد کیلوبایت کامل می‌ایستادن
-        // (تست روی گوشی، ۱۳ نوامبر ۲۰۲۶: همون سرور از پورت SOCKS خود xray ۳۰ ثانیه پیوسته ۹۵۰ کیلوبایت بر ثانیه، از داخل تونل
-        // یه ثانیه و بعد صفر)؛ اینستاگرام هم ۱۲۰ ثانیه منتظر همون اتصال گیرکرده می‌موند
+        // ۱۵۰۰، مثل قبل از ۱.۹.۲. بسته‌ی بزرگ‌تر یعنی حافظه‌ی پیوسته‌ی بیشتر توی کرنل برای هر بسته (پایین‌تر، offload رو ببینید)
         private const int TunMtu = 1500;
 
         public static bool IsRunning { get; private set; }
@@ -103,9 +101,13 @@ namespace Derafsh.Client
                 }
                 _tun = builder.Establish() ?? throw new Exception("اندروید اجازه‌ی VPN نداد. درفش را باز کنید و به درخواست VPN «OK» بگویید.");
 
+                // offload خاموش: hev از ۲.۱۹ پیش‌فرض «jumbo» داره، یعنی بسته‌های TCP تا ۶۴ کیلوبایت رو یکجا (بزرگ‌تر از MTU) توی
+                // تونل می‌نویسه. کرنل اندروید (تست روی ۴.۱۹، گلکسی S20 FE) برای هر کدوم ۱۲۸ کیلوبایت حافظه‌ی پیوسته می‌خواد و وقتی
+                // پیدا نمی‌کنه بسته رو دور می‌ریزه (rx drop روی tun0: ۸۵۰۰ از ۲۳۰۰۰ بسته)؛ hev همون بسته‌ی بزرگ رو دوباره می‌فرسته و باز
+                // دور ریخته می‌شه، تا ۵ دقیقه بعد که اتصال رو می‌بنده. این همون ایستادن ویدیو وسط پخش بود. بسته‌های اندازه‌ی MTU این مشکل رو ندارن.
                 string hevConfig = Path.Combine(CacheDir!.AbsolutePath, "hev.yml");
                 File.WriteAllText(hevConfig,
-                    $"tunnel:\n  mtu: {TunMtu}\n  ipv4: 172.19.0.1\n" +
+                    $"tunnel:\n  mtu: {TunMtu}\n  ipv4: 172.19.0.1\n  offload:\n    tso: false\n    uso: false\n    jumbo: false\n" +
                     $"socks5:\n  port: {SocksPort}\n  address: 127.0.0.1\n  udp: 'udp'\n");
                 Hev.Start(this, hevConfig, _tun.Fd);
 

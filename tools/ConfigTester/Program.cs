@@ -9,7 +9,8 @@
 // dead everywhere (most of a public list after a few hours), and the phone tests the rest on its own network.
 //
 // usage: ConfigTester <links.txt> <results.tsv> <xray> [batch size] [minutes]
-// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s> <country> <city> <ASN> <exit IP>", "dead",
+// results.tsv: one line per input link: link, then "ok <ping ms> <KB/s> <country> <city> <ASN> <exit IP> <YouTube 1/0>
+// <Instagram 1/0>", "dead",
 // "invalid <why>" or "untested" (tab separated). Where a working config comes out on the internet (what websites see,
 // for the app's location choice) is looked up through the config itself; empty fields when the lookup failed.
 using System.Collections.Concurrent;
@@ -35,7 +36,13 @@ var budget = TimeSpan.FromMinutes(args.Length > 4 ? double.Parse(args[4], Cultur
 var results = new ConcurrentDictionary<string, string>();
 var service = new ConfigService();
 // DERAFSH_FRAGMENT=1: configs built with TLS fragmentation, as the app builds them by default (to check it doesn't break them)
-bool fragment = Environment.GetEnvironmentVariable("DERAFSH_FRAGMENT") == "1";
+bool fragment = Environment.GetEnvironmentVariable("DERAFSH_FRAGMENT") is { Length: > 0 } frag && frag != "0";
+// DERAFSH_FRAGMENT=packets,length,interval (e.g. tlshello,100-200,10-20) tries other fragment settings
+if (fragment && Environment.GetEnvironmentVariable("DERAFSH_FRAGMENT")!.Split(',') is { Length: 3 } fp)
+    (ConfigService.FragmentPackets, ConfigService.FragmentLength, ConfigService.FragmentInterval) = (fp[0], fp[1], fp[2]);
+// DERAFSH_ADB=<adb.exe>: Xray runs on a phone plugged in by USB (at /data/local/tmp/xray), and its SOCKS ports are
+// forwarded here, so every config is tested from the phone's own network (e.g. an Iranian mobile operator)
+string? adb = Environment.GetEnvironmentVariable("DERAFSH_ADB");
 var outbounds = new List<Candidate>();
 foreach (var link in links)
 {
@@ -81,8 +88,13 @@ async Task RunBatchAsync(List<Candidate> batch)
         {
             // DERAFSH_BUILD_ONLY=1: only check that Xray accepts the configs (to see why some can't be used), no network
             bool buildOnly = Environment.GetEnvironmentVariable("DERAFSH_BUILD_ONLY") == "1";
-            try { await Task.WhenAll(batch.Select(async (x, i) => results[x.Link] = buildOnly ? "untested" : await Tester.TestAsync(Tester.BasePort + i))); }
-            finally { try { proc.Kill(true); proc.WaitForExit(5000); } catch { } proc.Dispose(); }
+            try
+            {
+                await Task.WhenAll(batch.Select(async (x, i) => results[x.Link] = buildOnly ? "untested" : await Tester.TestAsync(Tester.BasePort + i)));
+                // DERAFSH_KEEP=<seconds>: leave Xray running that long (port 21000 + n for the n-th link), for long manual tests
+                if (int.TryParse(Environment.GetEnvironmentVariable("DERAFSH_KEEP"), out int keep)) { Console.WriteLine("ready"); await Task.Delay(keep * 1000); }
+            }
+            finally { StopXray(proc); }
             return;
         }
         var m = Regex.Match(error, @"with tag o(\d+)\b(.*)");
@@ -134,10 +146,18 @@ async Task<(Process? proc, string error)> StartXrayAsync(List<Candidate> batch)
     string path = Path.Combine(Path.GetTempPath(), "derafsh-test.json");
     File.WriteAllText(path, config.ToJsonString());
 
-    var proc = Process.Start(new ProcessStartInfo(xray, $"run -c \"{path}\"")
+    var start = new ProcessStartInfo(xray, $"run -c \"{path}\"");
+    if (adb != null)
     {
-        RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
-    })!;
+        Adb("shell", "pkill -f derafsh-test.json");
+        Adb("forward", "--remove-all");
+        Adb("push", path, "/data/local/tmp/derafsh-test.json");
+        for (int i = 0; i < batch.Count; i++) Adb("forward", $"tcp:{Tester.BasePort + i}", $"tcp:{Tester.BasePort + i}");
+        start = new ProcessStartInfo(adb, "shell /data/local/tmp/xray run -c /data/local/tmp/derafsh-test.json");
+    }
+    start.RedirectStandardOutput = start.RedirectStandardError = true;
+    start.UseShellExecute = false;
+    var proc = Process.Start(start)!;
     // the output has to be read all the time, or Xray blocks when the pipe is full
     var output = new StringBuilder();
     void Collect(object _, DataReceivedEventArgs e) { if (e.Data != null) lock (output) if (output.Length < 20_000) output.AppendLine(e.Data); }
@@ -150,12 +170,30 @@ async Task<(Process? proc, string error)> StartXrayAsync(List<Candidate> batch)
     while (wait.Elapsed < TimeSpan.FromSeconds(15))
     {
         if (proc.HasExited) break;
-        if (await Tester.PortOpenAsync(Tester.BasePort + batch.Count - 1)) return (proc, "");
+        // a forwarded port always accepts, so on the phone it counts only once Xray answers the SOCKS greeting
+        if (adb != null ? await Tester.SocksReadyAsync(Tester.BasePort + batch.Count - 1) : await Tester.PortOpenAsync(Tester.BasePort + batch.Count - 1))
+            return (proc, "");
         await Task.Delay(200);
     }
+    StopXray(proc);
+    lock (output) return (null, output.ToString());
+}
+
+void StopXray(Process proc)
+{
     try { proc.Kill(true); proc.WaitForExit(5000); } catch { }
     proc.Dispose();
-    lock (output) return (null, output.ToString());
+    if (adb != null) Adb("shell", "pkill -f derafsh-test.json");   // killing the local adb leaves Xray running on the phone
+}
+
+void Adb(params string[] args)
+{
+    var info = new ProcessStartInfo(adb!) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+    foreach (var a in args) info.ArgumentList.Add(a);
+    using var p = Process.Start(info)!;
+    p.StandardOutput.ReadToEnd();
+    p.StandardError.ReadToEnd();
+    p.WaitForExit(30_000);
 }
 
 // "invalid" plus why (one line, for the collector's summary of what the app can't use yet)
@@ -203,7 +241,11 @@ static class Tester
         if (kbps <= 0) kbps = await DownloadKbpsAsync(client, SpeedFallbackUrl, 8);
         if (kbps <= 0) return "dead";
         var (country, city, asn, ip) = await LocateAsync(client);
-        return $"ok\t{ping}\t{kbps}\t{Clean(country)}\t{Clean(city)}\t{asn}\t{Clean(ip)}";
+        // the sites people actually open: in a test from a phone, 4 of the 6 fastest configs passed everything above but
+        // could not open YouTube (many free servers block it to save bandwidth), so the video just didn't play
+        int youtube = await StatusAsync(client, "https://www.youtube.com/generate_204", 8) == HttpStatusCode.NoContent ? 1 : 0;
+        int instagram = await StatusAsync(client, "https://www.instagram.com/", 8) is HttpStatusCode s && (int)s < 500 ? 1 : 0;
+        return $"ok\t{ping}\t{kbps}\t{Clean(country)}\t{Clean(city)}\t{asn}\t{Clean(ip)}\t{youtube}\t{instagram}";
     }
 
     // Where the config comes out on the internet: Cloudflare's own lookup of the exit IP first (its city is the most
@@ -269,6 +311,22 @@ static class Tester
             return (int)(total / 1024.0 / Math.Max(0.05, sw.Elapsed.TotalSeconds));
         }
         catch { return 0; }
+    }
+
+    public static async Task<bool> SocksReadyAsync(int port)
+    {
+        try
+        {
+            using var c = new TcpClient();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            await c.ConnectAsync(IPAddress.Loopback, port, cts.Token);
+            var s = c.GetStream();
+            await s.WriteAsync(new byte[] { 5, 1, 0 }, cts.Token);
+            var reply = new byte[2];
+            int n = await s.ReadAsync(reply, cts.Token);
+            return n == 2 && reply[0] == 5 && reply[1] == 0;
+        }
+        catch { return false; }
     }
 
     public static async Task<bool> PortOpenAsync(int port)

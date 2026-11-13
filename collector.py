@@ -58,13 +58,26 @@ GITHUB_LISTS = [
     # V2RayRoot (vless، ۱٪) فقط وقت تست رو می‌گرفتن و برداشته شدن.
     ("4n0nymou3", "https://raw.githubusercontent.com/4n0nymou3/multi-proxy-config-fetcher/main/configs/proxy_configs_tested.txt", 300),
     ("TGParse", "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/vless", 400),
+    # لیست‌هایی که MEH VPN هم می‌خونه و ما نداشتیم (۱۳ نوامبر ۲۰۲۶). igareck برای اینترنت همراه روسیه‌ست که مثل همراه اول
+    # فقط سایت‌های مجاز رو رد می‌کنه (لیست سفید)؛ کانفیگ‌هایی که اسم سایت مجاز دارن
+    ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/servers/vless_servers.txt", 400),
+    ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/servers/trojan_servers.txt", 100),
+    ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/Vless-Reality-White-Lists-Rus-Mobile.txt", 200),
+    ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS_mobile.txt", 200),
+    ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt", 400),
+    ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_SS+All_RUS.txt", 150),
+    ("ShadowException", "https://raw.githubusercontent.com/ShadowException/VPN/refs/heads/main/configs/VPN-cat", 200),
+    ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Subscriptions/Sub1.txt", 200),
+    ("ermaozi", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt", 300),
+    ("patterniha", "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt", 100),
+    ("pytimusprime", "https://raw.githubusercontent.com/pytimusprime/FreeV2ray/refs/heads/main/all_servers.txt", 350),
     ("mahdibland", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt", 300),
 ]
 
 # هر سرور توی چندتا کانال و لیست پخش شده: {backend_key: {اسم منبع}}. کانفیگی که همه جا گذاشتن، کاربر زیادی داره و
 # شلوغه؛ توی ترتیب پایین‌تر می‌ره (build_tested_list)
 SHARED = {}
-MAX_CANDIDATES = 7000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۱۸ دقیقه)
+MAX_CANDIDATES = 9000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۲۵ دقیقه)
 
 # IPهای ایران (همون فایل برنامه): سروری که توی ایرانه (مثلاً سرور واسط) از بیرون ایران قابل قضاوت نیست
 IRAN_IP_FILE = os.path.join("Derafsh.Client", "Resources", "Raw", "iran_ip.txt")
@@ -331,7 +344,8 @@ def get_list_configs(sources):
 
 
 # نتیجه‌ی تست یه کانفیگ؛ مکان (کشور، شهر، شبکه، IP خروجی) فقط برای سالم‌ها و اگه پیدا شد
-Result = namedtuple("Result", "status ping kbps country city asn ip")
+# youtube / instagram: از داخل کانفیگ باز شدن یا نه (۱ یا ۰)
+Result = namedtuple("Result", "status ping kbps country city asn ip youtube instagram", defaults=(1, 1))
 UNTESTED = Result("untested", 0, 0, "", "", 0, "")
 
 
@@ -347,7 +361,7 @@ def test_configs(links):
         f.write("\n".join(links) + "\n")
     print(f"🧪 Testing {len(links)} configs with Xray...")
     try:
-        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "300", "20"], check=True, timeout=27 * 60)
+        subprocess.run(shlex.split(TESTER) + [candidates_path, results_path, XRAY, "300", "28"], check=True, timeout=36 * 60)
         results = {}
         reasons = {}
         with open(results_path, encoding="utf-8") as f:
@@ -356,9 +370,10 @@ def test_configs(links):
                 if len(parts) < 2:
                     continue
                 if parts[1] == "ok" and len(parts) > 3:
-                    loc = (parts + [""] * 8)[4:8]
+                    loc = (parts + [""] * 10)[4:10]
                     results[parts[0]] = Result("ok", int(parts[2]), int(parts[3]), loc[0].upper(), loc[1],
-                                               int(loc[2]) if loc[2].isdigit() else 0, loc[3])
+                                               int(loc[2]) if loc[2].isdigit() else 0, loc[3],
+                                               0 if loc[4] == "0" else 1, 0 if loc[5] == "0" else 1)
                 else:
                     results[parts[0]] = UNTESTED._replace(status=parts[1])
                     if parts[1] == "invalid":
@@ -557,6 +572,9 @@ def build_tested_list(candidates, results, old_configs, sources):
         for c in exits_iran:
             results[c] = results[c]._replace(status="dead")
     alive = [c for c in candidates if status(c).status == "ok"]
+    # سرورهایی که یوتیوب رو بستن (خیلی از سرورهای رایگان، برای پهنای باند): ویدیو باهاشون پخش نمی‌شه، پس فقط اگه جا موند
+    no_youtube = [c for c in alive if not status(c).youtube]
+    print(f"   {len(no_youtube)} working configs can't open YouTube, {sum(1 for c in alive if not status(c).instagram)} can't open Instagram")
 
     stats = {}
     for c in candidates:
@@ -592,10 +610,11 @@ def build_tested_list(candidates, results, old_configs, sources):
 
     def rank(c):
         r, l, n = status(c), loc(c), streak[c]
-        return (speed_rank(r.kbps), is_plain(c), shared_tier(c), 0 if n >= 6 else 1 if n >= 2 else 2,
+        # کانفیگ بدون TLS دیگه پایین‌تر نمی‌ره: روی همراه اول (تست از خود گوشی) نصف سالم‌ها همین‌ها بودن
+        return (speed_rank(r.kbps), not r.instagram, shared_tier(c), 0 if n >= 6 else 1 if n >= 2 else 2,
                 l is not None and l[0] in FAR_COUNTRIES, r.ping)
 
-    ranked = sorted(alive, key=rank)
+    ranked = sorted([c for c in alive if status(c).youtube], key=rank)
     picked, chosen, backends, per_exit, per_group, per_city, per_country = [], set(), set(), {}, {}, {}, {}
     exit_of = lambda c: status(c).ip or spread_key(c)
 
@@ -646,7 +665,9 @@ def build_tested_list(candidates, results, old_configs, sources):
             c = next((x for x in group if allowed(x)), None)
             if c:
                 take(c)
-    # ۲. بقیه به ترتیب کیفیت؛ اگه با سقف IP و رنج کم اومد، بدون اون دوتا (ولی باز هم از هر سرور یکی)
+    # ۲. بقیه به ترتیب کیفیت؛ اگه با سقف IP و رنج کم اومد، بدون اون دوتا (ولی باز هم از هر سرور یکی)، و آخر سر
+    # اون‌هایی که یوتیوب رو باز نمی‌کنن
+    ranked += sorted(no_youtube, key=rank)
     for relaxed in (False, True):
         for c in ranked:
             if len(picked) >= MAX_CONFIGS:

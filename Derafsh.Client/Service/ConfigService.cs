@@ -155,11 +155,12 @@ namespace Derafsh.Client.Services
         // تکه‌تکه کردن TLS (مثل MEH و MahsaNG): اولین بسته‌ی دست‌دادن TLS تا سرور (ClientHello، که اسم سایت توشه) به تیکه‌های
         // ۱۴ تا ۳۲ بایتی با ۲ تا ۵ میلی‌ثانیه فاصله فرستاده می‌شه. فیلتر اسم سایت رو نمی‌خونه، اتصال رو تشخیص نمی‌ده و کند یا قطع
         // نمی‌کنه؛ برای هر اتصال تازه حدود ۵۰ میلی‌ثانیه بیشتر. سرور تیکه‌ها رو مثل همیشه سر هم می‌کنه.
+        public static string FragmentPackets = "tlshello", FragmentLength = "14-32", FragmentInterval = "2-5";
         public static JsonObject FragmentOutbound() => new()
         {
             ["tag"] = "fragment",
             ["protocol"] = "freedom",
-            ["settings"] = new JsonObject { ["fragment"] = new JsonObject { ["packets"] = "tlshello", ["length"] = "14-32", ["interval"] = "2-5" } },
+            ["settings"] = new JsonObject { ["fragment"] = new JsonObject { ["packets"] = FragmentPackets, ["length"] = FragmentLength, ["interval"] = FragmentInterval } },
             ["streamSettings"] = new JsonObject { ["sockopt"] = new JsonObject { ["tcpNoDelay"] = true, ["tcpKeepAliveIdle"] = 15, ["tcpKeepAliveInterval"] = 5 } },
         };
 

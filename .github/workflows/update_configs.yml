@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 55
 
     permissions:
       contents: write # اجازه میده فایل رو تغییر بده و ذخیره کنه

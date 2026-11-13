@@ -327,7 +327,7 @@
                         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4">
                             <CheckBox x:Name="FragmentCheck" Color="{StaticResource TextSecondary}" VerticalOptions="Center" CheckedChanged="OnFragmentChanged"
                                       SemanticProperties.Description="تکه‌تکه کردن TLS برای عبور از فیلتر" />
-                            <Label Grid.Column="1" Text="تکه‌تکه کردن TLS برای عبور از فیلتر (فیلتر نمی‌فهمد به کدام سرور وصل می‌شوید و کندش نمی‌کند؛ اگر سروری وصل نشد، امتحانی خاموش کنید)"
+                            <Label Grid.Column="1" Text="تکه‌تکه کردن TLS (روی بعضی اینترنت‌ها به عبور از فیلتر کمک می‌کند؛ روی همراه اول اتصال را خراب می‌کند)"
                                    Style="{StaticResource OptionLabel}">
                                 <Label.GestureRecognizers>
                                     <TapGestureRecognizer Tapped="OnFragmentLabelTapped" />

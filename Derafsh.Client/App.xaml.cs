@@ -20,7 +20,13 @@ namespace Derafsh.Client
             };
 
             // اگه برنامه وقتی وصله بسته بشه، پروکسی ویندوز رو خاموش کن (وگرنه اینترنت قطع می‌مونه)
-            window.Destroying += (_, _) => global::Derafsh.Client.MainPage.CleanupOnExit();
+            window.Destroying += (_, _) =>
+            {
+                global::Derafsh.Client.MainPage.CleanupOnExit();
+#if WINDOWS
+                global::Derafsh.Client.WinUI.Tray.Remove();   // وگرنه آیکون کنار ساعت تا رفتن موس روش می‌مونه
+#endif
+            };
             return window;
         }
     }

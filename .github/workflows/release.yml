@@ -43,10 +43,15 @@ jobs:
           exit 1
 
       # The build downloads Xray for Windows itself (pinned version, SHA-256 checked)
-      - name: Publish (self-contained, nothing to install for users)
+      # One Derafsh.exe plus the Core folder (Xray), instead of dozens of files: single-file, self-contained. WinAppSDK
+      # needs all content inside the exe; it unpacks to %TEMP%\.net on the first start (about half a minute, then fast).
+      # Core stays a real folder next to the exe (ExcludeFromSingleFile in the csproj).
+      - name: Publish (self-contained single file, nothing to install for users)
         run: >
           dotnet publish Derafsh.Client/Derafsh.Client.csproj -f net10.0-windows10.0.19041.0 -p:TargetFrameworks=net10.0-windows10.0.19041.0 -c Release -r win-x64
-          --self-contained true -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:PublishReadyToRun=true
+          --self-contained true -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:IncludeAllContentForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true -p:AssemblyName=Derafsh -p:DebugType=none
           -o publish/Derafsh
 
       - name: Zip

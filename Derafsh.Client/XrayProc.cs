@@ -23,19 +23,25 @@ namespace Derafsh.Client
         public static bool IsTestProcess(int id) { lock (s_testIds) return s_testIds.Contains(id); }
 #endif
 
+#if !ANDROID
+        // پوشه‌ی خود Derafsh.exe. نسخه‌ی تک‌فایل ویندوز بقیه‌ی فایل‌هاش رو توی پوشه‌ی موقت باز می‌کنه (BaseDirectory همون‌جاست)،
+        // ولی Core کنار exe می‌مونه
+        private static string AppDir => Path.GetDirectoryName(Environment.ProcessPath) ?? AppDomain.CurrentDomain.BaseDirectory;
+#endif
+
         // پوشه‌ای که کانفیگ‌ها توش نوشته می‌شن
         public static string WorkDir =>
 #if ANDROID
             FileSystem.CacheDirectory;
 #else
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core");
+            Path.Combine(AppDir, "Core");
 #endif
 
         public static string EnginePath =>
 #if ANDROID
             Path.Combine(Android.App.Application.Context.ApplicationInfo!.NativeLibraryDir!, "libxray.so");
 #else
-            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Core", "xray.exe");
+            Path.Combine(AppDir, "Core", "xray.exe");
 #endif
 
         public static bool EngineExists => File.Exists(EnginePath);

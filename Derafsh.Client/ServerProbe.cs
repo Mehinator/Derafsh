@@ -9,10 +9,11 @@ namespace Derafsh.Client
     {
         private static readonly ConfigService s_service = new();
 
-        // تکه‌تکه کردن TLS (تنظیمات؛ پیش‌فرض روشن). تست‌ها هم با همین، تا نتیجه‌شون همون اتصال واقعی باشه.
+        // تکه‌تکه کردن TLS (تنظیمات). تست‌ها هم با همین، تا نتیجه‌شون همون اتصال واقعی باشه. پیش‌فرض خاموش: روی همراه اول
+        // (تست ۱۳ نوامبر ۲۰۲۶ از خود گوشی) با هر تنظیمی کانفیگ‌های TLS و Reality رو خراب می‌کرد (۱۴ سالم بدون، ۶ تا ۱۰ با)
         public static bool FragmentTls
         {
-            get => Preferences.Default.Get("tls_fragment", true);
+            get => Preferences.Default.Get("tls_fragment", false);
             set => Preferences.Default.Set("tls_fragment", value);
         }
 
@@ -52,7 +53,25 @@ namespace Derafsh.Client
         public static async Task<Dictionary<string, int>> TestManyAsync(IReadOnlyList<string> links, int timeoutSeconds,
                                                                          ISet<string>? needDownload, CancellationToken token)
         {
-            var result = new Dictionary<string, int>();
+            var result = new Dictionary<string, (int ping, int speed, bool youtube)>();
+            await RunAsync(await BuildAsync(links), async (port, link) => (await ProbeAsync(port, timeoutSeconds, needDownload?.Contains(link) == true, token), 0, true), result, token);
+            return result.Where(x => x.Value.ping > 0).ToDictionary(x => x.Key, x => x.Value.ping);
+        }
+
+        // تست کامل چند سرور با هم (برای پیدا کردن سرورهای سالم روی همین اینترنت): پینگ و سرعت دانلود هر کدوم.
+        // روی همراه اول فقط حدود ۵٪ سرورهای لیست جواب دادن و بیشترشون حدود ۵ کیلوبایت بر ثانیه بودن؛ باید کل لیست
+        // تست بشه تا چندتای سریع پیدا بشن. قبلاً هر سرور xray خودش رو داشت و فقط ۱۲۰ تای اول تست می‌شد.
+        // youtube: یوتیوب از داخلش باز شد (خیلی از سرورهای رایگان یوتیوب رو بستن و ویدیو باهاشون پخش نمی‌شه)
+        public static async Task<Dictionary<string, (int ping, int speed, bool youtube)>> MeasureManyAsync(IReadOnlyList<string> links, CancellationToken token)
+        {
+            var result = new Dictionary<string, (int ping, int speed, bool youtube)>();
+            using var speedSlots = new SemaphoreSlim(3);   // دانلودها با هم نه، تا سرعت‌ها همدیگه رو کم نشون ندن
+            await RunAsync(await BuildAsync(links), (port, _) => MeasureAsync(port, speedSlots, token), result, token);
+            return result;
+        }
+
+        private static async Task<List<(string link, JsonObject outbound)>> BuildAsync(IReadOnlyList<string> links)
+        {
             // با هم، چون روی اندروید آدرس هر سرور اینجا با DNS پیدا می‌شه
             var built = await Task.WhenAll(links.Select(async link =>
             {
@@ -64,13 +83,12 @@ namespace Derafsh.Client
                 }
                 catch { return (link, outbound: (JsonObject?)null); }   // ساخته نشد (یا آدرس سرور پیدا نشد): جواب نداده حساب می‌شه
             }));
-            var outbounds = built.Where(x => x.outbound != null).Select(x => (x.link, x.outbound!)).ToList();
-            await RunAsync(outbounds, timeoutSeconds, needDownload, result, token);
-            return result;
+            return built.Where(x => x.outbound != null).Select(x => (x.link, x.outbound!)).ToList();
         }
 
-        private static async Task RunAsync(List<(string link, JsonObject outbound)> batch, int timeoutSeconds, ISet<string>? needDownload,
-                                           Dictionary<string, int> result, CancellationToken token)
+        // test(پورت، لینک): نتیجه‌ی یه سرور؛ ping صفر یعنی جواب نداد
+        private static async Task RunAsync(List<(string link, JsonObject outbound)> batch, Func<int, string, Task<(int ping, int speed, bool youtube)>> test,
+                                           Dictionary<string, (int ping, int speed, bool youtube)> result, CancellationToken token)
         {
             if (batch.Count == 0 || token.IsCancellationRequested) return;
             var ports = new List<int>();
@@ -110,8 +128,8 @@ namespace Derafsh.Client
                 started = await XrayProc.WaitForPortAsync(ports[^1], 6000) && await XrayProc.WaitForPortAsync(ports[0], 1000);
                 if (started)
                 {
-                    var answers = await Task.WhenAll(batch.Select((x, i) => ProbeAsync(ports[i], timeoutSeconds, needDownload?.Contains(x.link) == true, token)));
-                    for (int i = 0; i < batch.Count; i++) if (answers[i] > 0) result[batch[i].link] = answers[i];
+                    var answers = await Task.WhenAll(batch.Select((x, i) => test(ports[i], x.link)));
+                    lock (result) for (int i = 0; i < batch.Count; i++) result[batch[i].link] = answers[i];
                 }
             }
             catch { }
@@ -126,9 +144,52 @@ namespace Derafsh.Client
             if (!started && batch.Count > 1 && !token.IsCancellationRequested)
             {
                 int half = batch.Count / 2;
-                await RunAsync(batch.Take(half).ToList(), timeoutSeconds, needDownload, result, token);
-                await RunAsync(batch.Skip(half).ToList(), timeoutSeconds, needDownload, result, token);
+                await RunAsync(batch.Take(half).ToList(), test, result, token);
+                await RunAsync(batch.Skip(half).ToList(), test, result, token);
             }
+        }
+
+        // مثل تست تکی صفحه: درخواست اول تونل رو باز می‌کنه، دوتا درخواست بعدی پینگ رو می‌دن، بعد سرعت دانلود.
+        // سروری که جواب کوچک می‌ده ولی دانلود نمی‌کنه، سالم حساب نمی‌شه.
+        private static async Task<(int ping, int speed, bool youtube)> MeasureAsync(int port, SemaphoreSlim speedSlots, CancellationToken token)
+        {
+            const string url = "https://www.gstatic.com/generate_204";
+            try
+            {
+                using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(8));
+                using (var warm = await client.GetAsync(url, token))
+                    if (warm.StatusCode != System.Net.HttpStatusCode.NoContent) return (0, 0, false);
+                int ping = int.MaxValue;
+                for (int i = 0; i < 2; i++)
+                {
+                    try
+                    {
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        cts.CancelAfter(TimeSpan.FromSeconds(5));
+                        var sw = Stopwatch.StartNew();
+                        using var res = await client.GetAsync(url, cts.Token);
+                        if (res.StatusCode == System.Net.HttpStatusCode.NoContent) ping = Math.Min(ping, Math.Max(1, (int)sw.ElapsedMilliseconds));
+                    }
+                    catch { }
+                }
+                if (ping == int.MaxValue) return (0, 0, false);
+                await speedSlots.WaitAsync(token);
+                int speed;
+                try { speed = await ConnectionGuard.MeasureSpeedAsync(port, maxSeconds: 5, maxBytes: 200_000); }
+                finally { speedSlots.Release(); }
+                if (speed <= 0) return (0, 0, false);
+                bool youtube = false;
+                try
+                {
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    cts.CancelAfter(TimeSpan.FromSeconds(8));
+                    using var yt = await client.GetAsync("https://www.youtube.com/generate_204", cts.Token);
+                    youtube = yt.StatusCode == System.Net.HttpStatusCode.NoContent;
+                }
+                catch { }
+                return (ping, speed, youtube);
+            }
+            catch { return (0, 0, false); }
         }
 
         // درخواست اول کل مسیر رو باز می‌کنه (اتصال و رمزنگاری تا سرور)؛ زمانش «پینگ» این تست حساب می‌شه

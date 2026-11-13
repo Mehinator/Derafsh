@@ -272,14 +272,18 @@ namespace Derafsh.Client
         }
 
         // ---------- تست خودکار لیست آنلاین ----------
-        // به ترتیب لیست (بهترین‌ها اول؛ ستاره‌دارها و سالم‌های قبلی همین اینترنت جلوتر) تست می‌شه تا TargetWorking تا سرور
-        // سالم پیدا بشه یا MaxTested تا تست بشه. اگه مکانی انتخاب شده، فقط سرورهای همون‌جا.
-        private const int TargetWorking = 20;
+        // به ترتیب لیست (بهترین‌ها اول؛ ستاره‌دارها و سالم‌های قبلی همین اینترنت جلوتر)، دسته‌ای: هر DiscoverBatch سرور با یه xray
+        // (ServerProbe). تا وقتی TargetWorking سرور سالم و TargetFast سرور سریع برای ویدیو پیدا نشده، تا ته لیست ادامه پیدا می‌کنه.
+        // روی همراه اول (تست ۱۳ نوامبر ۲۰۲۶ از خود گوشی) فقط ۲۵ تا از ۵۰۰ جواب دادن، پراکنده توی لیست، و فقط چندتاشون سریع
+        // بودن؛ قبلاً فقط ۱۲۰ تای اول تست می‌شد و برنامه می‌گفت سروری پیدا نشد. اگه مکانی انتخاب شده، فقط سرورهای همون‌جا.
+        private const int TargetWorking = 20, TargetFast = 5, DiscoverBatch = 24;
 #if ANDROID
-        private const int MaxTested = 120, DiscoverParallel = 8;
+        private const int DiscoverBatches = 2;   // چندتا xray با هم
 #else
-        private const int MaxTested = 200, DiscoverParallel = 12;
+        private const int DiscoverBatches = 3;
 #endif
+        // سرورهایی که روی همین اینترنت سالم بودن ولی یوتیوب رو باز نکردن: آخر صف انتخاب خودکار و زاپاس‌ها
+        private readonly HashSet<string> NoYouTube = new();
         private bool _discovering, _discoveryDone;   // _discoveryDone: یه بار تست تا آخر رفته (قبلش «هیچی جواب نداد» نشون داده نمی‌شه)
         private int _discoverGen;
         private ServerGroup? _onlineGroup;
@@ -319,7 +323,8 @@ namespace Derafsh.Client
                              .ThenByDescending(c => Math.Round(NetworkHistory.Score(c)))
                              .ToList();
             int found = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);
-            int planned = Math.Min(queue.Count, MaxTested), done = 0, started = 0;
+            int fast = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply && _speedCache.GetValueOrDefault(c, -1) >= VideoSpeed);
+            int planned = queue.Count, done = 0;
 
             _discovering = true;
             UpdateOnlineHeader();
@@ -328,31 +333,43 @@ namespace Derafsh.Client
             StatusLabel.Text = $"در حال پیدا کردن سرورهای سالم روی این اینترنت · {Fa(found)} پیدا شد";
             try
             {
-                using var sem = new SemaphoreSlim(DiscoverParallel);
+                using var sem = new SemaphoreSlim(DiscoverBatches);
                 var running = new List<Task>();
-                foreach (var config in queue)
+                bool Enough() => found >= TargetWorking && fast >= TargetFast;
+                foreach (var chunk in queue.Chunk(DiscoverBatch))
                 {
-                    if (gen != _discoverGen || found >= TargetWorking || started >= MaxTested) break;
+                    if (gen != _discoverGen || Enough()) break;
                     await sem.WaitAsync();
-                    if (gen != _discoverGen || found >= TargetWorking) { sem.Release(); break; }
-                    started++;
-                    running.Add(TestOne(config));
+                    if (gen != _discoverGen || Enough()) { sem.Release(); break; }
+                    running.Add(TestBatch(chunk));
                 }
                 await Task.WhenAll(running);
 
-                async Task TestOne(string config)
+                async Task TestBatch(string[] chunk)
                 {
-                    try { await PingSingle(config, quick: true); }
+                    Dictionary<string, (int ping, int speed, bool youtube)> results;
+                    try { results = await ServerProbe.MeasureManyAsync(chunk, CancellationToken.None); }
+                    catch { results = new(); }
                     finally { sem.Release(); }
-                    done++;
-                    if (gen != _discoverGen) return;
-                    if (_pingCache.TryGetValue(config, out var ping) && ping is > 0 and < NoReply)
+                    foreach (var config in chunk)
                     {
+                        var (ping, speed, youtube) = results.GetValueOrDefault(config);
+                        bool ok = ping > 0;
+                        if (ok && !youtube) NoYouTube.Add(config); else NoYouTube.Remove(config);
+                        _pingCache[config] = ok ? ping : NoReply;
+                        if (ok) _speedCache[config] = speed; else _speedCache.Remove(config);
+                        foreach (var x in RowsOf(config)) { x.Ping = _pingCache[config]; x.Speed = ok ? speed : -1; }
+                        NetworkHistory.Record(config, ok, Math.Max(0, speed));
+                        done++;
+                        if (gen != _discoverGen || !ok) continue;
                         found++;
+                        if (speed >= VideoSpeed) fast++;
                         AddOnlineRow(config);   // پیدا شده‌ها پایین لیست اضافه می‌شن؛ مرتب‌سازی فقط یه بار، آخر کار
-                        if (!_connecting && !isConnected) UpdateHome();
                     }
-                    if (!_connecting) StatusLabel.Text = $"در حال پیدا کردن سرورهای سالم روی این اینترنت · {Fa(found)} پیدا شد · {Fa(done)} از {Fa(planned)} تست شد";
+                    if (gen != _discoverGen) return;
+                    if (!_connecting && !isConnected) UpdateHome();
+                    if (!_connecting)
+                        StatusLabel.Text = $"در حال پیدا کردن سرورهای سالم روی این اینترنت · {Fa(found)} پیدا شد، {Fa(fast)} تا سریع · {Fa(done)} از {Fa(planned)} تست شد";
                 }
             }
             finally

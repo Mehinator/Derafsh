@@ -31,6 +31,8 @@ namespace Derafsh.Client
                 bar.ButtonHoverForegroundColor = Microsoft.UI.ColorHelper.FromArgb(255, 0xF3, 0xEE, 0xF7);     // TextPrimary
                 bar.ButtonPressedBackgroundColor = Microsoft.UI.ColorHelper.FromArgb(255, 0x23, 0x1A, 0x2D);   // SurfaceRaised
                 bar.ButtonPressedForegroundColor = Microsoft.UI.ColorHelper.FromArgb(255, 0xF3, 0xEE, 0xF7);
+                // آیکون کنار ساعت؛ کمینه کردن برنامه رو اونجا می‌بره
+                Derafsh.Client.WinUI.Tray.Attach(window);
             })));
 #endif
 

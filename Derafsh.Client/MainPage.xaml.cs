@@ -722,6 +722,9 @@ namespace Derafsh.Client
                     break;
             }
 
+#if WINDOWS
+            WinUI.Tray.SetTooltip(on ? $"درفش · وصل به {_currentServer?.City ?? Preferences.Default.Get("connected_name", "")}" : $"درفش · {stateText}");
+#endif
             ConnectButton.Style = Res<Style>(on ? "ConnectCircleOn" : "ConnectCircle");
             ConnectButton.Text = text;
             SemanticProperties.SetDescription(ConnectButton, text);
@@ -784,6 +787,15 @@ namespace Derafsh.Client
             while (!_cancelFind)
             {
                 var working = WorkingServers();
+                // روی اینترنت‌هایی مثل همراه اول بیشتر سرورها خیلی کندن (حدود ۵ کیلوبایت بر ثانیه، ویدیو می‌ایسته)؛ تا وقتی
+                // تست ادامه داره، تا ۴۰ ثانیه صبر برای یه سرور سریع، وگرنه همون کندها
+                bool onlySlow = working.Any() && SpeedBucket(_speedCache.GetValueOrDefault(working[0].Config, -1)) == 2;
+                if (onlySlow && _discovering && sw.Elapsed < TimeSpan.FromSeconds(40))
+                {
+                    SetConnState(ConnState.Finding, "فقط سرورهای کند جواب داده‌اند؛ دنبال یک سرور سریع‌تر…");
+                    await Task.Delay(700);
+                    continue;
+                }
                 if (working.Any())
                 {
                     if (!RequireGemini) return working.First();
@@ -837,7 +849,8 @@ namespace Derafsh.Client
             return configs.Distinct()
                 .Where(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply)
                 .Where(c => anyLocation || Locations.Matches(c))
-                .OrderBy(c => SpeedBucket(_speedCache.GetValueOrDefault(c, -1)))
+                .OrderBy(c => NoYouTube.Contains(c))   // یوتیوب رو باز نمی‌کنه: ویدیو پخش نمی‌شه
+                .ThenBy(c => SpeedBucket(_speedCache.GetValueOrDefault(c, -1)))
                 .ThenByDescending(c => NetworkHistory.Score(c) > 0.5)
                 .ThenBy(c => _pingCache[c])
                 .Select(c => shown.FirstOrDefault(x => x.Config == c) ?? NewServer(c))

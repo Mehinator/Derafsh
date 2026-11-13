@@ -58,7 +58,7 @@ GITHUB_LISTS = [
     # V2RayRoot (vless، ۱٪) فقط وقت تست رو می‌گرفتن و برداشته شدن.
     ("4n0nymou3", "https://raw.githubusercontent.com/4n0nymou3/multi-proxy-config-fetcher/main/configs/proxy_configs_tested.txt", 300),
     ("TGParse", "https://raw.githubusercontent.com/Surfboardv2ray/TGParse/main/splitted/vless", 400),
-    # لیست‌هایی که MEH VPN هم می‌خونه و ما نداشتیم (۱۳ نوامبر ۲۰۲۶). igareck برای اینترنت همراه روسیه‌ست که مثل همراه اول
+    # لیست‌هایی که MEH VPN هم می‌خونه و ما نداشتیم (۱۳ نوامبر ۲۰۲۶؛ ShadowException با ۳٪ و pytimusprime با ۰٪ سالم برداشته شدن). igareck برای اینترنت همراه روسیه‌ست که مثل همراه اول
     # فقط سایت‌های مجاز رو رد می‌کنه (لیست سفید)؛ کانفیگ‌هایی که اسم سایت مجاز دارن
     ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/servers/vless_servers.txt", 400),
     ("MohammadBahemmat", "https://raw.githubusercontent.com/MohammadBahemmat/V2ray-Collector/main/servers/trojan_servers.txt", 100),
@@ -66,11 +66,9 @@ GITHUB_LISTS = [
     ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS_mobile.txt", 200),
     ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_VLESS_RUS.txt", 400),
     ("igareck", "https://raw.githubusercontent.com/igareck/vpn-configs-for-russia/refs/heads/main/BLACK_SS+All_RUS.txt", 150),
-    ("ShadowException", "https://raw.githubusercontent.com/ShadowException/VPN/refs/heads/main/configs/VPN-cat", 200),
     ("SoliSpirit", "https://raw.githubusercontent.com/SoliSpirit/v2ray-configs/main/Subscriptions/Sub1.txt", 200),
     ("ermaozi", "https://raw.githubusercontent.com/ermaozi/get_subscribe/main/subscribe/v2ray.txt", 300),
     ("patterniha", "https://raw.githubusercontent.com/patterniha/Free-Configs/main/configs.txt", 100),
-    ("pytimusprime", "https://raw.githubusercontent.com/pytimusprime/FreeV2ray/refs/heads/main/all_servers.txt", 350),
     ("mahdibland", "https://raw.githubusercontent.com/mahdibland/V2RayAggregator/master/sub/sub_merge.txt", 300),
 ]
 

@@ -243,7 +243,8 @@ static class Tester
         var (country, city, asn, ip) = await LocateAsync(client);
         // the sites people actually open: in a test from a phone, 4 of the 6 fastest configs passed everything above but
         // could not open YouTube (many free servers block it to save bandwidth), so the video just didn't play
-        int youtube = await StatusAsync(client, "https://www.youtube.com/generate_204", 8) == HttpStatusCode.NoContent ? 1 : 0;
+        // googlevideo, where the video itself comes from: on the phone, servers opened youtube.com but had googlevideo blocked
+        int youtube = await StatusAsync(client, "https://rr1---sn-4g5ednsz.googlevideo.com/generate_204", 8) == HttpStatusCode.NoContent ? 1 : 0;
         int instagram = await StatusAsync(client, "https://www.instagram.com/", 8) is HttpStatusCode s && (int)s < 500 ? 1 : 0;
         return $"ok\t{ping}\t{kbps}\t{Clean(country)}\t{Clean(city)}\t{asn}\t{Clean(ip)}\t{youtube}\t{instagram}";
     }

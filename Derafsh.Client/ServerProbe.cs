@@ -48,14 +48,23 @@ namespace Derafsh.Client
     // (قبلاً هر زاپاس مرده تا ۲۰ ثانیه معطلی داشت).
     public static class ServerProbe
     {
+        // خود سرور ویدیوی یوتیوب (ویدیو از googlevideo می‌آد، نه youtube.com). تست روی گوشی، ۱۳ نوامبر ۲۰۲۶: سرورهایی که درفش
+        // انتخاب کرده بود youtube.com رو باز می‌کردن ولی googlevideo و ytimg رو بسته بودن، و ویدیو پخش نمی‌شد.
+        public const string VideoUrl = "https://rr1---sn-4g5ednsz.googlevideo.com/generate_204";
+
         // سرورهایی که جواب دادن، با زمان جوابشون (میلی‌ثانیه). needDownload: این‌ها علاوه بر جواب، باید یه کم هم دانلود
         // کنن (سرورهایی که روی این اینترنت تست سرعت نشدن؛ بعضی سرورها جواب کوچک می‌دن ولی هیچی دانلود نمی‌کنن)
-        public static async Task<Dictionary<string, int>> TestManyAsync(IReadOnlyList<string> links, int timeoutSeconds,
-                                                                         ISet<string>? needDownload, CancellationToken token)
+        // video: googlevideo هم جواب داد (ویدیوی یوتیوب پخش می‌شه)
+        public static async Task<Dictionary<string, (int ping, bool video)>> TestManyAsync(IReadOnlyList<string> links, int timeoutSeconds,
+                                                                                    ISet<string>? needDownload, CancellationToken token)
         {
             var result = new Dictionary<string, (int ping, int speed, bool youtube)>();
-            await RunAsync(await BuildAsync(links), async (port, link) => (await ProbeAsync(port, timeoutSeconds, needDownload?.Contains(link) == true, token), 0, true), result, token);
-            return result.Where(x => x.Value.ping > 0).ToDictionary(x => x.Key, x => x.Value.ping);
+            await RunAsync(await BuildAsync(links), async (port, link) =>
+            {
+                var (ping, video) = await ProbeAsync(port, timeoutSeconds, needDownload?.Contains(link) == true, token);
+                return (ping, 0, video);
+            }, result, token);
+            return result.Where(x => x.Value.ping > 0).ToDictionary(x => x.Key, x => (x.Value.ping, x.Value.youtube));
         }
 
         // تست کامل چند سرور با هم (برای پیدا کردن سرورهای سالم روی همین اینترنت): پینگ و سرعت دانلود هر کدوم.
@@ -183,7 +192,7 @@ namespace Derafsh.Client
                 {
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
                     cts.CancelAfter(TimeSpan.FromSeconds(8));
-                    using var yt = await client.GetAsync("https://www.youtube.com/generate_204", cts.Token);
+                    using var yt = await client.GetAsync(VideoUrl, cts.Token);
                     youtube = yt.StatusCode == System.Net.HttpStatusCode.NoContent;
                 }
                 catch { }
@@ -192,20 +201,28 @@ namespace Derafsh.Client
             catch { return (0, 0, false); }
         }
 
-        // درخواست اول کل مسیر رو باز می‌کنه (اتصال و رمزنگاری تا سرور)؛ زمانش «پینگ» این تست حساب می‌شه
-        private static async Task<int> ProbeAsync(int port, int timeoutSeconds, bool needDownload, CancellationToken token)
+        // درخواست اول کل مسیر رو باز می‌کنه (اتصال و رمزنگاری تا سرور)؛ زمانش «پینگ» این تست حساب می‌شه. همزمان googlevideo:
+        // سروری که فقط اون رو باز نمی‌کنه هنوز زنده‌ست، ولی ویدیو باهاش پخش نمی‌شه
+        private static async Task<(int ping, bool video)> ProbeAsync(int port, int timeoutSeconds, bool needDownload, CancellationToken token)
         {
-            try
+            async Task<int> Get204(string url, int seconds)
             {
-                using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(timeoutSeconds));
-                var sw = Stopwatch.StartNew();
-                using var res = await client.GetAsync("http://www.gstatic.com/generate_204", token);
-                if (res.StatusCode != System.Net.HttpStatusCode.NoContent) return 0;
-                int ms = Math.Max(1, (int)sw.ElapsedMilliseconds);
-                if (needDownload && await ConnectionGuard.MeasureSpeedAsync(port, maxSeconds: 3, maxBytes: 64_000) <= 0) return 0;
-                return ms;
+                try
+                {
+                    using var client = XrayProc.SocksClient(port, TimeSpan.FromSeconds(seconds));
+                    var sw = Stopwatch.StartNew();
+                    using var res = await client.GetAsync(url, token);
+                    return res.StatusCode == System.Net.HttpStatusCode.NoContent ? Math.Max(1, (int)sw.ElapsedMilliseconds) : 0;
+                }
+                catch { return 0; }
             }
-            catch { return 0; }
+            var plain = Get204("http://www.gstatic.com/generate_204", timeoutSeconds);
+            var video = Get204(VideoUrl, timeoutSeconds + 2);
+            int ms = await plain, videoMs = await video;
+            if (ms == 0) ms = videoMs;
+            if (ms == 0) return (0, false);
+            if (needDownload && await ConnectionGuard.MeasureSpeedAsync(port, maxSeconds: 3, maxBytes: 64_000) <= 0) return (0, false);
+            return (ms, videoMs > 0);
         }
     }
 }

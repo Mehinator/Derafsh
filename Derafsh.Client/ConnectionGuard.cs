@@ -27,7 +27,8 @@ namespace Derafsh.Client
 
         // دلیل رفتن به سرور دیگه (برای پیغام به کاربر)
         // offline: اینترنت خود دستگاه قطعه (هیچ سروری و هیچ سایتی جواب نداد)؛ نگهبان منتظر می‌مونه و دوباره امتحان می‌کنه
-        public const string ReasonDown = "down", ReasonSlow = "slow", ReasonManual = "manual", ReasonOffline = "offline";
+        // video: سرور جواب می‌ده ولی ویدیو رو رد نمی‌کنه (googlevideo بسته، یا هر اتصال بعد از چندصد کیلوبایت می‌ایسته)
+        public const string ReasonDown = "down", ReasonSlow = "slow", ReasonManual = "manual", ReasonOffline = "offline", ReasonVideo = "video";
         public const int FlowingSpeed = 40;   // کیلوبایت بر ثانیه: ترافیک خود کاربر داره رد می‌شه، پس سرور زنده‌ست
 
         private readonly Func<Spare, Task<bool>> _switchTo;
@@ -60,7 +61,9 @@ namespace Derafsh.Client
             var history = new List<(DateTime at, long down, long up)>();
             var now = DateTime.UtcNow;
             DateTime lastProbe = now, lastSpeed = now, lastUpkeep = now.AddSeconds(-105), lostAt = DateTime.MinValue;
-            int slow = 0;
+            DateTime lastVideo = now.AddSeconds(-105);   // اولین تست ویدیو ۱۵ ثانیه بعد از وصل شدن
+            bool firstVideo = true;
+            int slow = 0, videoFails = 0;
             bool lost = false;
             while (!token.IsCancellationRequested)
             {
@@ -112,6 +115,26 @@ namespace Derafsh.Client
                     lost = false;
                 }
 
+                // ویدیو: سرور به درخواست‌های کوچک جواب می‌ده ولی ویدیو رو رد نمی‌کنه. تست روی گوشی (۱۳ نوامبر ۲۰۲۶): سروری که
+                // درفش انتخاب کرده بود googlevideo رو بسته بود و هر دانلود بعد از یه ثانیه (حدود ۳۶۵ کیلوبایت) برای همیشه صفر می‌موند؛
+                // درخواست کوچک نگهبان جواب می‌گرفت و تست سرعت هم اجرا نمی‌شد (دانلود صفر بود، نه کند). حالا یه بار بعد از وصل
+                // شدن، و هر بار که دانلود کاربر یهو قطع می‌شه (حداکثر هر ۲ دقیقه): googlevideo و یه دانلود ۶۰۰ کیلوبایتی. دو بار
+                // پشت سر هم رد شد → سروری که ویدیو رو رد می‌کنه.
+                bool videoDue = (now - lastVideo).TotalSeconds >= 120 && (dropped || videoFails > 0 || firstVideo);
+                if (!flowing && videoDue && _switchLock.CurrentCount > 0)
+                {
+                    lastVideo = now;
+                    firstVideo = false;
+                    if (await VideoOkAsync()) videoFails = 0;
+                    else if (++videoFails >= 2)
+                    {
+                        videoFails = 0;
+                        await SwitchToNextAsync(ReasonVideo);
+                    }
+                    else lastVideo = now.AddSeconds(-100);   // ۲۰ ثانیه بعد دوباره
+                    continue;
+                }
+
                 // زاپاس‌ها: هر ۲ دقیقه، و تا وقتی کمتر از دوتا آماده‌ست هر ۴۵ ثانیه؛ گوشی بیکار نه
                 if (active && _upkeep.IsCompleted && (now - lastUpkeep).TotalSeconds >= (ReadyCount >= 2 ? 120 : 45))
                 {
@@ -153,7 +176,7 @@ namespace Derafsh.Client
             {
                 var tried = new HashSet<string>();
                 bool engineChanged = false;
-                int rounds = reason == ReasonDown ? 6 : reason == ReasonManual ? 3 : 1;
+                int rounds = reason == ReasonDown ? 6 : reason is ReasonManual or ReasonVideo ? 3 : 1;
                 for (int round = 0; round < rounds && !_cts.IsCancellationRequested; round++)
                 {
                     var batch = Candidates(8, tried, includeReady: true);
@@ -170,7 +193,10 @@ namespace Derafsh.Client
                         return false;
                     }
                     MarkDead(batch.Where(c => !alive.ContainsKey(c.Link)));
-                    foreach (var c in batch.Where(c => alive.ContainsKey(c.Link)))
+                    // اون‌هایی که ویدیو (googlevideo) رو هم باز می‌کنن اول؛ برای «ویدیو» فقط همون‌ها
+                    var order = batch.Where(c => alive.ContainsKey(c.Link) && (reason != ReasonVideo || alive[c.Link].video))
+                                     .OrderByDescending(c => alive[c.Link].video).ToList();
+                    foreach (var c in order)
                     {
                         if (_cts.IsCancellationRequested) return false;
                         string path = Path.Combine(XrayProc.WorkDir, $"spare_{++_fileGen % 3}.json");
@@ -208,7 +234,7 @@ namespace Derafsh.Client
                 var batch = Candidates(6, new HashSet<string>(), includeReady: false);
                 var alive = batch.Count == 0 ? new() : await ServerProbe.TestManyAsync(batch.Select(c => c.Link).ToList(), 6, null, token);
                 if (alive.Count > 0) MarkDead(batch.Where(c => !alive.ContainsKey(c.Link)));   // هیچ‌کدوم: شاید اینترنت قطعه
-                lock (_readyLock) _ready = batch.Where(c => alive.ContainsKey(c.Link)).Take(3).ToList();
+                lock (_readyLock) _ready = batch.Where(c => alive.ContainsKey(c.Link)).OrderByDescending(c => alive[c.Link].video).Take(3).ToList();
             }
             catch { }
         }
@@ -366,6 +392,39 @@ namespace Derafsh.Client
             catch { }
             if (sw == null) return 0;
             return (int)(total / 1024.0 / Math.Max(0.05, sw.Elapsed.TotalSeconds));
+        }
+
+        // ویدیو از داخل اتصال: googlevideo جواب بده و از یه دانلود ۶۰۰ کیلوبایتی دست‌کم ۴۰۰ کیلوبایت تا ۸ ثانیه برسه
+        private static async Task<bool> VideoOkAsync()
+        {
+            try
+            {
+                using var client = XrayProc.SocksClient(XrayProc.SessionPort, TimeSpan.FromSeconds(8));
+                using var res = await client.GetAsync(ServerProbe.VideoUrl);
+                if (res.StatusCode != System.Net.HttpStatusCode.NoContent) return false;
+            }
+            catch { return false; }
+            long got = await DownloadBytesAsync(XrayProc.SessionPort, "https://speed.cloudflare.com/__down?bytes=600000", 8);
+            if (got == 0) got = await DownloadBytesAsync(XrayProc.SessionPort, "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt", 8);
+            return got >= 400_000;
+        }
+
+        private static async Task<long> DownloadBytesAsync(int socksPort, string url, int seconds)
+        {
+            long total = 0;
+            try
+            {
+                using var client = XrayProc.SocksClient(socksPort, TimeSpan.FromSeconds(seconds + 2));
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(seconds));
+                using var res = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                if (!res.IsSuccessStatusCode) return 0;
+                await using var stream = await res.Content.ReadAsStreamAsync(cts.Token);
+                var buf = new byte[16384];
+                int n;
+                while (total < 600_000 && (n = await stream.ReadAsync(buf, cts.Token)) > 0) total += n;
+            }
+            catch { }
+            return total;
         }
 
         // یه درخواست کوچک از داخل اتصال؛ فقط جواب 204 قبوله. alternate: یه سایت دیگه (کلادفلر)، تا قطعی یه سایت قطعی

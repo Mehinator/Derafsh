@@ -61,6 +61,7 @@ namespace Derafsh.Client
             {
                 ConnectionGuard.ReasonManual => $"به سرور {Q(spare.Name)} رفتید",
                 ConnectionGuard.ReasonSlow => $"{Q(oldName)} کند شده بود؛ خودکار به {Q(spare.Name)} رفت",
+                ConnectionGuard.ReasonVideo => $"{Q(oldName)} ویدیو را رد نمی‌کرد؛ خودکار به {Q(spare.Name)} رفت",
                 _ => $"{Q(oldName)} قطع شد؛ خودکار به {Q(spare.Name)} رفت و وصل ماندید",
             };
             UpdateHome();
@@ -82,7 +83,8 @@ namespace Derafsh.Client
             switch (reason)
             {
                 case ConnectionGuard.ReasonSlow:
-                    return;   // زاپاس سریع‌تری جواب نداد؛ روی همین سرور می‌مونه
+                case ConnectionGuard.ReasonVideo:
+                    return;   // زاپاس بهتری جواب نداد؛ روی همین سرور می‌مونه
                 case ConnectionGuard.ReasonOffline:
                     StatusLabel.Text = "اینترنت دستگاه قطع است. درفش منتظر می‌ماند و وقتی اینترنت برگشت، خودش سرور سالم پیدا می‌کند.";
                     return;

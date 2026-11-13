@@ -572,7 +572,13 @@ def build_tested_list(candidates, results, old_configs, sources):
     alive = [c for c in candidates if status(c).status == "ok"]
     # سرورهایی که یوتیوب رو بستن (خیلی از سرورهای رایگان، برای پهنای باند): ویدیو باهاشون پخش نمی‌شه، پس فقط اگه جا موند
     no_youtube = [c for c in alive if not status(c).youtube]
-    print(f"   {len(no_youtube)} working configs can't open YouTube, {sum(1 for c in alive if not status(c).instagram)} can't open Instagram")
+    print(f"   {len(no_youtube)} working configs can't open YouTube video (googlevideo), {sum(1 for c in alive if not status(c).instagram)} can't open Instagram")
+    if len(no_youtube) > 0.7 * len(alive):
+        # تقریباً هیچ‌کدوم: خود آدرس تست (یه سرور googlevideo) احتمالاً دیگه نیست، نه سرورها
+        print("   ⚠️ Most configs failed the video check; the check itself looks broken, so it is ignored this run")
+        no_youtube = []
+        for c in alive:
+            results[c] = results[c]._replace(youtube=1)
 
     stats = {}
     for c in candidates:

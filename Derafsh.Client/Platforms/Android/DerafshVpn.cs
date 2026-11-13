@@ -22,7 +22,10 @@ namespace Derafsh.Client
         public const string ActionStop = "com.derafsh.client.STOP";
         public const string ActionSwitch = "com.derafsh.client.SWITCH";   // دکمه‌ی «تعویض سرور»: همین الان برو روی زاپاس
         public const int SocksPort = 10809;
-        private const int TunMtu = 8500;
+        // ۱۵۰۰، مثل قبل از ۱.۹.۲. با ۸۵۰۰ (پیش‌فرض نمونه‌ی hev) دانلودهای طولانی داخل تونل بعد از چندصد کیلوبایت کامل می‌ایستادن
+        // (تست روی گوشی، ۱۳ نوامبر ۲۰۲۶: همون سرور از پورت SOCKS خود xray ۳۰ ثانیه پیوسته ۹۵۰ کیلوبایت بر ثانیه، از داخل تونل
+        // یه ثانیه و بعد صفر)؛ اینستاگرام هم ۱۲۰ ثانیه منتظر همون اتصال گیرکرده می‌موند
+        private const int TunMtu = 1500;
 
         public static bool IsRunning { get; private set; }
         public static string? LastError { get; private set; }
@@ -79,7 +82,6 @@ namespace Derafsh.Client
 
                 // فقط IPv4: بدون آدرس IPv6، اندروید IPv6 برنامه‌ها رو همون لحظه رد می‌کنه و برنامه‌ها بی‌معطلی از IPv4 می‌رن.
                 // (خیلی از سرورهای رایگان IPv6 ندارن؛ و xray با IP اصلی مسیر رو انتخاب می‌کنه، مثلاً IPهای ایران مستقیم)
-                // MTU بزرگ (پیش‌فرض خود hev): بسته‌های کمتر بین برنامه‌ها و تونل، یعنی کار کمتر برای پردازنده‌ی گوشی موقع ویدیو
                 var builder = new Builder(this)
                     .SetSession("Derafsh")!
                     .SetMtu(TunMtu)!

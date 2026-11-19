@@ -75,7 +75,8 @@ jobs:
           PY
           while IFS=$'\t' read -r name label; do
             gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p "$name" -O "$name" --clobber
-            curl -sS --fail-with-body -F "chat_id=$CHAT" -F "document=@$name" -F "caption=$label · $TAG" \
+            # --form-string: with -F, a value starting with @ (the channel, @DERAFSHVPN) would be read as a file name
+            curl -sS --fail-with-body --form-string "chat_id=$CHAT" -F "document=@$name" --form-string "caption=$label · $TAG" \
               "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" > /dev/null
             echo "sent $name"
           done < files.txt

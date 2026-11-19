@@ -99,6 +99,9 @@ namespace Derafsh.Client.WinUI
             }
         }
 
+        // از هر رشته‌ای: پنجره رو برگردون و بیار جلو (درفش دوباره اجرا شد، SingleInstance)
+        public static void Restore() => s_dispatcher?.TryEnqueue(ShowWindow);
+
         private static void ShowWindow()
         {
             if (s_appWindow == null) return;

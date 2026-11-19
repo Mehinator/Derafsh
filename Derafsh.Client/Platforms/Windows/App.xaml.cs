@@ -16,6 +16,11 @@ namespace Derafsh.Client.WinUI
         /// </summary>
         public App()
         {
+            // درفش از قبل بازه (شاید کنار ساعت): پنجره‌ی همون نشون داده می‌شه و این اجرا قبل از ساختن هر پنجره‌ای تموم می‌شه
+            if (!SingleInstance.Claim())
+                Environment.Exit(0);
+            SingleInstance.Listen(Tray.Restore);
+
             this.InitializeComponent();
 
             // یه خطای پیش‌بینی‌نشده نباید کل برنامه رو ببنده (و پروکسی ویندوز رو روشن جا بذاره)

@@ -32,7 +32,7 @@
 1. از بخش [Releases](https://github.com/Mehinator/Derafsh/releases/latest) فایل `Derafsh-v…-Windows-x64.zip` را دانلود کنید.
 2. فایل را از حالت فشرده خارج کنید و `Derafsh.exe` را اجرا کنید (کنارش فقط پوشه‌ی `Core` است، موتور Xray). نصب لازم نیست. بار اول باز شدنش حدود نیم دقیقه طول می‌کشد.
 3. اگر ویندوز پیام «Windows protected your PC» داد: روی **More info** و بعد **Run anyway** بزنید (برنامه امضای دیجیتال ندارد).
-4. با کمینه کردن پنجره، درفش کنار ساعت ویندوز می‌رود و اتصال روشن می‌ماند. با کلیک روی آیکونش برمی‌گردد و با راست‌کلیک، «خروج».
+4. با کمینه کردن پنجره، درفش کنار ساعت ویندوز می‌رود و اتصال روشن می‌ماند. با کلیک روی آیکونش برمی‌گردد و با راست‌کلیک، «خروج». اگر درفش از قبل باز باشد، اجرای دوباره‌ی `Derafsh.exe` همان پنجره را نشان می‌دهد و درفش دومی باز نمی‌شود.
 
 نیازمندی: ویندوز ۱۰ (نسخه ۱۸۰۹ به بعد) یا ویندوز ۱۱، ۶۴ بیتی.
 
@@ -51,9 +51,11 @@
 
 | لیست | چه چیزی نشان می‌دهد | دکمه‌ها |
 |---|---|---|
-| **آنلاین** | سرورهای رایگانی که روی همین اینترنت جواب می‌دهند (در مکان انتخابی)، سریع‌ترین بالا | **تست دوباره** · **دریافت لیست تازه** · **بیشتر…** |
+| **آنلاین** | سرورهای رایگانی که روی همین اینترنت جواب می‌دهند (در مکان انتخابی)، سریع‌ترین بالا | **تست دوباره** · **دریافت لیست تازه** · **افزودن کانفیگ** · **بیشتر…** |
 | **شخصی** | کانفیگ‌هایی که خودتان اضافه کرده‌اید | **تست دوباره** · **افزودن کانفیگ** · **بیشتر…** |
-| **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **بیشتر…** |
+| **لیست‌های ذخیره‌شده** | هر لیستی که با اسم دلخواه ذخیره کرده‌اید، مثلاً «ایرانسل» یا «وای‌فای خانه» | **تست دوباره** · **افزودن کانفیگ** · **بیشتر…** |
+
+**افزودن کانفیگ** (در همه‌ی لیست‌ها): لینک کانفیگ (vless، vmess، ss، trojan، hysteria2) یا **لینک اشتراک** خودتان (https://… یا http://…) را بچسبانید؛ چندتا با هم هم می‌شود. کانفیگ‌ها به لیست **شخصی** اضافه و همان لحظه تست می‌شوند. لینک اشتراک یک بار دریافت می‌شود (اگر سایتش فیلتر است، اول وصل شوید)؛ برای کانفیگ‌های تازه‌ی همان اشتراک، دوباره اضافه‌اش کنید.
 
 **بیشتر…** این‌ها را دارد: ذخیره‌ی سالم‌ها به‌عنوان لیست، اشتراک همه‌ی سالم‌ها، و حذف لیست ذخیره‌شده. روی هر سرور بزنید تا برای اتصال انتخاب شود (در صفحه‌ی اصلی، **خودکار** دوباره انتخاب را به برنامه می‌سپارد). دکمه‌ی **⋯** کنار هر سرور این کارها را دارد: تست سرعت و پینگ، بررسی Gemini، اشتراک (QR و لینک)، ستاره، و افزودن به لیست شخصی یا حذف از آن. زیر هر سرور پروتکل، آدرس، کشور و منبع آن نوشته شده است.
 
@@ -66,7 +68,7 @@
 - **کندی:** اگر سرور کند شود و زاپاس سریع‌تری آماده باشد، درفش خودکار به آن می‌رود.
 - **«تعویض سرور»:** این دکمه همین الان به یک سرور سالم دیگر می‌رود. در اندروید همین دکمه در اعلان ثابت VPN هم هست، تا وسط ویدیو لازم نباشد برنامه را باز کنید.
 
-**تکه‌تکه کردن TLS** (در تنظیمات، پیش‌فرض روشن): اولین بسته‌ی رمزنگاری هر اتصال تا سرور (ClientHello، که اسم سایت در آن است) به چند تکه‌ی کوچک با چند میلی‌ثانیه فاصله فرستاده می‌شود. فیلتر اسم سایت را نمی‌خواند، اتصال را تشخیص نمی‌دهد و کند یا قطع نمی‌کند. برنامه‌هایی مثل MEH و MahsaNG هم همین کار را می‌کنند. اگر سروری با این گزینه وصل نشد، امتحانی خاموشش کنید.
+**تکه‌تکه کردن TLS** (در تنظیمات، پیش‌فرض خاموش): اولین بسته‌ی رمزنگاری هر اتصال تا سرور (ClientHello، که اسم سایت در آن است) به چند تکه‌ی کوچک با چند میلی‌ثانیه فاصله فرستاده می‌شود، تا فیلتر اسم سایت را نخواند. برنامه‌هایی مثل MEH و MahsaNG هم این کار را می‌کنند. روی بعضی اینترنت‌ها (مثلاً همراه اول) همین کار اتصال به همه‌ی سرورها را می‌بندد، برای همین پیش‌فرض خاموش است؛ اگر روی اینترنت شما سرورها کند یا قطع‌اند، امتحانی روشنش کنید.
 
 در اندروید، VPN در تمام این مدت روشن می‌ماند. موقع وصل شدن هم اتصال واقعاً امتحان می‌شود. اگر سروری فقط «وصل» شود ولی اینترنت ندهد، سرور بعدی امتحان می‌شود.
 
@@ -78,7 +80,7 @@
 
 **نسخه‌ی تازه:** وقتی نسخه‌ی جدیدی روی گیت‌هاب بیاید، بالای برنامه خبر داده می‌شود و دکمه‌ی **دانلود** فایل مخصوص همان دستگاه را می‌گیرد.
 
-در ویندوز، درفش موقع اتصال پروکسی سیستم را روی خودش می‌گذارد و موقع قطع، تنظیم قبلی شما را برمی‌گرداند.
+در ویندوز، درفش موقع اتصال پروکسی سیستم را روی خودش می‌گذارد (پروکسی HTTP روی `127.0.0.1:10809`، که کروم، اج و بیشتر برنامه‌ها می‌شناسند؛ اسم سایت مستقیم به درفش می‌رسد و DNS اینترنت ایران دخالتی ندارد) و موقع قطع، تنظیم قبلی شما را برمی‌گرداند.
 
 موتور Xray نیز فورک [patterniha/Xray-core](https://github.com/patterniha/Xray-core) است (همان که پترن استفاده می‌کند): اتصال به کانفیگ‌های VLESS/Trojan بدون رمزنگاری روی آدرس‌های عمومی کار می‌کند و پارامترهای `cs=` (cipherSuites) و `alpn` لینک‌ها با قانون http/1.1 برای ws اعمال می‌شوند — همان روشی که تست‌ها را در پترن درست نشان می‌دهد.
 
@@ -148,7 +150,7 @@
 
 **Derafsh** collects free V2Ray/Xray configs from public Telegram channels and public GitHub lists every 2 hours, and tests each one with Xray (through the app's own config builder, [`tools/ConfigTester`](tools/ConfigTester)) so dead ones never reach the list (GitHub Actions + [`collector.py`](collector.py)). The test also finds the country and city each config comes out in (configs are named like "🇩🇪 Berlin"), and the best 500 are kept. The ranking puts speed first, then TLS or REALITY over plain, then how many runs in a row a config kept working, then closeness to Iran. Every city keeps a few servers, and no server gets more than two entries.
 
-The app (in Persian) connects with one button. It tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers. You can limit it to a country or a city, or to servers that open Gemini. While connected, a guard inside the VPN service keeps a few tested spares. When your apps send but nothing comes back, or a running download stops, it checks the connection at once. If the server is dead, it tests 8 others at a time and moves to the first that answers, walking the whole list if it has to. The TLS ClientHello to the server is sent in small, paced fragments (on by default) so the filter can't read the site name and slow the connection down, and "switch server" is also a button in the Android notification. Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand — through the system proxy on Windows, as a VPN on Android. News and releases: [t.me/DERAFSHVPN](https://t.me/DERAFSHVPN).
+The app (in Persian) connects with one button. It tests the configs on the network you're on (ping and download speed, remembering per network which servers worked) and picks the fastest one that answers. You can limit it to a country or a city, or to servers that open Gemini. While connected, a guard inside the VPN service keeps a few tested spares. When your apps send but nothing comes back, or a running download stops, it checks the connection at once. If the server is dead, it tests 8 others at a time and moves to the first that answers, walking the whole list if it has to. The TLS ClientHello to the server can be sent in small, paced fragments (a setting, off by default because some mobile networks block every fragmented connection), and "switch server" is also a button in the Android notification. Iranian sites (.ir, Iranian IPs) go direct, and on Android you choose which apps use the VPN (all except some, or only some); Iranian and banking apps are left out automatically. A second screen lists the servers (online, personal, and lists you save under your own names) for testing and choosing by hand; your own configs or subscription links can be added from any list. On Windows the app runs once (starting it again brings back the open window) and connects through the system proxy (HTTP, so browsers don't resolve site names through Iran's DNS); on Android it is a VPN. News and releases: [t.me/DERAFSHVPN](https://t.me/DERAFSHVPN).
 
 - **Download:** [Releases](https://github.com/Mehinator/Derafsh/releases/latest) — `Windows-x64.zip` (unzip and run, Windows 10 1809+); Android 6+: `Android-arm64.apk` (most phones), `Android-armv7.apk` (32-bit phones) or `Android-universal.apk` (both).
 - **Protocols:** VLESS (TCP, WebSocket, gRPC, XHTTP, HTTPUpgrade; TLS, REALITY), VMess, Shadowsocks, Trojan, Hysteria2 — on **Xray-core 26.10.22** (the patterniha fork). Configs the engine can't start, or that don't really download, are dropped by the collector.

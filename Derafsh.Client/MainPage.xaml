@@ -258,7 +258,7 @@
                 <Button x:Name="RefreshButton" Text="دریافت لیست تازه" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۲ ساعت تازه می‌شوند)" />
                 <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="لینک‌های خودتان (vless / vmess / ss / trojan / hysteria2) را اضافه می‌کند" />
+                        ToolTipProperties.Text="لینک کانفیگ (vless / vmess / ss / trojan / hysteria2) یا لینک اشتراک خودتان را به لیست شخصی اضافه می‌کند" />
                 <Button x:Name="ListMoreButton" Text="بیشتر…" Style="{StaticResource SecondaryButton}" Clicked="OnListMoreClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="ذخیره‌ی سالم‌ها به‌عنوان لیست، اشتراک سالم‌ها، حذف لیست" />
             </FlexLayout>

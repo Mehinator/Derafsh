@@ -18,6 +18,11 @@ namespace Derafsh.Client
                 MinimumWidth = 380,
                 MinimumHeight = 560,
             };
+#if WINDOWS
+            // خود پنجره همیشه چپ‌به‌راست: MAUI جهت پنجره رو از «فرمت منطقه‌ای» ویندوز می‌گیره و با فرمت فارسی کل پنجره رو
+            // آینه می‌کنه (WS_EX_LAYOUTRTL)، دکمه‌ی بستن می‌ره سمت چپ. متن برنامه خودش راست‌به‌چپه (FlowDirection صفحه‌ها).
+            window.FlowDirection = FlowDirection.LeftToRight;
+#endif
 
             // اگه برنامه وقتی وصله بسته بشه، پروکسی ویندوز رو خاموش کن (وگرنه اینترنت قطع می‌مونه)
             window.Destroying += (_, _) =>

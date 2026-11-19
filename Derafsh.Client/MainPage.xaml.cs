@@ -204,12 +204,10 @@ namespace Derafsh.Client
             if (_currentList != ListOnline) _ = TestRowsAsync(onlyUntested: true);
         }
 
-        // هر لیست فقط دکمه‌هایی رو نشون می‌ده که براش معنی دارن
+        // هر لیست فقط دکمه‌هایی رو نشون می‌ده که براش معنی دارن؛ «افزودن کانفیگ» همیشه (به لیست شخصی اضافه می‌کنه)
         private void UpdateListActions()
         {
-            bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
-            RefreshButton.IsVisible = online;
-            AddConfigButton.IsVisible = personal;
+            RefreshButton.IsVisible = _currentList == ListOnline;
         }
 
         private void LoadConfigs()
@@ -260,7 +258,7 @@ namespace Derafsh.Client
             ServerListView.IsVisible = !empty;
             (EmptyTitle.Text, EmptyText.Text) = _currentList switch
             {
-                ListPersonal => ("هنوز کانفیگ شخصی ندارید", "با «افزودن کانفیگ» لینک‌های خودتان را اضافه کنید، یا در لیست آنلاین روی «+ شخصی» بزنید."),
+                ListPersonal => ("هنوز کانفیگ شخصی ندارید", "با «افزودن کانفیگ» لینک کانفیگ یا لینک اشتراک خودتان را اضافه کنید، یا در لیست آنلاین از دکمه‌ی «⋯» هر سرور «افزودن به لیست شخصی» را بزنید."),
                 ListOnline when _isUpdating => ("در حال تست سرورها روی اینترنت شما…", "اول جدیدترین کانفیگ‌ها دانلود می‌شوند. سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
                 ListOnline when _discoveryDone && !_discovering && Locations.Selected.Length > 0 =>
                     ($"در {Locations.Describe(Locations.Selected)} فعلاً سروری روی این اینترنت جواب نداد", "در صفحه‌ی اصلی مکان دیگری انتخاب کنید، یا «تست دوباره» را بزنید."),
@@ -460,30 +458,84 @@ namespace Derafsh.Client
             }
         }
 
+        // کانفیگ شخصی: لینک‌های خود کاربر، یا لینک اشتراک (https://…) که دانلود می‌شه و کانفیگ‌هاش اضافه می‌شن. دکمه توی همه‌ی
+        // لیست‌ها هست (قبلاً فقط وقتی لیست «شخصی» انتخاب شده بود دیده می‌شد و کاربرها پیداش نمی‌کردن)؛ بعدش لیست شخصی باز می‌شه
+        // و کانفیگ‌های تازه تست می‌شن.
+        private static readonly Regex ConfigLinkRegex = new(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
+        private static readonly Regex SubscriptionRegex = new(@"https?://[^\s""'<>]+", RegexOptions.IgnoreCase);
+
         private async void OnAddCustomConfigClicked(object sender, EventArgs e)
         {
-            var regex = new Regex(@"(vmess|vless|ss|trojan|hysteria2?)://[a-zA-Z0-9\-\._~:/\?#@!$&'()*+,;=%]+");
-
             // فقط اگه توی کلیپ‌بورد لینک کانفیگ هست، از قبل پرش کن (متن‌های دیگه کاربر نمایش داده نشه)
             string initial = "";
             if (Clipboard.Default.HasText)
             {
                 string clip = await Clipboard.Default.GetTextAsync() ?? "";
-                if (regex.IsMatch(clip)) initial = clip;
+                if (ConfigLinkRegex.IsMatch(clip)) initial = clip;
             }
-            string input = await DisplayPromptAsync("افزودن کانفیگ", "یک یا چند لینک را اینجا بچسبانید (vless، vmess، ss، trojan، hysteria2).", "افزودن", "لغو", initialValue: initial);
+            string input = await DisplayPromptAsync("افزودن کانفیگ شخصی",
+                "لینک کانفیگ (vless، vmess، ss، trojan، hysteria2) یا لینک اشتراک (https://…) را اینجا بچسبانید. چندتا با هم هم می‌شود.",
+                "افزودن", "لغو", initialValue: initial);
             if (string.IsNullOrWhiteSpace(input)) return;
-            var existing = File.Exists(UserPath) ? (await File.ReadAllLinesAsync(UserPath)).Select(l => l.Trim()).ToHashSet() : new HashSet<string>();
-            var links = regex.Matches(input).Select(m => m.Value.Trim()).Distinct().Where(l => !existing.Contains(l)).ToList();
 
-            if (links.Any())
+            var found = ConfigLinkRegex.Matches(input).Select(m => m.Value.Trim()).ToList();
+            // لینک اشتراک: هر آدرس http(s) که خودش تکه‌ای از لینک یه کانفیگ نبود
+            var subs = SubscriptionRegex.Matches(ConfigLinkRegex.Replace(input, " ")).Select(m => m.Value.TrimEnd('.', '،', ',', ')', ']')).Distinct().Take(5).ToList();
+            int failedSubs = 0;
+            if (subs.Count > 0)
             {
-                await File.AppendAllLinesAsync(UserPath, links);
-                LoadConfigs();
-                StatusLabel.Text = $"{Fa(links.Count)} کانفیگ به لیست شخصی اضافه شد";
-                foreach (var l in links) _ = PingSingle(l);
+                AddConfigButton.IsEnabled = false;
+                StatusLabel.Text = "در حال دریافت لینک اشتراک…";
+                try
+                {
+                    foreach (var url in subs)
+                    {
+                        string? text = await DownloadSubscriptionAsync(url);
+                        var links = text == null ? new List<string>() : ConfigLinkRegex.Matches(ConfigService.ExpandSubscription(text)).Select(m => m.Value.Trim()).ToList();
+                        if (links.Count == 0) failedSubs++;
+                        found.AddRange(links);
+                    }
+                }
+                finally { AddConfigButton.IsEnabled = true; }
             }
-            else await DisplayAlertAsync("لینک تازه‌ای پیدا نشد", "لینک‌ها باید با vless://، vmess://، ss://، trojan:// یا hysteria2:// شروع شوند. لینک‌هایی که از قبل در لیست شخصی هستند دوباره اضافه نمی‌شوند.", "باشه");
+
+            var existing = File.Exists(UserPath) ? (await File.ReadAllLinesAsync(UserPath)).Select(l => l.Trim()).ToHashSet() : new HashSet<string>();
+            var fresh = found.Distinct().Where(l => !existing.Contains(l)).ToList();
+            if (fresh.Count > 0)
+            {
+                await File.AppendAllLinesAsync(UserPath, fresh);
+                if (_currentList != ListPersonal) { _currentList = ListPersonal; RefreshListPicker(); }
+                LoadConfigs();
+                StatusLabel.Text = $"{Fa(fresh.Count)} کانفیگ به لیست شخصی اضافه شد" + (failedSubs > 0 ? $"؛ {Fa(failedSubs)} لینک اشتراک باز نشد" : "") + ". در حال تست…";
+                _ = TestRowsAsync(onlyUntested: true);
+            }
+            else if (failedSubs > 0)
+                await DisplayAlertAsync("لینک اشتراک باز نشد",
+                    "از این آدرس لیست کانفیگی دریافت نشد. آدرس را دوباره بررسی کنید؛ اگر سایتش فیلتر است، اول با درفش وصل شوید و دوباره «افزودن کانفیگ» را بزنید.", "باشه");
+            else
+                await DisplayAlertAsync("لینک تازه‌ای پیدا نشد",
+                    "لینک کانفیگ باید با vless://، vmess://، ss://، trojan:// یا hysteria2:// شروع شود، و لینک اشتراک با https://. لینک‌هایی که از قبل در لیست شخصی هستند دوباره اضافه نمی‌شوند.", "باشه");
+        }
+
+        // لینک اشتراک: اول مستقیم (ویندوز با پروکسی سیستم، که اگه وصلید همون درفشه)؛ اگه نشد و وصلیم، از داخل اتصال درفش
+        // (اندروید: خود برنامه بیرون از VPN است، پس سایت‌های فیلتر فقط از این راه باز می‌شن).
+        // SocketsHttpHandler نه HttpClientHandler: روی اندروید HttpClientHandler همون کلاینت خود اندرویده که لینک http:// رو رد
+        // می‌کنه (cleartext)، و پنل خیلی از فروشنده‌ها لینک اشتراک http با IP و پورت می‌ده.
+        private async Task<string?> DownloadSubscriptionAsync(string url)
+        {
+            foreach (bool throughDerafsh in isConnected ? new[] { false, true } : new[] { false })
+            {
+                try
+                {
+                    using var client = throughDerafsh ? XrayProc.SocksClient(XrayProc.SessionPort, TimeSpan.FromSeconds(20))
+                                                      : new HttpClient(new SocketsHttpHandler { UseProxy = true }) { Timeout = TimeSpan.FromSeconds(15) };
+                    client.DefaultRequestHeaders.UserAgent.ParseAdd("Derafsh");
+                    string text = await client.GetStringAsync(url);
+                    if (!string.IsNullOrWhiteSpace(text)) return text;
+                }
+                catch { }
+            }
+            return null;
         }
 
         // ---------- اشتراک‌گذاری کانفیگ‌ها ----------
@@ -997,7 +1049,13 @@ namespace Derafsh.Client
         // پروکسی ویندوز: موقع اتصال تنظیم قبلی کاربر (مثلاً پروکسی یه VPN دیگه) ذخیره می‌شه و موقع قطع همون برمی‌گرده؛
         // قبلاً پروکسی کلاً خاموش می‌شد و تنظیم کاربر از دست می‌رفت. اگه برنامه وسط اتصال بسته بشه، دفعه‌ی بعد برمی‌گرده.
         private const string InternetSettings = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-        private const string DerafshProxy = "socks=127.0.0.1:10809";
+        // پروکسی HTTP برای همه، نه «socks=»: کروم، اج و برنامه‌های Electron مقدار socks= ویندوز رو SOCKS4 می‌فهمن، یعنی اسم سایت
+        // رو اول خود ویندوز با DNS اینترنت ایران پیدا می‌کنه (یه معطلی اضافه برای هر سایت تازه، و برای سایت‌های فیلتر جواب
+        // دروغ)؛ خیلی از برنامه‌ها هم socks رو اصلاً نمی‌شناسن و بی‌پروکسی می‌رفتن. با HTTP اسم سایت مستقیم به xray می‌رسه.
+        // پورت همونه: ورودی socks خود xray به درخواست HTTP هم جواب می‌ده (تست: CONNECT و GET معمولی، Xray 26.10.22).
+        private const string DerafshProxy = "127.0.0.1:10809";
+        private const string OldDerafshProxy = "socks=127.0.0.1:10809";   // تا ۱.۱۰.۵؛ اگه از اون موقع جا مونده، باز هم مال درفشه
+        private static bool IsDerafshProxy(object? value) => value is DerafshProxy or OldDerafshProxy;
 
         private static void EnableProxy()
         {
@@ -1005,7 +1063,7 @@ namespace Derafsh.Client
             {
                 using var key = Registry.CurrentUser.OpenSubKey(InternetSettings, true);
                 if (key == null) return;
-                if (!s_proxyEnabled && key.GetValue("ProxyServer") as string != DerafshProxy)
+                if (!s_proxyEnabled && !IsDerafshProxy(key.GetValue("ProxyServer")))
                 {
                     Preferences.Default.Set("prev_proxy_enable", key.GetValue("ProxyEnable") is int on ? on : 0);
                     Preferences.Default.Set("prev_proxy_server", key.GetValue("ProxyServer") as string ?? "");
@@ -1028,7 +1086,7 @@ namespace Derafsh.Client
                 using var key = Registry.CurrentUser.OpenSubKey(InternetSettings, true);
                 if (key == null) return;
                 // پروکسی الان مال درفش نیست (کاربر یا برنامه‌ی دیگه عوضش کرده): دست نمی‌زنیم
-                if (key.GetValue("ProxyServer") as string != DerafshProxy) { s_proxyEnabled = false; return; }
+                if (!IsDerafshProxy(key.GetValue("ProxyServer"))) { s_proxyEnabled = false; return; }
                 if (Preferences.Default.Get("prev_proxy_saved", false))
                 {
                     key.SetValue("ProxyEnable", Preferences.Default.Get("prev_proxy_enable", 0));

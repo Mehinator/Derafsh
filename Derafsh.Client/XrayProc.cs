@@ -91,10 +91,79 @@ namespace Derafsh.Client
 #else
             var p = new Process { StartInfo = new ProcessStartInfo { FileName = EnginePath, Arguments = $"run -c \"{configPath}\"", WorkingDirectory = WorkDir, CreateNoWindow = true, UseShellExecute = false } };
             p.Start();
-            if (isTest) lock (s_testIds) s_testIds.Add(p.Id);
+            if (isTest)
+            {
+                lock (s_testIds) s_testIds.Add(p.Id);
+#if WINDOWS
+                TestJob.Add(p);
+#endif
+            }
             return new XrayProc(p) { _isTest = isTest };
 #endif
         }
+
+#if WINDOWS
+        // xrayهای تست توی یه «Job» ویندوز می‌رن که با بسته شدن درفش (حتی کرش یا بستن از Task Manager) بسته می‌شه و ویندوز
+        // اون‌ها رو هم می‌بنده. قبلاً اگه درفش وسط تست سرورها بسته می‌شد، xray تست همون‌طور روشن می‌موند.
+        // xray اتصال اصلی توش نیست: اگه درفش کرش کنه، پروکسی ویندوز هنوز به اون اشاره می‌کنه و اینترنت کاربر نباید قطع بشه.
+        private static class TestJob
+        {
+            private const int JobObjectExtendedLimitInformation = 9, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;
+            private static readonly IntPtr s_job = Create();   // تا آخر اجرا باز می‌مونه؛ ویندوز موقع خروج می‌بنده
+
+            public static void Add(Process p)
+            {
+                if (s_job != IntPtr.Zero) try { AssignProcessToJobObject(s_job, p.Handle); } catch { }
+            }
+
+            private static IntPtr Create()
+            {
+                try
+                {
+                    IntPtr job = CreateJobObject(IntPtr.Zero, null);
+                    if (job == IntPtr.Zero) return IntPtr.Zero;
+                    var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+                    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                    if (SetInformationJobObject(job, JobObjectExtendedLimitInformation, ref info, System.Runtime.InteropServices.Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>()))
+                        return job;
+                    CloseHandle(job);
+                }
+                catch { }
+                return IntPtr.Zero;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+            {
+                public long PerProcessUserTimeLimit, PerJobUserTimeLimit;
+                public int LimitFlags;
+                public UIntPtr MinimumWorkingSetSize, MaximumWorkingSetSize;
+                public int ActiveProcessLimit;
+                public UIntPtr Affinity;
+                public int PriorityClass, SchedulingClass;
+            }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct IO_COUNTERS { public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount, ReadTransferCount, WriteTransferCount, OtherTransferCount; }
+
+            [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+            private struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+            {
+                public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+                public IO_COUNTERS IoInfo;
+                public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
+            }
+
+            [System.Runtime.InteropServices.DllImport("kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+            private static extern IntPtr CreateJobObject(IntPtr attributes, string? name);
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+            private static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, int length);
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+            private static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+            [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+            private static extern bool CloseHandle(IntPtr handle);
+        }
+#endif
 
         public void Kill()
         {

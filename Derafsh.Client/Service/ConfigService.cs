@@ -444,6 +444,14 @@ namespace Derafsh.Client.Services
             return JsonSerializer.Deserialize<ConfigDto>(json) ?? throw new FormatException("Invalid vmess link");
         }
 
+        // متن یه لینک اشتراک: یا خود لینک‌ها (هر کدوم یه خط)، یا همون‌ها base64 شده (رایج‌ترین شکل، مثل لیست خود درفش)
+        public static string ExpandSubscription(string text)
+        {
+            if (text.Contains("://")) return text;
+            try { return System.Text.Encoding.UTF8.GetString(FromBase64Loose(new string(text.Where(c => !char.IsWhiteSpace(c)).ToArray()))); }
+            catch (FormatException) { return text; }
+        }
+
         // base64 معمولی یا URL-safe، با یا بدون = آخرش
         private static byte[] FromBase64Loose(string s)
         {

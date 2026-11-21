@@ -8,6 +8,10 @@ namespace Derafsh.Client
     public partial class MainPage
     {
         private List<LocationRow> _locationRows = new();
+        // فقط مکان‌هایی که روی همین اینترنت سرور سالم دارن (کاربرها می‌خواستن هر بار همه‌ی ۷۰ کشور رو نبینن)؛ «نمایش همه» بقیه رو هم نشون می‌ده
+        private bool _showAllLocations;
+        private int _hiddenLocations;
+        private bool _scanAllWhenDone;   // صفحه وسط یه تست معمولی باز شد: تست همه‌ی مکان‌ها بعد از تموم شدنش
 
         private void OnOpenLocationsClicked(object sender, EventArgs e) => OpenLocations();
         private void OnOpenLocationsTapped(object sender, TappedEventArgs e) => OpenLocations();
@@ -15,10 +19,43 @@ namespace Derafsh.Client
 
         private void OpenLocations()
         {
-            BuildLocationRows();
+            _showAllLocations = false;
             LocationSearch.Text = "";
-            ShowLocationRows("");
+            RefreshLocationRows();
             ShowView(LocationsView);
+            // تست معمولی بعد از پیدا شدن ۲۰ سرور سالم می‌ایسته؛ اینجا بقیه‌ی لیست (همه‌ی مکان‌ها) هم تست می‌شه تا مکان‌های سالم کامل بشن
+            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct();
+            if (!_connecting && cloud.Any(c => !_pingCache.ContainsKey(c)))
+            {
+                if (_discovering || _isUpdating) _scanAllWhenDone = true;
+                else _ = DiscoverAsync(fresh: false, allLocations: true);
+            }
+            UpdateLocationsFooter();
+        }
+
+        private void RefreshLocationRows()
+        {
+            BuildLocationRows();
+            ShowLocationRows(LocationSearch.Text);
+            UpdateLocationsFooter();
+        }
+
+        private void OnShowAllLocationsClicked(object sender, EventArgs e)
+        {
+            _showAllLocations = !_showAllLocations;
+            RefreshLocationRows();
+        }
+
+        private void UpdateLocationsFooter()
+        {
+            ShowAllLocationsButton.IsVisible = _showAllLocations || _hiddenLocations > 0;
+            ShowAllLocationsButton.Text = _showAllLocations ? "فقط مکان‌های سالم" : $"نمایش همه‌ی مکان‌ها ({Fa(_hiddenLocations)} مکان دیگر)";
+            LocationsStatusLabel.Text = _discovering
+                ? "سرورهای بقیه‌ی مکان‌ها روی همین اینترنت تست می‌شوند؛ مکان‌های سالم همین‌جا اضافه می‌شوند…"
+                : _hiddenLocations > 0 && !_showAllLocations
+                    ? "مکان‌هایی که روی این اینترنت سرور سالم نداشتند پنهان شده‌اند."
+                    : "";
+            LocationsStatusLabel.IsVisible = LocationsStatusLabel.Text.Length > 0;
         }
 
         // کشورها (پرسرورترین اول) و زیر هر کشور شهرهاش؛ «سالم»: روی همین اینترنت جواب داده
@@ -41,14 +78,23 @@ namespace Derafsh.Client
             {
                 new() { Key = "", Title = "خودکار، هر کشوری", Detail = Detail(cloud.Count, working), IsSelected = selected.Length == 0 },
             };
-            foreach (var country in counts.Where(x => !x.Key.Contains('|')).OrderByDescending(x => x.Value.all))
+            // هنوز هیچ سالمی پیدا نشده (تست اول در جریانه): همه دیده بشن، وگرنه صفحه خالی بود
+            bool all = _showAllLocations || working == 0;
+            bool Show(string key, int ok) => all || ok > 0 || selected == key || selected.StartsWith(key + "|");
+            _hiddenLocations = 0;
+            foreach (var country in counts.Where(x => !x.Key.Contains('|')).OrderByDescending(x => x.Value.ok).ThenByDescending(x => x.Value.all))
             {
                 string cc = country.Key, english = EnglishName(cc);
+                var cities = counts.Where(x => x.Key.StartsWith(cc + "|")).OrderByDescending(x => x.Value.ok).ThenByDescending(x => x.Value.all).ToList();
+                if (!Show(cc, country.Value.ok)) { _hiddenLocations += 1 + cities.Count; continue; }
                 rows.Add(new() { Key = cc, Title = $"{Locations.Flag(cc)} {Locations.CountryName(cc)}".Trim(), Detail = Detail(country.Value.all, country.Value.ok),
                                  IsSelected = selected == cc, Search = $"{english} {cc}" });
-                foreach (var city in counts.Where(x => x.Key.StartsWith(cc + "|")).OrderByDescending(x => x.Value.all))
+                foreach (var city in cities)
+                {
+                    if (!Show(city.Key, city.Value.ok)) { _hiddenLocations++; continue; }
                     rows.Add(new() { Key = city.Key, Title = city.Key[(cc.Length + 1)..], Detail = Detail(city.Value.all, city.Value.ok), IsCity = true,
                                      IsSelected = selected == city.Key, Search = $"{Locations.CountryName(cc)} {english}" });
+                }
             }
             // مکانی که انتخاب شده ولی توی لیست تازه سروری نداره هم دیده بشه
             if (selected.Length > 0 && rows.All(r => r.Key != selected))

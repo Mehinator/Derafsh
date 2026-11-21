@@ -176,6 +176,7 @@ namespace Derafsh.Client
             {
                 var tried = new HashSet<string>();
                 bool engineChanged = false;
+                Candidate? weak = null;   // جواب داد ولی دانلود رو رد نکرد؛ اگه هیچ سرور بهتری نبود، همین (بهتر از بی‌سرور)
                 int rounds = reason == ReasonDown ? 6 : reason is ReasonManual or ReasonVideo ? 3 : 1;
                 for (int round = 0; round < rounds && !_cts.IsCancellationRequested; round++)
                 {
@@ -207,22 +208,58 @@ namespace Derafsh.Client
                             engineChanged = true;
                             if (await _switchTo(spare) && (await ProbeAsync(6) || await ProbeAsync(6, alternate: true)))
                             {
-                                try { File.Copy(path, CurrentConfigPath, overwrite: true); } catch { }
-                                lock (_readyLock) _ready = _ready.Where(x => x.Link != c.Link).ToList();
-                                Switched?.Invoke(spare, reason);
-                                return true;
+                                // دانلود هم رد کنه: روی گوشی (۱۹ نوامبر ۲۰۲۶، همراه اول) نگهبان پشت سر هم به سرورهایی رفت که به درخواست
+                                // کوچک جواب می‌دادن ولی هر دانلود رو بعد از حدود ۵۰ کیلوبایت متوقف می‌کردن
+                                if (await DownloadsAsync())
+                                {
+                                    Commit(spare, path, c);
+                                    return true;
+                                }
+                                weak ??= c;
+                                continue;   // مرده نیست، فقط ضعیف؛ بعداً شاید
                             }
                         }
                         catch { }
                         MarkDead(new[] { c });
                     }
                 }
+                // هیچ‌کدوم دانلود رو رد نکرد (شاید فیلتر همه‌ی دانلودهای طولانی رو می‌بنده): اولین سروری که دست‌کم جواب داد
+                if (weak != null && !_cts.IsCancellationRequested)
+                {
+                    try
+                    {
+                        string path = Path.Combine(XrayProc.WorkDir, $"spare_{++_fileGen % 3}.json");
+                        await File.WriteAllTextAsync(path, await SessionConfig.BuildAsync(weak.Link, XrayProc.SessionPort));
+                        var spare = new Spare(weak.Name, weak.Link, path, weak.Speed);
+                        if (await _switchTo(spare) && (await ProbeAsync(6) || await ProbeAsync(6, alternate: true)))
+                        {
+                            Commit(spare, path, weak);
+                            return true;
+                        }
+                    }
+                    catch { }
+                }
                 if (engineChanged && File.Exists(CurrentConfigPath))
                     try { await _switchTo(new Spare("", "", CurrentConfigPath)); } catch { }
                 Lost?.Invoke(reason);
                 return false;
+
+                void Commit(Spare spare, string path, Candidate c)
+                {
+                    try { File.Copy(path, CurrentConfigPath, overwrite: true); } catch { }
+                    lock (_readyLock) _ready = _ready.Where(x => x.Link != c.Link).ToList();
+                    Switched?.Invoke(spare, reason);
+                }
             }
             finally { _switchLock.Release(); }
+        }
+
+        // از داخل اتصال تازه دست‌کم ۱۵۰ کیلوبایت تا ۶ ثانیه برسه (کلادفلر؛ اگه بسته بود، لیست اشتراک خود درفش روی jsDelivr)
+        private static async Task<bool> DownloadsAsync()
+        {
+            long got = await DownloadBytesAsync(XrayProc.SessionPort, "https://speed.cloudflare.com/__down?bytes=200000", 6);
+            if (got < 150_000) got = Math.Max(got, await DownloadBytesAsync(XrayProc.SessionPort, "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt", 6));
+            return got >= 150_000;
         }
 
         // زاپاس‌های آماده: ۶ تای بعدی صف با هم تست می‌شن؛ سالم‌ها (حداکثر سه‌تا) آماده می‌مونن، مرده‌ها ۱۰ دقیقه کنار می‌رن

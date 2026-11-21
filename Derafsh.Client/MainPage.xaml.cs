@@ -34,7 +34,7 @@ namespace Derafsh.Client
         };
         // لینک اشتراک برای برنامه‌های دیگر (v2rayNG، Hiddify، V2Box، Streisand)
         public const string SubscriptionUrl = "https://cdn.jsdelivr.net/gh/Mehinator/Derafsh@main/derafsh_sub.txt";
-        private const string TelegramUrl = "https://t.me/DERAFSHVPN", GitHubUrl = "https://github.com/Mehinator/Derafsh";
+        private const string TelegramUrl = "https://t.me/DERAFSHVPN", GitHubUrl = "https://github.com/Mehinator/Derafsh", BotUrl = "https://t.me/DERAFSH_VPN_bot";
         private string CloudPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_configs.txt");
         private string CloudSourcesPath => Path.Combine(FileSystem.AppDataDirectory, "cloud_sources.json");
         private string UserPath => Path.Combine(FileSystem.AppDataDirectory, "user_configs.txt");
@@ -97,6 +97,7 @@ namespace Derafsh.Client
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 LoadConfigs();
+                _ = RefreshSubscriptionsAsync();   // لینک‌های اشتراک شخصی که بیشتر از ۶ ساعت پیش گرفته شدن، کنار
                 // لیست آنلاین هر ۲ ساعت روی گیت‌هاب آپدیت می‌شه؛ اگه نسخه ما قدیمی‌تره اول دانلود (که خودش تست رو شروع می‌کنه)،
                 // وگرنه همین الان تست خودکار روی همین اینترنت
                 if (!File.Exists(CloudPath) || File.GetLastWriteTime(CloudPath) < DateTime.Now.AddHours(-2)) await UpdateOnlineConfigs();
@@ -166,6 +167,37 @@ namespace Derafsh.Client
         private async void OnOpenTelegramClicked(object sender, EventArgs e) => await OpenLinkAsync(TelegramUrl);
         private async void OnOpenGitHubClicked(object sender, EventArgs e) => await OpenLinkAsync(GitHubUrl);
 
+        // ربات درفش (bot/worker.js): ?start=channel مستقیم «معرفی کانال»، ?start=report مستقیم «گزارش مشکل»
+        private async void OnSuggestChannelClicked(object sender, EventArgs e) => await OpenLinkAsync(BotUrl + "?start=channel");
+
+        // «گزارش مشکل»: چیزهایی که برای پیدا کردن مشکل لازمه کپی می‌شه و ربات در حالت گزارش باز می‌شه، کاربر فقط می‌چسبونه.
+        // (در گزارش شاهین، ۲۰ نوامبر ۲۰۲۶، نسخه و تعداد سرورهای تست‌شده و سن لیست معلوم نبود.) IP و لینک کانفیگ‌ها توش نیست.
+        private async void OnReportProblemClicked(object sender, EventArgs e)
+        {
+            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().ToList();
+            int tested = cloud.Count(c => _pingCache.ContainsKey(c));
+            int working = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);
+            string network = NetworkHistory.NetworkName.Length > 0 ? $"{NetworkHistory.NetworkName} ({NetworkHistory.NetworkKey})" : NetworkHistory.NetworkKey;
+            string text = string.Join("\n", new[]
+            {
+                "— اطلاعات برنامه —",
+                $"نسخه: {typeof(MainPage).Assembly.GetName().Version?.ToString(3)} · {(DeviceInfo.Current.Platform == DevicePlatform.WinUI ? "Windows" : DeviceInfo.Current.Platform.ToString())} {DeviceInfo.Current.VersionString}",
+                $"اینترنت: {network}",
+                $"لیست: {cloud.Count} کانفیگ{ListAgeSuffix()}",
+                $"روی این اینترنت: {tested} تست شد، {working} سالم" + (_discovering ? " (تست در جریان است)" : ""),
+                $"مکان: {(Locations.Selected.Length == 0 ? "خودکار" : Locations.Describe(Locations.Selected))}",
+                $"وضعیت: {(isConnected ? "وصل" + (_currentServer != null ? " به " + _currentServer.City : "") : "وصل نیست")}",
+                $"تکه‌تکه کردن TLS: {(SessionConfig.FragmentTls ? "روشن" : "خاموش")}",
+                "— مشکل را این پایین بنویسید —",
+                "",
+            });
+            try { await Clipboard.Default.SetTextAsync(text); } catch { }
+            if (await DisplayAlertAsync("گزارش مشکل",
+                    "اطلاعات برنامه کپی شد. در ربات درفش متن کپی‌شده را بچسبانید و مشکل را زیرش بنویسید. اگر تلگرام باز نشد، اول وصل شوید.",
+                    "باز کردن ربات", "لغو"))
+                await OpenLinkAsync(BotUrl + "?start=report");
+        }
+
         private async Task OpenLinkAsync(string url)
         {
             try { await Launcher.OpenAsync(url); }
@@ -202,6 +234,7 @@ namespace Derafsh.Client
             UpdateListActions();
             LoadConfigs();
             if (_currentList != ListOnline) _ = TestRowsAsync(onlyUntested: true);
+            if (_currentList == ListPersonal) _ = RefreshSubscriptionsAsync();
         }
 
         // هر لیست فقط دکمه‌هایی رو نشون می‌ده که براش معنی دارن؛ «افزودن کانفیگ» همیشه (به لیست شخصی اضافه می‌کنه)
@@ -285,13 +318,7 @@ namespace Derafsh.Client
             bool ok = false;
             try
             {
-                // اول از راه پروکسی سیستم (اگه کاربر به یه VPN وصله)، بعد مستقیم، بعد از داخل اتصال خود درفش (اگه وصلیم)
-                for (int way = 0; way < 3 && !ok; way++)
-                {
-                    if (way == 2 && !isConnected) break;
-                    try { await SaveListAsync(await DownloadListAsync(useSystemProxy: way == 0, socksPort: way == 2 ? XrayProc.SessionPort : null)); ok = true; }
-                    catch { }
-                }
+                ok = await DownloadListAnyWayAsync();
                 // اولین اجرا و هیچ آینه‌ای باز نیست: لیستی که همراه خود برنامه اومده
                 if (!ok && !File.Exists(CloudPath)) await UseSeedListAsync();
             }
@@ -360,6 +387,27 @@ namespace Derafsh.Client
                 _isUpdating = false;
             }
             await DiscoverAsync(fresh: false);
+        }
+
+        // اول از راه پروکسی سیستم (اگه کاربر به یه VPN وصله)، بعد مستقیم، بعد از داخل اتصال خود درفش (اگه وصلیم)
+        private async Task<bool> DownloadListAnyWayAsync()
+        {
+            for (int way = 0; way < 3; way++)
+            {
+                if (way == 2 && !isConnected) break;
+                try { await SaveListAsync(await DownloadListAsync(useSystemProxy: way == 0, socksPort: way == 2 ? XrayProc.SessionPort : null)); return true; }
+                catch { }
+            }
+            return false;
+        }
+
+        // لیست تازه بدون تست (جستجوی دوباره‌ی خودکار، که بعدش خودش همه رو از نو تست می‌کنه)
+        private async Task<bool> DownloadFreshListAsync()
+        {
+            if (_isUpdating) return false;
+            _isUpdating = true;
+            try { return await DownloadListAnyWayAsync(); }
+            finally { _isUpdating = false; }
         }
 
         private static async Task<(string list, string? sources, string? locations)> DownloadListAsync(bool useSystemProxy = false, int? socksPort = null)
@@ -493,6 +541,7 @@ namespace Derafsh.Client
                         string? text = await DownloadSubscriptionAsync(url);
                         var links = text == null ? new List<string>() : ConfigLinkRegex.Matches(ConfigService.ExpandSubscription(text)).Select(m => m.Value.Trim()).ToList();
                         if (links.Count == 0) failedSubs++;
+                        else RememberSubscription(url, links);   // از این به بعد هر ۶ ساعت خودکار تازه می‌شه (MainPage.Subscriptions.cs)
                         found.AddRange(links);
                     }
                 }
@@ -597,8 +646,10 @@ namespace Derafsh.Client
         private async void OnListMoreClicked(object sender, EventArgs e)
         {
             bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
-            const string SaveList = "ذخیره‌ی سالم‌ها به‌عنوان لیست", ShareWorking = "اشتراک همه‌ی سالم‌ها", DeleteList = "حذف این لیست";
+            const string SaveList = "ذخیره‌ی سالم‌ها به‌عنوان لیست", ShareWorking = "اشتراک همه‌ی سالم‌ها", DeleteList = "حذف این لیست",
+                         Subscriptions = "لینک‌های اشتراک";
             var buttons = new List<string>();
+            if (personal) buttons.Add(Subscriptions);
             if (online || personal) buttons.Add(SaveList);
             buttons.Add(ShareWorking);
             string? choice = await DisplayActionSheetAsync("این لیست", "لغو", online || personal ? null : DeleteList, buttons.ToArray());
@@ -607,6 +658,7 @@ namespace Derafsh.Client
                 case SaveList: OnSaveListClicked(sender, e); break;
                 case ShareWorking: OnShareWorkingClicked(sender, e); break;
                 case DeleteList: OnDeleteSavedListClicked(sender, e); break;
+                case Subscriptions: await ManageSubscriptionsAsync(); break;
             }
         }
 

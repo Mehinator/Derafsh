@@ -232,6 +232,14 @@
                 <CollectionView.EmptyView>
                     <Label x:Name="LocationsEmptyLabel" Text="چیزی با این اسم پیدا نشد." TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,24" />
                 </CollectionView.EmptyView>
+                <!-- only the locations with working servers on this network are listed; the rest behind one button -->
+                <CollectionView.Footer>
+                    <VerticalStackLayout Spacing="8" Padding="0,10,0,16">
+                        <Label x:Name="LocationsStatusLabel" Style="{StaticResource MetaLabel}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" IsVisible="False" />
+                        <Button x:Name="ShowAllLocationsButton" Style="{StaticResource SecondaryButton}" Clicked="OnShowAllLocationsClicked" HorizontalOptions="Center" IsVisible="False"
+                                ToolTipProperties.Text="مکان‌هایی که روی این اینترنت هنوز سرور سالمی ندارند (یا تست نشده‌اند) را هم نشان می‌دهد" />
+                    </VerticalStackLayout>
+                </CollectionView.Footer>
             </CollectionView>
         </Grid>
 
@@ -356,6 +364,26 @@
                         </VerticalStackLayout>
                         <Button Grid.Column="1" Text="باز کردن کانال" Style="{StaticResource SecondaryButton}" Clicked="OnOpenTelegramClicked" VerticalOptions="Center"
                                 ToolTipProperties.Text="t.me/DERAFSHVPN را باز می‌کند" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="گزارش مشکل" FontFamily="{StaticResource FontStrong}" />
+                            <Label Text="اطلاعات لازم برای بررسی کپی می‌شود و ربات درفش باز می‌شود؛ بچسبانید و مشکل را بنویسید" Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="گزارش مشکل" Style="{StaticResource SecondaryButton}" Clicked="OnReportProblemClicked" VerticalOptions="Center"
+                                ToolTipProperties.Text="نسخه، اینترنت و نتیجه‌ی تست‌ها را کپی می‌کند و ربات تلگرام درفش را باز می‌کند" />
+                    </Grid>
+                </Border>
+                <Border Style="{StaticResource Card}" Padding="16,12">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="معرفی کانال کانفیگ" FontFamily="{StaticResource FontStrong}" />
+                            <Label Text="کانالی می‌شناسید که کانفیگ رایگان می‌گذارد؟ اگر کانفیگ‌هایش سالم باشند، به درفش اضافه می‌شود" Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="معرفی کانال" Style="{StaticResource SecondaryButton}" Clicked="OnSuggestChannelClicked" VerticalOptions="Center"
+                                ToolTipProperties.Text="ربات تلگرام درفش را برای فرستادن لینک کانال باز می‌کند" />
                     </Grid>
                 </Border>
                 <Border Style="{StaticResource Card}" Padding="16,12">

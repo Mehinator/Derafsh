@@ -148,6 +148,12 @@ async function onMessage(env, store, msg) {
     }
   }
 
+  // لینک‌های مستقیم از خود برنامه: t.me/DERAFSH_VPN_bot?start=report (اطلاعات برنامه کپی شده) و ?start=channel
+  if (text === "/start report") {
+    await store.setMode(chat, "report");
+    return send(env, chat, "متنی را که برنامه کپی کرد اینجا بچسبانید و مشکل را زیرش بنویسید. اسکرین‌شات هم می‌توانید بفرستید.");
+  }
+  if (text === "/start channel") { await store.setMode(chat, "channel"); return send(env, chat, TEXT.channelAsk); }
   if (text === "/start" || text.startsWith("/start ")) { await store.setMode(chat, null); return send(env, chat, TEXT.start); }
   if (text === BUTTONS.channel || text === "/channel") { await store.setMode(chat, "channel"); return send(env, chat, TEXT.channelAsk); }
   if (text === BUTTONS.report || text === "/report") { await store.setMode(chat, "report"); return send(env, chat, TEXT.reportAsk); }

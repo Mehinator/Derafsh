@@ -290,10 +290,11 @@ namespace Derafsh.Client
         private Dictionary<string, string> _cloudSources = new();
 
         // fresh: نتیجه‌های قبلی کانفیگ‌های آنلاین پاک می‌شن و همه از نو تست می‌شن («تست دوباره»)
-        private async Task DiscoverAsync(bool fresh)
+        // allLocations: کل لیست، همه‌ی مکان‌ها و تا ته (صفحه‌ی «مکان سرور» تا فقط مکان‌های سالم رو نشون بده)
+        private async Task DiscoverAsync(bool fresh, bool allLocations = false)
         {
             int gen = ++_discoverGen;   // اجرای قبلی (اگه هنوز در جریانه) دیگه ردیف اضافه نمی‌کنه
-            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().Where(c => Locations.Matches(c)).ToList();
+            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().Where(c => allLocations || Locations.Matches(c)).ToList();
             if (cloud.Count == 0)
             {
                 // توی مکان انتخابی سروری نیست (یا هنوز لیستی نیست): تست تموم‌شده حساب می‌شه تا «اتصال» منتظر نمونه
@@ -335,7 +336,7 @@ namespace Derafsh.Client
             {
                 using var sem = new SemaphoreSlim(DiscoverBatches);
                 var running = new List<Task>();
-                bool Enough() => found >= TargetWorking && fast >= TargetFast;
+                bool Enough() => !allLocations && found >= TargetWorking && fast >= TargetFast;
                 foreach (var chunk in queue.Chunk(DiscoverBatch))
                 {
                     if (gen != _discoverGen || Enough()) break;
@@ -364,9 +365,10 @@ namespace Derafsh.Client
                         if (gen != _discoverGen || !ok) continue;
                         found++;
                         if (speed >= VideoSpeed) fast++;
-                        AddOnlineRow(config);   // پیدا شده‌ها پایین لیست اضافه می‌شن؛ مرتب‌سازی فقط یه بار، آخر کار
+                        if (Locations.Matches(config)) AddOnlineRow(config);   // پیدا شده‌ها پایین لیست؛ مرتب‌سازی فقط یه بار، آخر کار
                     }
                     if (gen != _discoverGen) return;
+                    if (LocationsView.IsVisible) RefreshLocationRows();
                     if (!_connecting && !isConnected) UpdateHome();
                     if (!_connecting)
                         StatusLabel.Text = $"در حال پیدا کردن سرورهای سالم روی این اینترنت · {Fa(found)} پیدا شد، {Fa(fast)} تا سریع · {Fa(done)} از {Fa(planned)} تست شد";
@@ -383,9 +385,60 @@ namespace Derafsh.Client
                     UpdateOnlineHeader();
                     UpdateEmptyState();
                     UpdateHome();
+                    if (LocationsView.IsVisible) RefreshLocationRows();
+                    if (found > 0) _retryRound = 0;
+                    if (_scanAllWhenDone && !allLocations && !_connecting && LocationsView.IsVisible)
+                    {
+                        _scanAllWhenDone = false;
+                        _ = DiscoverAsync(fresh: false, allLocations: true);
+                    }
                     if (!_isTestingAll && !_connecting) ShowTestSummary();
+                    // هیچ سروری جواب نداد (مثلاً گزارش فیبر مخابرات، ۲۰ نوامبر ۲۰۲۶): چند دقیقه بعد با لیست تازه دوباره، خودکار
+                    if (found == 0 && !allLocations && !isConnected && !_connecting) ScheduleRetry();
                 }
             }
+        }
+
+        // ---------- وقتی هیچ سروری جواب نداد ----------
+        // قبلاً فقط پیغام می‌داد و می‌ایستاد؛ کاربر باید خودش «دریافت لیست تازه» و «تست دوباره» رو پیدا می‌کرد. حالا ۳، ۵ و ۱۰ دقیقه
+        // بعد لیست تازه گرفته می‌شه و همه از نو تست می‌شن (کانفیگ‌های رایگان و فیلتر هر دو زود عوض می‌شن).
+        private static readonly int[] RetryMinutes = { 3, 5, 10 };
+        private int _retryRound;
+        private CancellationTokenSource? _retryCts;
+
+        private void ScheduleRetry()
+        {
+            _retryCts?.Cancel();
+            if (_retryRound >= RetryMinutes.Length) return;
+            int minutes = RetryMinutes[_retryRound++];
+            var cts = _retryCts = new CancellationTokenSource();
+            StatusLabel.Text = $"فعلاً هیچ سروری روی این اینترنت جواب نداد{ListAgeSuffix()}. {Fa(minutes)} دقیقه‌ی دیگر با لیست تازه خودکار دوباره امتحان می‌شود.";
+            _ = Task.Delay(TimeSpan.FromMinutes(minutes), cts.Token).ContinueWith(t =>
+            {
+                if (t.IsCanceled) return;
+                MainThread.BeginInvokeOnMainThread(async () =>
+                {
+                    if (cts.IsCancellationRequested || isConnected || _connecting || _discovering || _isUpdating || _isTestingAll) return;
+                    StatusLabel.Text = "در حال گرفتن لیست تازه و تست دوباره…";
+                    await DownloadFreshListAsync();
+                    await DiscoverAsync(fresh: true);
+                });
+            });
+        }
+
+        // « (لیست ۳ ساعت پیش تازه شده)» از خط اول فایل لیست («# Derafsh 2026-11-21T06:09:47Z»)
+        private string ListAgeSuffix()
+        {
+            try
+            {
+                string first = File.ReadLines(CloudPath).FirstOrDefault() ?? "";
+                if (!first.StartsWith("# Derafsh ") || !DateTime.TryParse(first["# Derafsh ".Length..].Trim(), System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var made)) return "";
+                var age = DateTime.UtcNow - made;
+                string text = age.TotalMinutes < 60 ? $"{Fa(Math.Max(1, (int)age.TotalMinutes))} دقیقه" : age.TotalHours < 48 ? $"{Fa((int)age.TotalHours)} ساعت" : $"{Fa((int)age.TotalDays)} روز";
+                return $" (لیست {text} پیش تازه شده)";
+            }
+            catch { return ""; }
         }
 
         private void AddOnlineRow(string config)
@@ -403,7 +456,9 @@ namespace Derafsh.Client
             if (_onlineGroup == null) return;
             int n = _onlineGroup.Count(x => x.Ping is > 0 and < NoReply);
             string where = Locations.Selected.Length > 0 ? $"  ·  {Locations.Describe(Locations.Selected)}" : "";
-            _onlineGroup.Name = $"آنلاین{where}  ·  {Fa(n)} سرور سالم روی این اینترنت" + (_discovering ? "  ·  در حال تست…" : "");
+            string age = ListAgeSuffix();   // « (لیست ۳ ساعت پیش تازه شده)» → «  ·  لیست ۳ ساعت پیش تازه شده»
+            _onlineGroup.Name = $"آنلاین{where}  ·  {Fa(n)} سرور سالم روی این اینترنت"
+                                + (_discovering ? "  ·  در حال تست…" : age.Length > 0 ? "  ·  " + age.Trim().Trim('(', ')') : "");
         }
 
         private void ShowTestSummary()
@@ -412,7 +467,7 @@ namespace Derafsh.Client
             if (!working.Any())
             {
                 StatusLabel.Text = _currentList == ListOnline
-                    ? "فعلاً هیچ سروری روی این اینترنت جواب نداد. کمی بعد «دریافت لیست تازه» را بزنید."
+                    ? $"فعلاً هیچ سروری روی این اینترنت جواب نداد{ListAgeSuffix()}. کمی بعد «دریافت لیست تازه» را بزنید."
                     : "هیچ سروری از این لیست روی این اینترنت جواب نداد.";
                 return;
             }

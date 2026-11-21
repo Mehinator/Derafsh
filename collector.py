@@ -772,12 +772,21 @@ if __name__ == "__main__":
 
     # کانال‌هایی که کاربرها به ربات معرفی کردن (channel_submissions.py): قبول‌شده‌ها مثل بقیه‌ی منبع‌ها، در صف‌ها تست می‌شن
     channel_state = submissions.load_state()
-    if not DRY_RUN:
-        known = {u.rstrip('/').split('/')[-1].lower() for u in CHANNELS} | set(channel_state["accepted"])
-        submissions.read_submissions(channel_state, known)
+    builtin_channels = sorted({u.rstrip('/').split('/')[-1].lower() for u in CHANNELS})
     CHANNELS.extend(u for u in submissions.accepted_urls(channel_state) if u.lower() not in {c.lower() for c in CHANNELS})
 
     new_configs = get_new_configs(sources)
+
+    # اگه از هیچ کانالی هیچی نگرفتیم یعنی یه جای کار خرابه؛
+    # با خطا تموم می‌کنیم تا توی GitHub قرمز بشه و بفهمیم (فایل قبلی دست نمی‌خوره)
+    if not new_configs:
+        print("❌ No configs found from any channel! Check the log above.")
+        sys.exit(1)
+
+    # صف معرفی کانال‌ها بعد از این چک: از ربات برداشته می‌شه، پس اجرایی که اینجا با خطا تموم می‌شد صف رو گم می‌کرد
+    if not DRY_RUN:
+        submissions.read_submissions(channel_state, set(builtin_channels) | set(channel_state["accepted"]))
+    channel_state["sources"] = builtin_channels   # ربات قبل از صف کردن نگاه می‌کنه که کانال از قبل منبع نباشه
 
     pending_links = []
     for key, item in channel_state["pending"].items():
@@ -793,12 +802,6 @@ if __name__ == "__main__":
             pending_links.extend(links)
             print(f"   📨 submitted @{item['name']}: Found {len(links)}")
         CHANNEL_LINKS[key] = links
-
-    # اگه از هیچ کانالی هیچی نگرفتیم یعنی یه جای کار خرابه؛
-    # با خطا تموم می‌کنیم تا توی GitHub قرمز بشه و بفهمیم (فایل قبلی دست نمی‌خوره)
-    if not new_configs:
-        print("❌ No configs found from any channel! Check the log above.")
-        sys.exit(1)
 
     # 3. ترکیب هوشمند (جدیدها اول، قدیمی‌ها بعد)
     # یه سرور تکراری حساب می‌شه حتی با اسم دیگه، کانال دیگه، ترتیب پارامتر دیگه یا vmess با اسم داخلی دیگه

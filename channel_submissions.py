@@ -48,7 +48,7 @@ def _reply(chat_id, text):
 
 
 def load_state():
-    state = {"offset": 0, "accepted": {}, "rejected": {}, "pending": {}}
+    state = {"offset": 0, "accepted": {}, "rejected": {}, "pending": {}, "sources": []}
     try:
         with open(STATE_FILE, encoding="utf-8") as f:
             saved = json.load(f)
@@ -70,7 +70,10 @@ def accepted_urls(state):
 
 
 def read_submissions(state, known):
-    """پیام‌های تازه‌ی ربات: لینک کانال‌ها به صف (state["pending"]) می‌رن. known: اسم کانال‌هایی که الان منبع‌ان (حروف کوچک)."""
+    """کانال‌های معرفی‌شده به صف (state["pending"]) می‌رن. known: اسم کانال‌هایی که الان منبع‌ان (حروف کوچک).
+    با BOT_API_URL: از ربات روی Cloudflare (bot/worker.js، همون لحظه به کاربر جواب داده)؛ وگرنه مستقیم با getUpdates."""
+    if os.environ.get("BOT_API_URL"):
+        return _claim_from_worker(state, known)
     if not os.environ.get("TELEGRAM_BOT_TOKEN"):
         return
     try:
@@ -109,6 +112,28 @@ def read_submissions(state, known):
                 per_person[chat_id] = per_person.get(chat_id, 0) + 1
                 state["pending"][key] = {"name": name, "chats": [chat_id], "sent": int(time.time())}
                 print(f"   📨 channel submitted: @{name}")
+
+
+def _claim_from_worker(state, known):
+    request = urllib.request.Request(os.environ["BOT_API_URL"].rstrip("/") + "/api/claim", data=b"{}", method="POST",
+                                     headers={"Authorization": "Bearer " + os.environ.get("BOT_API_SECRET", ""),
+                                              "content-type": "application/json", "User-Agent": "derafsh-collector"})
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            items = json.load(response).get("pending", [])
+    except Exception as e:
+        print(f"⚠️ Channel submissions: couldn't get the queue from the bot: {e}")
+        return
+    for item in items:
+        key, name, chats = item["key"], item["name"], item["chats"]
+        if key in known:
+            for chat_id in chats:
+                _reply(chat_id, f"کانال ‏@{name} از قبل جزو منبع‌های درفش است. ممنون!")
+        elif key in state["pending"]:
+            state["pending"][key]["chats"] = sorted(set(state["pending"][key]["chats"]) | set(chats))
+        else:
+            state["pending"][key] = {"name": name, "chats": chats, "sent": item.get("sent") or int(time.time())}
+            print(f"   📨 channel submitted: @{name}")
 
 
 def judge(state, links_by_channel, is_ok):

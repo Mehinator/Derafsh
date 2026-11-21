@@ -1,0 +1,38 @@
+name: Deploy the Telegram bot
+
+# bot/worker.js رو روی Cloudflare Workers (derafsh-bot) می‌ذاره، هر بار که عوض بشه. رمزهای خود Worker
+# (TELEGRAM_BOT_TOKEN، WEBHOOK_SECRET، API_SECRET، ADMIN_CODE) روی Cloudflare می‌مونن (keep_bindings) و اینجا لازم نیستن.
+# Durable Object (BotStore) بار اول با migration «v1» ساخته شد؛ آپلودهای بعدی بدون migration.
+on:
+  push:
+    branches: [main]
+    paths: ['bot/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Upload the worker
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          cat > metadata.json <<'EOF'
+          {"main_module": "worker.js", "compatibility_date": "2026-11-01",
+           "bindings": [{"type": "durable_object_namespace", "name": "STORE", "class_name": "BotStore"}],
+           "keep_bindings": ["secret_text"]}
+          EOF
+          curl -sS --fail-with-body -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/derafsh-bot" \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            -F "metadata=@metadata.json;type=application/json" \
+            -F "worker.js=@bot/worker.js;type=application/javascript+module" | python3 -c "import json,sys; r=json.load(sys.stdin); print('success:', r['success'], r['errors']); sys.exit(0 if r['success'] else 1)"
+
+      - name: Check it answers
+        run: curl -sS --fail --max-time 20 https://derafsh-bot.ybjsghsjhsj.workers.dev/

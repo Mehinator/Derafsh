@@ -66,6 +66,8 @@ jobs:
           DERAFSH_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           DERAFSH_STATS: .stats/derafsh_stats.json
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # معرفی کانال با ربات (channel_submissions.py)
+          BOT_API_URL: ${{ secrets.BOT_API_URL }}         # صف معرفی کانال‌ها از ربات روی Cloudflare (bot/worker.js)
+          BOT_API_SECRET: ${{ secrets.BOT_API_SECRET }}
         run: python collector.py
 
       - name: Save config streaks

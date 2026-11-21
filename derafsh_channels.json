@@ -2,5 +2,17 @@
  "accepted": {},
  "offset": 0,
  "pending": {},
- "rejected": {}
+ "rejected": {},
+ "sources": [
+  "chillguy_vpn",
+  "cook_vpn",
+  "daily_configs",
+  "directvpn",
+  "express_freevpn",
+  "filembad",
+  "i10vpn",
+  "mehrosaboran",
+  "privatevpns",
+  "v2rayngn"
+ ]
 }

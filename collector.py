@@ -16,6 +16,8 @@ from collections import Counter, namedtuple
 from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
+import channel_submissions as submissions
+
 # لیست کانال‌ها (اصلاح شده و استاندارد)
 # نکته: لینک آخر رو درست کردم چون https و /s/ نداشت
 CHANNELS = [
@@ -75,6 +77,8 @@ GITHUB_LISTS = [
 # هر سرور توی چندتا کانال و لیست پخش شده: {backend_key: {اسم منبع}}. کانفیگی که همه جا گذاشتن، کاربر زیادی داره و
 # شلوغه؛ توی ترتیب پایین‌تر می‌ره (build_tested_list)
 SHARED = {}
+# لینک‌های هر کانال در همین اجرا ({اسم با حروف کوچک: لینک‌ها، یا None اگه پیام عمومی نداشت})؛ برای کانال‌های معرفی‌شده
+CHANNEL_LINKS = {}
 MAX_CANDIDATES = 9000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۲۵ دقیقه)
 
 # IPهای ایران (همون فایل برنامه): سروری که توی ایرانه (مثلاً سرور واسط) از بیرون ایران قابل قضاوت نیست
@@ -289,6 +293,7 @@ def get_new_configs(sources):
         name = url.rstrip('/').split('/')[-1]
         try:
             links = channel_page_links(url)
+            CHANNEL_LINKS[name.lower()] = links
             if links is None:
                 print(f"   ⚠️ {name}: No public messages (channel deleted, private, or preview disabled?)")
                 continue
@@ -765,7 +770,29 @@ if __name__ == "__main__":
     if not isinstance(sources, dict):
         sources = {}
 
+    # کانال‌هایی که کاربرها به ربات معرفی کردن (channel_submissions.py): قبول‌شده‌ها مثل بقیه‌ی منبع‌ها، در صف‌ها تست می‌شن
+    channel_state = submissions.load_state()
+    if not DRY_RUN:
+        known = {u.rstrip('/').split('/')[-1].lower() for u in CHANNELS} | set(channel_state["accepted"])
+        submissions.read_submissions(channel_state, known)
+    CHANNELS.extend(u for u in submissions.accepted_urls(channel_state) if u.lower() not in {c.lower() for c in CHANNELS})
+
     new_configs = get_new_configs(sources)
+
+    pending_links = []
+    for key, item in channel_state["pending"].items():
+        try:
+            links = channel_page_links(f"https://t.me/s/{item['name']}")
+        except Exception as e:
+            print(f"   ❌ submitted @{item['name']}: {e} (stays in the queue for the next run)")
+            continue   # خطای گذرا (مثلاً ۴۲۹ تلگرام): رد نمی‌شه، اجرای بعد دوباره
+        if links is not None:
+            links = dedup(list(reversed(links)))
+            for link in links:
+                sources.setdefault(link, item["name"])
+            pending_links.extend(links)
+            print(f"   📨 submitted @{item['name']}: Found {len(links)}")
+        CHANNEL_LINKS[key] = links
 
     # اگه از هیچ کانالی هیچی نگرفتیم یعنی یه جای کار خرابه؛
     # با خطا تموم می‌کنیم تا توی GitHub قرمز بشه و بفهمیم (فایل قبلی دست نمی‌خوره)
@@ -780,11 +807,19 @@ if __name__ == "__main__":
 
     # 3.5. با تست: لیست‌های عمومی گیت‌هاب هم اضافه می‌شن و فقط کانفیگ‌هایی که واقعاً کار می‌کنن می‌مونن
     if TESTER and XRAY:
-        candidates = dedup(new_configs + old_configs + get_list_configs(sources))[:MAX_CANDIDATES]
+        candidates = dedup(pending_links + new_configs + old_configs + get_list_configs(sources))[:MAX_CANDIDATES]
         results = test_configs(candidates)
         tested = build_tested_list(candidates, results, old_configs, sources) if results is not None else None
+        # بعد از build_tested_list، که کانفیگ‌هایی که خروجی‌شون ایرانه رو «مرده» علامت می‌زنه
+        if results is not None and not DRY_RUN:
+            ok_servers = {server_key(c) for c, r in results.items() if r.status == "ok"}
+            is_ok = lambda link: server_key(link) in ok_servers
+            submissions.judge(channel_state, CHANNEL_LINKS, is_ok)
+            submissions.check_health(channel_state, CHANNEL_LINKS, is_ok)
         if tested is not None:
             combined, locations = tested
+    if not DRY_RUN:
+        submissions.save_state(channel_state)
     if DRY_RUN:
         print(f"🧪 Dry run: {len(combined[:MAX_CONFIGS])} configs would be written; the list is not changed")
         sys.exit(0)

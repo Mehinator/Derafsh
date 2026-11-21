@@ -65,6 +65,7 @@ jobs:
           DERAFSH_XRAY: ${{ runner.temp }}/xray/xray
           DERAFSH_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
           DERAFSH_STATS: .stats/derafsh_stats.json
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # معرفی کانال با ربات (channel_submissions.py)
         run: python collector.py
 
       - name: Save config streaks
@@ -80,7 +81,7 @@ jobs:
         run: |
           git config --global user.name "Derafsh Bot"
           git config --global user.email "bot@derafsh.com"
-          git add derafsh_servers.txt derafsh_sources.json derafsh_sub.txt derafsh_locations.json
+          git add derafsh_servers.txt derafsh_sources.json derafsh_sub.txt derafsh_locations.json derafsh_channels.json
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

@@ -2,7 +2,7 @@ name: Update Derafsh Configs
 
 on:
   schedule:
-    - cron: '17 */2 * * *' # هر ۲ ساعت (ساعت 0:17, 2:17, 4:17...)؛ دقیقه 17 چون سر ساعت گیت‌هاب شلوغه و دیر اجرا می‌کنه
+    - cron: '17 */2 * * *' # پشتیبان؛ گیت‌هاب این رو فقط هر ۶ تا ۹ ساعت اجرا می‌کنه، زنجیره‌ی کار next پایین هر ۲ ساعته
   workflow_dispatch: # اجازه میده دکمه Run رو دستی هم بزنی
     inputs:
       dry_run:
@@ -106,3 +106,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update_configs.yml/enable"
+
+  # زنجیره‌ی هر ۲ ساعت: گیت‌هاب زمان‌بندی بالا رو زیر بار فقط هر ۶ تا ۹ ساعت اجرا می‌کنه (۲۰ نوامبر ۲۰۲۶: ۱۳:۱۹، ۲۲:۱۰،
+  # ۰۳:۳۸ UTC) و کانفیگ رایگان توی چند ساعت می‌میره؛ کاربرها لیست ۹ ساعته می‌گرفتن. این کار تا ۲ ساعت بعد از شروع همین اجرا
+  # صبر می‌کنه و اجرای بعدی رو خودش راه می‌اندازه (workflow_dispatch با GITHUB_TOKEN اجرای تازه می‌سازه). اگه زنجیره پاره
+  # بشه، زمان‌بندی بالا دوباره راهش می‌اندازه؛ concurrency بالا نمی‌ذاره دوتا زنجیره با هم بچرخن (اجرای در صف جایگزین می‌شه).
+  next:
+    needs: build
+    if: ${{ !cancelled() && !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    permissions:
+      actions: write
+    steps:
+      - name: Start the next run 2 hours after this one started
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          started=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq .run_started_at)
+          wait=$(( 7200 - ( $(date +%s) - $(date -d "$started" +%s) ) ))
+          echo "this run started $started; next run in $wait s"
+          if [ "$wait" -gt 0 ]; then sleep "$wait"; fi
+          gh workflow run update_configs.yml -R "${{ github.repository }}" --ref main

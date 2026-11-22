@@ -68,6 +68,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}   # معرفی کانال با ربات (channel_submissions.py)
           BOT_API_URL: ${{ secrets.BOT_API_URL }}         # صف معرفی کانال‌ها از ربات روی Cloudflare (bot/worker.js)
           BOT_API_SECRET: ${{ secrets.BOT_API_SECRET }}
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}     # گزارش‌های برنامه از داخل ایران، از D1 (iran_reports.py)
+          CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: python collector.py
 
       - name: Save config streaks
@@ -83,7 +85,7 @@ jobs:
         run: |
           git config --global user.name "Derafsh Bot"
           git config --global user.email "bot@derafsh.com"
-          git add derafsh_servers.txt derafsh_sources.json derafsh_sub.txt derafsh_locations.json derafsh_channels.json
+          git add derafsh_servers.txt derafsh_sources.json derafsh_sub.txt derafsh_locations.json derafsh_channels.json derafsh_networks.json
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
@@ -102,6 +104,7 @@ jobs:
           curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_sources.json"
           curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_sub.txt"
           curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_locations.json"
+          curl -s "https://purge.jsdelivr.net/gh/${{ github.repository }}@main/derafsh_networks.json"
 
       # گیت‌هاب کرون رو بعد از 60 روز بی‌فعالیتی ریپو خاموش می‌کنه؛ این مرحله هر بار دوباره روشنش نگه می‌داره
       - name: Keep workflow alive

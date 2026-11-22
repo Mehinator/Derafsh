@@ -5,6 +5,10 @@
 //     کانفیگ‌های کانال رو تست می‌کنه و نتیجه رو خودش با ربات به فرستنده می‌گه (channel_submissions.py).
 //   • گزارش مشکل: پیام و عکس کاربر برای مدیر فرستاده می‌شه؛ مدیر با Reply روی همون پیام، مستقیم به کاربر جواب می‌ده.
 //     مدیر کسیه که یه بار «/admin کد» رو فرستاده (کد: ADMIN_CODE).
+//   • /report: گزارش ناشناس خود برنامه (CommunityReports.cs): کدوم سرورهای لیست آنلاین روی کدوم اینترنت (شماره‌ی ASN)
+//     جواب دادن. هر سرور فقط با هش کوتاه لینکش؛ برنامه از داخل خود اتصال می‌فرسته، پس IP کاربر اینجا نمی‌رسه، و
+//     چیزی جز همین (و زمان، گرد به ۱۰ دقیقه) ذخیره نمی‌شه. توی D1 (derafsh-reports)؛ جمع‌آوری مستقیم با API کلادفلر
+//     می‌خونه (iran_reports.py) و گزارش‌های قدیمی‌تر از ۳ روز رو پاک می‌کنه.
 //
 // Secrets: TELEGRAM_BOT_TOKEN، WEBHOOK_SECRET (تلگرام توی هدر می‌فرسته)، API_SECRET (برای جمع‌آوری و /api/setup)، ADMIN_CODE.
 import { DurableObject } from "cloudflare:workers";
@@ -46,7 +50,7 @@ const TEXT = {
   help:
     "درفش با یک دکمه وصل می‌شود: سرورها را روی همان اینترنتی که الان دارید تست می‌کند و به سریع‌ترین سالم وصل می‌شود. " +
     "اگر سرور قطع شود، خودش به سرور دیگری می‌رود؛ دکمه‌ی «تعویض سرور» هم همین کار را همان لحظه می‌کند.\n\n" +
-    "• کشور یا شهر خاصی می‌خواهید؟ در صفحه‌ی اصلی «انتخاب مکان».\n" +
+    "• کشور یا شهر خاصی می‌خواهید؟ «سرورها» ← ردیف کشورها بالای لیست.\n" +
     "• کانفیگ یا لینک اشتراک خودتان؟ «سرورها» ← «افزودن کانفیگ».\n" +
     "• سروری پیدا نشد؟ «سرورها» ← «تست دوباره»؛ اگر باز نشد، «گزارش مشکل» را بزنید.\n\n" +
     `راهنمای کامل: https://github.com/${REPO}#readme`,
@@ -208,6 +212,30 @@ function authorized(request, env) {
   return env.API_SECRET && request.headers.get("authorization") === `Bearer ${env.API_SECRET}`;
 }
 
+// {"v":1,"asn":44244,"app":"1.12.0","r":[["0123456789ABCDEF",1,350],["...",0,0]]}: هش سرور، جواب داد (۱/۰)، سرعت KB/s
+const REPORT_KEY = /^[0-9A-F]{16}$/, MAX_RESULTS = 80;
+async function onReport(request, env) {
+  if (!env.REPORTS) return new Response("off", { status: 503 });
+  const text = await request.text();
+  if (text.length > 8000) return new Response("too big", { status: 413 });
+  let body;
+  try { body = JSON.parse(text); } catch { return new Response("bad json", { status: 400 }); }
+  const asn = Number(body?.asn);
+  if (!Number.isInteger(asn) || asn <= 0 || asn > 4294967295 || !Array.isArray(body.r)) return new Response("bad report", { status: 400 });
+  const seen = new Set(), rows = [];
+  for (const x of body.r.slice(0, MAX_RESULTS)) {
+    if (!Array.isArray(x) || typeof x[0] !== "string" || !REPORT_KEY.test(x[0]) || seen.has(x[0])) continue;
+    seen.add(x[0]);
+    const ok = x[1] ? 1 : 0;
+    rows.push([x[0], ok, ok ? Math.max(0, Math.min(100000, Math.round(Number(x[2]) || 0))) : 0]);
+  }
+  if (!rows.length) return new Response("empty", { status: 400 });
+  const at = Math.floor(Date.now() / 600000) * 600;
+  const app = String(body.app || "").replace(/[^0-9A-Za-z.\-]/g, "").slice(0, 16);
+  await env.REPORTS.prepare("INSERT INTO reports (at, asn, app, data) VALUES (?, ?, ?, ?)").bind(at, asn, app, JSON.stringify(rows)).run();
+  return Response.json({ ok: true, saved: rows.length });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -219,6 +247,11 @@ export default {
       try { if (update.message) await onMessage(env, store, update.message); }
       catch (e) { console.log("update failed", e && e.stack || e); }
       return new Response("ok");   // همیشه ۲۰۰، وگرنه تلگرام همون پیام رو بارها دوباره می‌فرسته
+    }
+
+    if (url.pathname === "/report" && request.method === "POST") {
+      try { return await onReport(request, env); }
+      catch (e) { console.log("report failed", e && e.stack || e); return new Response("error", { status: 500 }); }
     }
 
     // جمع‌آوری: صف معرفی کانال‌ها

@@ -3,6 +3,7 @@ name: Deploy the Telegram bot
 # bot/worker.js رو روی Cloudflare Workers (derafsh-bot) می‌ذاره، هر بار که عوض بشه. رمزهای خود Worker
 # (TELEGRAM_BOT_TOKEN، WEBHOOK_SECRET، API_SECRET، ADMIN_CODE) روی Cloudflare می‌مونن (keep_bindings) و اینجا لازم نیستن.
 # Durable Object (BotStore) بار اول با migration «v1» ساخته شد؛ آپلودهای بعدی بدون migration.
+# D1 «derafsh-reports» (گزارش‌های ناشناس برنامه): جدول reports (at, asn, app, data) و ایندکس reports_at یه بار با API ساخته شد.
 on:
   push:
     branches: [main]
@@ -26,7 +27,8 @@ jobs:
         run: |
           cat > metadata.json <<'EOF'
           {"main_module": "worker.js", "compatibility_date": "2026-11-01",
-           "bindings": [{"type": "durable_object_namespace", "name": "STORE", "class_name": "BotStore"}],
+           "bindings": [{"type": "durable_object_namespace", "name": "STORE", "class_name": "BotStore"},
+                        {"type": "d1", "name": "REPORTS", "id": "63b23d8c-762d-4049-9e5e-54cd9fb804d3"}],
            "keep_bindings": ["secret_text"]}
           EOF
           curl -sS --fail-with-body -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT/workers/scripts/derafsh-bot" \

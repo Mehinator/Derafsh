@@ -17,6 +17,7 @@ from itertools import zip_longest
 from urllib.parse import quote, unquote, urlsplit, parse_qsl
 
 import channel_submissions as submissions
+import iran_reports as reports
 
 # لیست کانال‌ها (اصلاح شده و استاندارد)
 # نکته: لینک آخر رو درست کردم چون https و /s/ نداشت
@@ -79,6 +80,8 @@ GITHUB_LISTS = [
 SHARED = {}
 # لینک‌های هر کانال در همین اجرا ({اسم با حروف کوچک: لینک‌ها، یا None اگه پیام عمومی نداشت})؛ برای کانال‌های معرفی‌شده
 CHANNEL_LINKS = {}
+# گزارش‌های برنامه از داخل ایران: {stat_key: {asn: [جواب داد, گزارش, جمع سرعت]}} (iran_reports.read)
+IRAN = {}
 MAX_CANDIDATES = 9000   # سقف کانفیگ‌هایی که هر بار تست می‌شن (حدود ۲۵ دقیقه)
 
 # IPهای ایران (همون فایل برنامه): سروری که توی ایرانه (مثلاً سرور واسط) از بیرون ایران قابل قضاوت نیست
@@ -107,6 +110,9 @@ LOCATIONS_FILE = "derafsh_locations.json"
 
 # لینک اشتراک (subscription) استاندارد base64، برای v2rayNG / Hiddify / NekoBox روی اندروید
 SUB_FILE = "derafsh_sub.txt"
+
+# تجربه‌ی کاربرها روی هر اینترنت، برای خود برنامه (iran_reports.networks)
+NETWORKS_FILE = "derafsh_networks.json"
 
 # سقف تعداد کانفیگ: ۵۰۰ تای بهتر، نه ۲۰۰۰ تا که گوشی وقتش رو سر تست‌شون بذاره
 MAX_CONFIGS = 500
@@ -479,24 +485,38 @@ def stat_key(link):
     return hashlib.sha1(repr(server_key(link)).encode("utf-8")).hexdigest()[:12]
 
 
-def load_streaks(old_configs):
-    """چند اجرای پشت سر هم هر کانفیگ سالم بوده، تا اجرای قبلی"""
+def load_stats():
+    """فایل آمار (کش گیت‌هاب): {"streak": ...، "keys": هش لینک‌های منتشرشده برای iran_reports}"""
     if STATS_FILE and os.path.exists(STATS_FILE):
         try:
             with open(STATS_FILE, encoding="utf-8") as f:
-                return json.load(f)["streak"]
+                return json.load(f)
         except Exception as e:
-            print(f"   ⚠️ Streaks not loaded: {e}")
+            print(f"   ⚠️ Stats not loaded: {e}")
+    return {}
+
+
+def save_stats(**parts):
+    if not STATS_FILE or DRY_RUN:
+        return
+    data = load_stats()
+    data.update(parts)
+    os.makedirs(os.path.dirname(STATS_FILE) or ".", exist_ok=True)
+    with open(STATS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+
+
+def load_streaks(old_configs):
+    """چند اجرای پشت سر هم هر کانفیگ سالم بوده، تا اجرای قبلی"""
+    streak = load_stats().get("streak")
+    if streak is not None:
+        return streak
     # هنوز آماری نیست: کانفیگ‌های لیست قبلی توی اجرای قبل سالم بودن
     return {stat_key(c): 1 for c in old_configs}
 
 
 def save_streaks(streaks):
-    if not STATS_FILE or DRY_RUN:
-        return
-    os.makedirs(os.path.dirname(STATS_FILE) or ".", exist_ok=True)
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump({"streak": streaks}, f)
+    save_stats(streak=streaks)
 
 
 def load_locations_file():
@@ -617,10 +637,14 @@ def build_tested_list(candidates, results, old_configs, sources):
         n = len(SHARED.get(backend_key(c), ()))
         return 0 if n <= 2 else 1 if n <= 4 else 2
 
+    def iran_tier(c):
+        return reports.tier(IRAN.get(stat_key(c)))
+
     def rank(c):
         r, l, n = status(c), loc(c), streak[c]
+        # اول اینکه برای کاربرها توی ایران کار کرده یا نه (گزارش برنامه)، که از تست اینجا (بیرون ایران) مهم‌تره.
         # کانفیگ بدون TLS دیگه پایین‌تر نمی‌ره: روی همراه اول (تست از خود گوشی) نصف سالم‌ها همین‌ها بودن
-        return (speed_rank(r.kbps), not r.instagram, shared_tier(c), 0 if n >= 6 else 1 if n >= 2 else 2,
+        return (iran_tier(c), speed_rank(r.kbps), not r.instagram, shared_tier(c), 0 if n >= 6 else 1 if n >= 2 else 2,
                 l is not None and l[0] in FAR_COUNTRIES, r.ping)
 
     ranked = sorted([c for c in alive if status(c).youtube], key=rank)
@@ -690,7 +714,8 @@ def build_tested_list(candidates, results, old_configs, sources):
     ranges = load_iran_ranges()
     starts = [r[0] for r in ranges]
     iran = [c for c in candidates if status(c).status == "dead" and iran_hosted(c, ranges, starts)]
-    iran = [c for c in dedup_by(iran, backend_key) if backend_key(c) not in backends][:IRAN_KEEP]
+    # اون‌هایی که برنامه از داخل ایران گزارش داده کار کردن اول
+    iran = sorted((c for c in dedup_by(iran, backend_key) if backend_key(c) not in backends), key=iran_tier)[:IRAN_KEEP]
     untested = [c for c in dedup_by(candidates, backend_key) if status(c).status == "untested" and backend_key(c) not in backends]
     final = picked[:MAX_CONFIGS - len(iran)] + iran
     final += untested[:MAX_CONFIGS - len(final)]
@@ -740,6 +765,8 @@ def build_tested_list(candidates, results, old_configs, sources):
     print(f"   In the list: {len(in_list)} working, {len(iran)} in Iran (untested), {len(final) - len(in_list) - len(iran)} untested; "
           f"plain (no TLS) {sum(map(is_plain, in_list))}, worked 6+ runs in a row {sum(streak[c] >= 6 for c in in_list)}, "
           f"2+ runs {sum(streak[c] >= 2 for c in in_list)}, location known {sum(cities.values())}")
+    tiers = Counter(iran_tier(c) for c in final)
+    print(f"   Reported from Iran: {tiers[0]} fast, {tiers[1]} working, {tiers[3]} failing, {tiers[2]} no reports")
     print(f"   Countries ({len(countries)}): " + ", ".join(f"{k} {v}" for k, v in sorted(countries.items(), key=lambda x: -x[1])))
     print(f"   Cities ({len(cities)} in the list, {len(all_cities)} among all working): " +
           ", ".join(f"{k[1] or '?'} ({k[0]}) {v}/{all_cities.get(k, 0)}" for k, v in sorted(cities.items(), key=lambda x: -x[1])[:60]))
@@ -758,6 +785,16 @@ if __name__ == "__main__":
                         old_configs.append(link)
         except:
             pass
+
+    # 1.5. گزارش‌های برنامه از داخل ایران (ترتیب لیست). برنامه‌ها الان همین لیست قبلی رو دارن؛ هش لینک‌هاش، عیناً همون
+    # متنی که برنامه دانلود کرده، کنار هش لیست‌های چند روز اخیر
+    report_keys = reports.prune(load_stats().get("keys", {}))
+    try:
+        with open(OUTPUT_FILE, encoding="utf-8") as f:
+            reports.remember(report_keys, [l.strip() for l in f if "://" in l and not l.startswith("#")], stat_key)
+    except OSError:
+        pass
+    IRAN.update(reports.read(report_keys))
 
     # 2. خواندن منبع کانفیگ‌های قدیمی و گرفتن کانفیگ‌های جدید از تلگرام
     sources = {}
@@ -855,6 +892,12 @@ if __name__ == "__main__":
             locations = {c: old[c] for c in final_list if c in old}
         with open(LOCATIONS_FILE, "w", encoding="utf-8") as f:
             json.dump({c: locations[c] for c in final_list if c in locations}, f, ensure_ascii=False, indent=1)
+        # برای گزارش‌های بعدی: هش لینک‌های همین لیست. و تجربه‌ی کاربرها روی هر اینترنت، برای خود برنامه
+        reports.remember(report_keys, final_list, stat_key)
+        save_stats(keys=report_keys)
+        with open(NETWORKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(reports.networks(final_list, stat_key, IRAN), f, separators=(",", ":"))
+        reports.cleanup()
         print("💾 Update Complete!")
     else:
         print("⚠️ No configs found.")

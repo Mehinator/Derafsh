@@ -90,6 +90,7 @@ namespace Derafsh.Client
             {
                 isConnected = true;
                 SetConnState(ConnState.Connected, Preferences.Default.Get("connected_name", "") + "  ·  VPN روشن است");
+                SendReportsSoon();
             }
 #endif
             StartUpdateChecks();
@@ -404,6 +405,9 @@ namespace Derafsh.Client
             // منبع هر کانفیگ و مکانش (کشور و شهر) اختیاری‌ان؛ از همون آینه‌ای که لیست اومد، تا با همون نسخه جور باشن
             string? sources = await FetchJsonAsync(client, mirror, "derafsh_sources.json");
             string? locations = await FetchJsonAsync(client, mirror, "derafsh_locations.json");
+            // تجربه‌ی بقیه‌ی کاربرها روی هر اینترنت (CommunityReports)؛ اختیاری
+            string? networks = await FetchJsonAsync(client, mirror, "derafsh_networks.json");
+            if (networks != null) try { await File.WriteAllTextAsync(CommunityReports.HintsPath, networks); } catch { }
             return (list, sources, locations);
         }
 
@@ -941,12 +945,19 @@ namespace Derafsh.Client
                 .Where(c => anyLocation || Locations.Matches(c))
                 .OrderBy(c => NoYouTube.Contains(c))   // یوتیوب رو باز نمی‌کنه: ویدیو پخش نمی‌شه
                 .ThenBy(c => SpeedBucket(_speedCache.GetValueOrDefault(c, -1)))
-                .ThenByDescending(c => NetworkHistory.Score(c) > 0.5)
+                .ThenByDescending(c => NetworkHistory.Score(c) + CommunityReports.Score(c) > 0.5)
                 .ThenBy(c => _pingCache[c])
                 .Select(c => shown.FirstOrDefault(x => x.Config == c) ?? NewServer(c))
                 .OfType<Server>()
                 .ToList();
         }
+
+        // گزارش ناشناس نتیجه‌ی تست‌ها (CommunityReports)، از داخل همین اتصال؛ نیم دقیقه بعد از وصل شدن که اتصال جا افتاده
+        private void SendReportsSoon() =>
+            Task.Delay(TimeSpan.FromSeconds(30)).ContinueWith(_ => MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (isConnected) _ = CommunityReports.SendAsync();
+            }));
 
         private Server? NewServer(string config)
         {
@@ -1006,6 +1017,7 @@ namespace Derafsh.Client
                 UpdateHome();
                 StartGuard();
                 UpdatePool();
+                SendReportsSoon();
                 if (_listDownloadFailed) _ = FetchListThroughServerAsync();
                 if (_updateTag == null) _ = CheckForUpdateAsync();   // شاید گیت‌هاب قبل از اتصال جواب نداده بود
                 return true;

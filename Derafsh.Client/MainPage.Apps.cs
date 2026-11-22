@@ -21,6 +21,7 @@ namespace Derafsh.Client
             SemanticProperties.SetDescription(IranDirectCheck, "سایت‌های ایرانی بدون VPN");
 #endif
             FragmentCheck.IsChecked = SessionConfig.FragmentTls;
+            ReportsCheck.IsChecked = CommunityReports.Enabled;
             AppsList.ItemsSource = _appRows;
             (AppBypass.OnlySelected ? OnlyAppsMode : AllAppsMode).IsChecked = true;
             UpdateAppsHint();
@@ -29,6 +30,14 @@ namespace Derafsh.Client
 
         private void OnIranDirectLabelTapped(object sender, TappedEventArgs e) => IranDirectCheck.IsChecked = !IranDirectCheck.IsChecked;
         private void OnFragmentLabelTapped(object sender, TappedEventArgs e) => FragmentCheck.IsChecked = !FragmentCheck.IsChecked;
+        private void OnReportsLabelTapped(object sender, TappedEventArgs e) => ReportsCheck.IsChecked = !ReportsCheck.IsChecked;
+
+        // گزارش ناشناس نتیجه‌ی تست‌ها (CommunityReports)؛ خاموش کردنش گزارش‌های فرستاده‌نشده رو هم پاک می‌کنه
+        private void OnReportsChanged(object sender, CheckedChangedEventArgs e)
+        {
+            if (!_optionsReady) return;
+            CommunityReports.Enabled = e.Value;
+        }
 
         // تکه‌تکه کردن TLS: تست‌های بعدی و اتصال با تنظیم تازه؛ اگه وصلیم، همین الان
         private void OnFragmentChanged(object sender, CheckedChangedEventArgs e)

@@ -325,7 +325,7 @@ namespace Derafsh.Client
             // اون‌هایی که اخیراً روی همین اینترنت جواب ندادن آخر صف
             var queue = cloud.Where(c => !_pingCache.ContainsKey(c))
                              .OrderByDescending(c => favs.Contains(FavKey(c)))
-                             .ThenByDescending(c => Math.Round(NetworkHistory.Score(c)))
+                             .ThenByDescending(c => Math.Round(NetworkHistory.Score(c) + CommunityReports.Score(c)))
                              .ToList();
             int found = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);
             int fast = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply && _speedCache.GetValueOrDefault(c, -1) >= VideoSpeed);
@@ -365,6 +365,7 @@ namespace Derafsh.Client
                         if (ok) _speedCache[config] = speed; else _speedCache.Remove(config);
                         foreach (var x in RowsOf(config)) { x.Ping = _pingCache[config]; x.Speed = ok ? speed : -1; }
                         NetworkHistory.Record(config, ok, Math.Max(0, speed));
+                        CommunityReports.Add(config, ok, Math.Max(0, speed));   // فقط لیست آنلاین؛ صف تست از همونه
                         done++;
                         if (gen != _discoverGen || !ok) continue;
                         found++;
@@ -385,6 +386,8 @@ namespace Derafsh.Client
                     _discovering = false;
                     _discoveryDone = true;
                     NetworkHistory.Save();
+                    CommunityReports.Save();
+                    if (isConnected) _ = CommunityReports.SendAsync();
                     ResortList();
                     UpdateOnlineHeader();
                     UpdateEmptyState();

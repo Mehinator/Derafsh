@@ -131,7 +131,7 @@
 1. صفحه‌ی عمومی چند کانال تلگرام و چند لیست عمومی گیت‌هاب را می‌خواند (فهرست در همان فایل؛ از جمله [SoliSpirit](https://github.com/SoliSpirit/v2ray-configs)، [barry-far](https://github.com/barry-far/V2ray-Config)، [mhcfpTopic](https://github.com/mhcfpTopic/config)، [PSG](https://github.com/itsyebekhe/PSG) و [rzashakeri](https://github.com/rzashakeri/v2ray-configs)). کانال‌هایی هم که کاربرها معرفی کرده‌اند (پایین را ببینید) جزو همین منبع‌ها هستند.
 2. هر کانفیگ را با خود Xray تست می‌کند، با همان کدی که برنامه با آن وصل می‌شود ([`tools/ConfigTester`](tools/ConfigTester)): باید از داخل آن جواب گوگل بیاید و واقعاً دانلود کند. از داخل همان کانفیگ، کشور و شهری را هم که سرور از آن به اینترنت وصل می‌شود پیدا می‌کند و اسم کانفیگ را مثلاً «🇩🇪 Berlin» می‌گذارد. کانفیگ‌هایی که از خود ایران بیرون می‌آیند کنار می‌روند، چون فیلتر را دور نمی‌زنند.
 3. از حدود ۲۰۰۰ کانفیگ سالم، **۵۰۰ تای بهتر** را نگه می‌دارد:
-   - **ترتیب:** اول سرعت کافی برای ویدیو، بعد رمزنگاری TLS یا Reality (کانفیگ‌های بدون رمزنگاری را فیلتر راحت پیدا می‌کند)، بعد اینکه چند اجرای پشت سر هم سالم مانده (کمتر وسط ویدیو می‌میرد)، بعد نزدیکی به ایران.
+   - **ترتیب:** اول اینکه برای کاربرها داخل ایران کار کرده یا نه (گزارش ناشناس برنامه، پایین‌تر)، بعد سرعت کافی برای ویدیو، بعد رمزنگاری TLS یا Reality (کانفیگ‌های بدون رمزنگاری را فیلتر راحت پیدا می‌کند)، بعد اینکه چند اجرای پشت سر هم سالم مانده (کمتر وسط ویدیو می‌میرد)، بعد نزدیکی به ایران.
    - **مکان:** از هر شهر چند سرور حتماً در لیست می‌ماند تا انتخاب شهر خالی نماند.
    - **بدون تکرار:** از هر سرور واقعی فقط یک کانفیگ می‌ماند. سرور واقعی یعنی همان کاربر و همان دامنه‌ی پشتش، حتی اگر لیست‌ها آن را با IP یا path دیگری گذاشته باشند. از هر رنج IP هم حداکثر سه تا می‌آید، تا وقتی یک اپراتور قطع می‌شود، زاپاس‌ها با آن قطع نشوند.
    - **کم‌کاربرتر:** کانفیگی که در کانال‌ها و لیست‌های زیادی پخش شده، کاربر زیادی دارد و شلوغ است، پس پایین‌تر می‌رود.
@@ -139,13 +139,18 @@
 
 **معرفی کانال:** لینک کانال تلگرامی را که کانفیگ رایگان می‌گذارد برای ربات [‎@DERAFSH_VPN_bot](https://t.me/DERAFSH_VPN_bot) بفرستید. در اجرای بعدی (حداکثر ۲ ساعت بعد) کانفیگ‌های اخیرش کنار بقیه تست می‌شود؛ اگر دست‌کم ۵ تا کار کنند، کانال از آن به بعد جزو منبع‌هاست و ربات خبر می‌دهد. کانالی که حدود یک روز هیچ کانفیگ سالمی نداشته باشد، خودکار کنار می‌رود. فهرست کانال‌های معرفی‌شده در [`derafsh_channels.json`](derafsh_channels.json) است.
 
-این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد. خروجی چهار فایل است:
+این تست بیرون از ایران انجام می‌شود، پس فقط سرورهای مرده را کنار می‌گذارد. اینکه کدام سرور روی اینترنت شما باز است را خود برنامه روی گوشی یا کامپیوتر شما می‌سنجد.
+
+**گزارش ناشناس از داخل ایران:** برنامه بعد از وصل شدن، نتیجه‌ی تست سرورهای لیست آنلاین را از داخل خود VPN برای ربات درفش روی Cloudflare می‌فرستد. در گزارش فقط این‌هاست: شرکت اینترنت (شماره‌ی ASN، مثلاً ایرانسل)، برای هر سرور یک کد کوتاه (هش لینک، نه خود لینک)، و اینکه جواب داد و با چه سرعتی. IP شما به آنجا نمی‌رسد، چون گزارش از داخل VPN می‌رود. کانفیگ‌های شخصی و سایت‌هایی که باز می‌کنید هیچ‌وقت فرستاده نمی‌شوند، و گزارش‌ها بعد از ۳ روز پاک می‌شوند. جمع‌آوری ([`iran_reports.py`](iran_reports.py)) با این گزارش‌ها سرورهایی را که داخل ایران کار کرده‌اند بالای لیست می‌برد. برای هر اینترنت هم فهرست سرورهایی را که برای بقیه روی همان اینترنت کار کرده‌اند در `derafsh_networks.json` می‌گذارد تا برنامه اول همان‌ها را تست کند. این گزارش در «تنظیمات» ← «گزارش ناشناس» خاموش می‌شود.
+
+خروجی پنج فایل است:
 
 | فایل | محتوا |
 |---|---|
 | [`derafsh_servers.txt`](derafsh_servers.txt) | لیست کانفیگ‌ها، بهترین‌ها اول |
 | [`derafsh_sources.json`](derafsh_sources.json) | منبع هر کانفیگ (کانال تلگرام یا لیست گیت‌هاب) |
-| [`derafsh_locations.json`](derafsh_locations.json) | کشور و شهر هر کانفیگ، برای «مکان سرور» |
+| [`derafsh_locations.json`](derafsh_locations.json) | کشور و شهر هر کانفیگ، برای ردیف کشورها و شهرها در «سرورها» |
+| [`derafsh_networks.json`](derafsh_networks.json) | برای هر اینترنت (ASN)، سرورهایی که برای کاربرها روی همان اینترنت کار کرده‌اند یا پشت هم جواب نداده‌اند |
 | [`derafsh_sub.txt`](derafsh_sub.txt) | همان لیست به شکل اشتراک استاندارد (base64) برای اپ‌های دیگر |
 
 ### نکته‌ی امنیتی
@@ -191,7 +196,9 @@ The config collector: `pip install requests` then `python collector.py`.
 |---|---|
 | `Derafsh.Client/` | .NET MAUI app (`MainPage.xaml` UI, `Service/ConfigService.cs` link parsing and Xray config, `XrayProc.cs` engine process, `Resources/Styles/Theme.xaml` design tokens) |
 | `Derafsh.Client/Platforms/Android/DerafshVpn.cs` | Android VPN: TUN → hev-socks5-tunnel → Xray SOCKS |
-| `collector.py`, `.github/workflows/update_configs.yml` | the 4-hourly config collector |
+| `collector.py`, `.github/workflows/update_configs.yml` | the 2-hourly config collector |
+| `iran_reports.py`, `Derafsh.Client/CommunityReports.cs` | anonymous test results from the app (ASN + short config hash, sent through the tunnel) and the per-network hints built from them |
+| `bot/worker.js`, `.github/workflows/bot.yml` | Telegram bot and report endpoint on Cloudflare Workers (Durable Object + D1) |
 | `.github/workflows/release.yml` | release builds (Windows zip, signed APK) |
 
 ### License

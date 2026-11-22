@@ -1,65 +1,63 @@
-using System.Globalization;
 using Derafsh.Client.Models;
 
 namespace Derafsh.Client
 {
-    // صفحه‌ی «مکان سرور»: کاربر یه کشور (مثلاً آلمان) یا یه شهر (برلین) انتخاب می‌کنه؛ «اتصال» خودکار فقط سرورهای همون‌جا رو
-    // تست و انتخاب می‌کنه، و نگهبان اتصال هم فقط به سرورهای همون‌جا می‌ره. مکان هر سرور از derafsh_locations.json (Locations).
+    // مکان‌ها داخل صفحه‌ی «سرورها»: بالای لیست آنلاین یه ردیف کشور و، وقتی کشوری انتخاب شده، یه ردیف شهرهاش. قبلاً «مکان سرور»
+    // یه صفحه‌ی جدا بود و «سرورها» یه صفحه‌ی دیگه؛ کاربرها دو جای جدا برای «کجا وصل بشم» رو بی‌دلیل می‌دیدن (۲۲ نوامبر ۲۰۲۶).
+    // فقط جاهایی که روی همین اینترنت سرور سالم دارن، پرسالم‌ترها اول (بقیه پشت «کشورهای دیگر»). انتخاب یه مکان هم لیست رو فیلتر
+    // می‌کنه هم «اتصال» خودکار (و نگهبان) رو به همون‌جا می‌بره؛ سروری که توی لیست زده بشه هم یعنی همون سرور.
+    // مکان هر سرور از derafsh_locations.json (Locations).
     public partial class MainPage
     {
-        private List<LocationRow> _locationRows = new();
-        // فقط مکان‌هایی که روی همین اینترنت سرور سالم دارن (کاربرها می‌خواستن هر بار همه‌ی ۷۰ کشور رو نبینن)؛ «نمایش همه» بقیه رو هم نشون می‌ده
+        private const string MoreKey = "*";   // دکمه‌ی «کشورهای دیگر» / «فقط مکان‌های سالم»
         private bool _showAllLocations;
-        private int _hiddenLocations;
-        private bool _scanAllWhenDone;   // صفحه وسط یه تست معمولی باز شد: تست همه‌ی مکان‌ها بعد از تموم شدنش
+        private bool _scanAllWhenDone;        // صفحه وسط یه تست معمولی باز شد: تست همه‌ی مکان‌ها بعد از تموم شدنش
+        private string _shownPlaces = "";     // کلیدهای دکمه‌هایی که الان دیده می‌شن؛ تا وسط تست فقط با پیدا شدن جای تازه از نو ساخته بشن
 
-        private void OnOpenLocationsClicked(object sender, EventArgs e) => OpenLocations();
-        private void OnOpenLocationsTapped(object sender, TappedEventArgs e) => OpenLocations();
-        private void OnLocationsBackClicked(object sender, EventArgs e) => ShowView(HomeView);
+        // «انتخاب مکان» صفحه‌ی اصلی: صفحه‌ی سرورها با لیست آنلاین
+        private void OnOpenLocationsClicked(object sender, EventArgs e) => OpenServers(online: true);
+        private void OnOpenLocationsTapped(object sender, TappedEventArgs e) => OpenServers(online: true);
 
-        private void OpenLocations()
+        private void OpenServers(bool online)
         {
-            _showAllLocations = false;
-            LocationSearch.Text = "";
-            RefreshLocationRows();
-            ShowView(LocationsView);
-            // تست معمولی بعد از پیدا شدن ۲۰ سرور سالم می‌ایسته؛ اینجا بقیه‌ی لیست (همه‌ی مکان‌ها) هم تست می‌شه تا مکان‌های سالم کامل بشن
-            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct();
-            if (!_connecting && cloud.Any(c => !_pingCache.ContainsKey(c)))
+            if (online && _currentList != ListOnline)
             {
-                if (_discovering || _isUpdating) _scanAllWhenDone = true;
-                else _ = DiscoverAsync(fresh: false, allLocations: true);
+                _currentList = ListOnline;
+                RefreshListPicker();
+                LoadConfigs();
             }
-            UpdateLocationsFooter();
+            ShowView(ServersView);
+            RefreshLocationChips();
+            StartLocationScan();
         }
 
-        private void RefreshLocationRows()
+        // تست معمولی بعد از پیدا شدن ۲۰ سرور سالم می‌ایسته؛ با باز شدن لیست آنلاین بقیه‌ی لیست (همه‌ی مکان‌ها) هم تست می‌شه تا ردیف
+        // مکان‌ها همه‌ی جاهای سالم رو داشته باشه. فقط تست‌نشده‌ها؛ بار دوم توی همین اجرا دیگه کاری نداره.
+        private void StartLocationScan()
         {
-            BuildLocationRows();
-            ShowLocationRows(LocationSearch.Text);
-            UpdateLocationsFooter();
+            if (_currentList != ListOnline || _connecting) return;
+            var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct();
+            if (!cloud.Any(c => !_pingCache.ContainsKey(c))) return;
+            if (_discovering || _isUpdating) _scanAllWhenDone = true;
+            else _ = DiscoverAsync(fresh: false, allLocations: true);
         }
 
-        private void OnShowAllLocationsClicked(object sender, EventArgs e)
+        // onlyIfNewPlaces: وسط تست فقط وقتی جای تازه‌ای سالم شد (ساختن دوباره، ردیف رو به اولش برمی‌گردونه)
+        private void RefreshLocationChips(bool onlyIfNewPlaces = false)
         {
-            _showAllLocations = !_showAllLocations;
-            RefreshLocationRows();
+            bool online = _currentList == ListOnline;
+            LocationBar.IsVisible = online;
+            if (!online) return;
+            var (countries, cities) = BuildLocationChips();
+            string places = string.Join(",", countries.Concat(cities).Select(r => r.Key));
+            if (onlyIfNewPlaces && places == _shownPlaces) return;
+            _shownPlaces = places;
+            CountryChips.ItemsSource = countries;
+            CityChips.ItemsSource = cities;
+            CityChips.IsVisible = cities.Count > 0;
         }
 
-        private void UpdateLocationsFooter()
-        {
-            ShowAllLocationsButton.IsVisible = _showAllLocations || _hiddenLocations > 0;
-            ShowAllLocationsButton.Text = _showAllLocations ? "فقط مکان‌های سالم" : $"نمایش همه‌ی مکان‌ها ({Fa(_hiddenLocations)} مکان دیگر)";
-            LocationsStatusLabel.Text = _discovering
-                ? "سرورهای بقیه‌ی مکان‌ها روی همین اینترنت تست می‌شوند؛ مکان‌های سالم همین‌جا اضافه می‌شوند…"
-                : _hiddenLocations > 0 && !_showAllLocations
-                    ? "مکان‌هایی که روی این اینترنت سرور سالم نداشتند پنهان شده‌اند."
-                    : "";
-            LocationsStatusLabel.IsVisible = LocationsStatusLabel.Text.Length > 0;
-        }
-
-        // کشورها (پرسرورترین اول) و زیر هر کشور شهرهاش؛ «سالم»: روی همین اینترنت جواب داده
-        private void BuildLocationRows()
+        private (List<ChipItem> countries, List<ChipItem> cities) BuildLocationChips()
         {
             var cloud = _configService.ParseFile(CloudPath, false).Select(s => s.Config).Distinct().ToList();
             var counts = new Dictionary<string, (int all, int ok)>();
@@ -73,63 +71,55 @@ namespace Derafsh.Client
             }
 
             string selected = Locations.Selected;
+            string selectedCc = selected.Length > 0 ? Locations.Split(selected).cc : "";
             int working = cloud.Count(c => _pingCache.TryGetValue(c, out var p) && p is > 0 and < NoReply);
-            var rows = new List<LocationRow>
-            {
-                new() { Key = "", Title = "خودکار، هر کشوری", Detail = Detail(cloud.Count, working), IsSelected = selected.Length == 0 },
-            };
-            // هنوز هیچ سالمی پیدا نشده (تست اول در جریانه): همه دیده بشن، وگرنه صفحه خالی بود
+            // هنوز هیچ سالمی پیدا نشده (تست اول در جریانه): همه دیده بشن، وگرنه ردیف خالی بود
             bool all = _showAllLocations || working == 0;
-            bool Show(string key, int ok) => all || ok > 0 || selected == key || selected.StartsWith(key + "|");
-            _hiddenLocations = 0;
+            static string Name(string text, int ok) => ok > 0 ? $"{text} · {Fa(ok)}" : text;
+
+            var countries = new List<ChipItem>
+            {
+                new() { Key = "", Text = working > 0 ? $"همه‌ی کشورها · {Fa(working)}" : "همه‌ی کشورها", IsSelected = selected.Length == 0 },
+            };
+            int hidden = 0;
             foreach (var country in counts.Where(x => !x.Key.Contains('|')).OrderByDescending(x => x.Value.ok).ThenByDescending(x => x.Value.all))
             {
-                string cc = country.Key, english = EnglishName(cc);
-                var cities = counts.Where(x => x.Key.StartsWith(cc + "|")).OrderByDescending(x => x.Value.ok).ThenByDescending(x => x.Value.all).ToList();
-                if (!Show(cc, country.Value.ok)) { _hiddenLocations += 1 + cities.Count; continue; }
-                rows.Add(new() { Key = cc, Title = $"{Locations.Flag(cc)} {Locations.CountryName(cc)}".Trim(), Detail = Detail(country.Value.all, country.Value.ok),
-                                 IsSelected = selected == cc, Search = $"{english} {cc}" });
-                foreach (var city in cities)
-                {
-                    if (!Show(city.Key, city.Value.ok)) { _hiddenLocations++; continue; }
-                    rows.Add(new() { Key = city.Key, Title = city.Key[(cc.Length + 1)..], Detail = Detail(city.Value.all, city.Value.ok), IsCity = true,
-                                     IsSelected = selected == city.Key, Search = $"{Locations.CountryName(cc)} {english}" });
-                }
+                string cc = country.Key;
+                if (!all && country.Value.ok == 0 && cc != selectedCc) { hidden++; continue; }
+                countries.Add(new() { Key = cc, Text = Name($"{Locations.Flag(cc)} {Locations.CountryName(cc)}".Trim(), country.Value.ok), IsSelected = cc == selectedCc });
             }
-            // مکانی که انتخاب شده ولی توی لیست تازه سروری نداره هم دیده بشه
-            if (selected.Length > 0 && rows.All(r => r.Key != selected))
-                rows.Insert(1, new() { Key = selected, Title = Locations.Describe(selected), Detail = "فعلاً سروری در لیست نیست", IsSelected = true });
-            _locationRows = rows;
+            // مکانی که انتخاب شده ولی توی لیست فعلی سروری نداره هم دیده بشه
+            if (selectedCc.Length > 0 && countries.All(r => r.Key != selectedCc))
+                countries.Insert(1, new() { Key = selectedCc, Text = $"{Locations.Flag(selectedCc)} {Locations.CountryName(selectedCc)}".Trim(), IsSelected = true });
+            if (hidden > 0 || _showAllLocations)
+                countries.Add(new() { Key = MoreKey, Text = _showAllLocations ? "فقط مکان‌های سالم" : $"+ {Fa(hidden)} کشور دیگر" });
 
-            static string Detail(int all, int ok) => ok > 0 ? $"{Fa(all)} سرور · {Fa(ok)} سالم" : $"{Fa(all)} سرور";
-        }
-
-        private static string EnglishName(string cc)
-        {
-            try { return new RegionInfo(cc).EnglishName; } catch { return cc; }
-        }
-
-        private void OnLocationSearchChanged(object sender, TextChangedEventArgs e) => ShowLocationRows(e.NewTextValue);
-
-        // کشوری که پیدا شد با همه‌ی شهرهاش؛ شهری که پیدا شد با کشورش
-        private void ShowLocationRows(string? filter)
-        {
-            filter = filter?.Trim() ?? "";
-            if (filter.Length == 0) { LocationsList.ItemsSource = _locationRows; return; }
-            bool Has(string text) => text.Contains(filter, StringComparison.CurrentCultureIgnoreCase);
-            var keep = new HashSet<string>();
-            foreach (var r in _locationRows.Where(r => r.Key.Length > 0))
+            var cities = new List<ChipItem>();
+            if (selectedCc.Length > 0)
             {
-                string cc = Locations.Split(r.Key).cc;
-                if (!r.IsCity && (Has(r.Title) || Has(r.Search))) { keep.Add(cc); foreach (var x in _locationRows.Where(x => x.Key.StartsWith(cc + "|"))) keep.Add(x.Key); }
-                if (r.IsCity && Has(r.Title)) { keep.Add(r.Key); keep.Add(cc); }
+                cities.Add(new() { Key = selectedCc, Text = $"همه‌ی {Locations.CountryName(selectedCc)}", IsSelected = selected == selectedCc });
+                foreach (var city in counts.Where(x => x.Key.StartsWith(selectedCc + "|")).OrderByDescending(x => x.Value.ok).ThenByDescending(x => x.Value.all))
+                {
+                    if (!all && city.Value.ok == 0 && city.Key != selected) continue;
+                    cities.Add(new() { Key = city.Key, Text = Name(city.Key[(selectedCc.Length + 1)..], city.Value.ok), IsSelected = city.Key == selected });
+                }
+                if (selected.Contains('|') && cities.All(r => r.Key != selected))
+                    cities.Add(new() { Key = selected, Text = Locations.Split(selected).city, IsSelected = true });
+                if (cities.Count == 2 && !selected.Contains('|')) cities.Clear();   // فقط یه شهر: ردیف شهرها لازم نیست
             }
-            LocationsList.ItemsSource = _locationRows.Where(r => keep.Contains(r.Key)).ToList();
+            return (countries, cities);
         }
 
-        private void OnLocationClicked(object sender, EventArgs e)
+        private void OnLocationChipClicked(object sender, EventArgs e)
         {
-            if (sender is Button { CommandParameter: LocationRow row }) ChooseLocation(row.Key);
+            if (sender is not Button { CommandParameter: ChipItem row }) return;
+            if (row.Key == MoreKey)
+            {
+                _showAllLocations = !_showAllLocations;
+                RefreshLocationChips();
+                return;
+            }
+            ChooseLocation(row.Key);
         }
 
         private void ChooseLocation(string key)
@@ -141,10 +131,10 @@ namespace Derafsh.Client
             _autoServer = true;
             foreach (var x in AllServers) x.IsSelected = false;
             if (!isConnected) _currentServer = null;
-            ShowView(HomeView);
-            if (key == old && !wasManual) return;
+            if (key == old && !wasManual) { RefreshLocationChips(); return; }
 
             LoadConfigs();   // لیست آنلاین فقط همین مکان
+            RefreshLocationChips();
             _discoveryDone = false;
             string where = key.Length == 0 ? "هر کشوری" : Locations.Describe(key);
             if (isConnected)
@@ -163,7 +153,8 @@ namespace Derafsh.Client
             }
             StatusLabel.Text = key.Length == 0 ? "سریع‌ترین سرور از هر کشوری انتخاب می‌شود." : $"سرورهای {where} روی همین اینترنت تست می‌شوند…";
             if (!_isUpdating) _ = DiscoverAsync(fresh: false);
-            UpdateHome();   // «سرورهای آلمان روی همین اینترنت تست می‌شوند…»
+            _scanAllWhenDone = true;   // بعدش بقیه‌ی مکان‌ها هم، تا ردیف مکان‌ها کامل بمونه
+            UpdateHome();
         }
     }
 }

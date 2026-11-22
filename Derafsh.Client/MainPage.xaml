@@ -2,8 +2,9 @@
 <!--
     Five views on one page, one visible at a time:
       HomeView       the simple screen: one round Connect button and where it connects (a country or city, or a server picked by hand).
-      LocationsView  pick a country or a city: where the servers come out on the internet (what websites see).
       ServersView    the detailed screen: pick a list (Online / Personal / a saved list), test, add, choose a server.
+                     The online list has a row of countries (and the chosen country's cities) on top: only places with
+                     working servers on this network; choosing one filters the list and is where Connect goes.
                      Each row has one "more" button (test, Gemini, share, star, save, delete) instead of six.
       SettingsView   the options (Iranian sites without VPN, Gemini only), the subscription link, the Telegram channel.
       AppsView       (Android) which apps use the VPN; opened from Settings.
@@ -28,6 +29,29 @@
             <local:SpeedToColorConverter x:Key="SpeedColor" Good="{StaticResource Success}" Slow="{StaticResource Warning}" Bad="{StaticResource Danger}" />
             <local:GeminiTextConverter x:Key="GeminiText" />
             <local:GeminiColorConverter x:Key="GeminiColor" Neutral="{StaticResource TextMuted}" Good="{StaticResource Success}" Warn="{StaticResource Warning}" Bad="{StaticResource Danger}" />
+
+            <!-- A place in the servers page: «🇩🇪 آلمان · ۱۲» (working servers here); the chosen one has the gold stroke -->
+            <DataTemplate x:Key="LocationChip" x:DataType="models:ChipItem">
+                <Border Padding="14,0" HeightRequest="36" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 18"
+                        Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
+                    <Grid>
+                        <Label Text="{Binding Text}" FontSize="13" VerticalOptions="Center" HorizontalOptions="Center" />
+                        <Button Style="{StaticResource OverlayButton}" Clicked="OnLocationChipClicked" CommandParameter="{Binding .}"
+                                SemanticProperties.Description="{Binding Text}" />
+                    </Grid>
+                </Border>
+            </DataTemplate>
+            <!-- Which list: same look, a stronger label -->
+            <DataTemplate x:Key="ListChip" x:DataType="models:ChipItem">
+                <Border Padding="16,0" HeightRequest="36" BackgroundColor="{StaticResource SurfaceRaised}" StrokeThickness="1" StrokeShape="RoundRectangle 18"
+                        Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
+                    <Grid>
+                        <Label Text="{Binding Text}" FontFamily="{StaticResource FontStrong}" FontSize="14" VerticalOptions="Center" HorizontalOptions="Center" />
+                        <Button Style="{StaticResource OverlayButton}" Clicked="OnListChipClicked" CommandParameter="{Binding .}"
+                                SemanticProperties.Description="{Binding Text}" />
+                    </Grid>
+                </Border>
+            </DataTemplate>
 
             <!-- Desktop row: name and details, results, then one "more" button -->
             <DataTemplate x:Key="WideRow" x:DataType="models:Server">
@@ -184,67 +208,8 @@
             </Border>
         </Grid>
 
-        <!-- ================= Locations: a country or a city ================= -->
-        <Grid x:Name="LocationsView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10" Padding="20,16,20,8" MaximumWidthRequest="600">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnLocationsBackClicked" VerticalOptions="Center"
-                        ToolTipProperties.Text="بازگشت به صفحه‌ی اتصال" />
-                <Label Grid.Column="1" Text="مکان سرور" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
-            </Grid>
-            <Label Grid.Row="1" TextColor="{StaticResource TextSecondary}" FontSize="13" LineBreakMode="WordWrap"
-                   Text="جایی که سرور به اینترنت وصل می‌شود و سایت‌ها شما را آنجا می‌بینند. «سالم» یعنی روی همین اینترنت جواب داده است." />
-            <Entry x:Name="LocationSearch" Grid.Row="2" Placeholder="جستجو، مثلاً آلمان یا Berlin" TextChanged="OnLocationSearchChanged" ClearButtonVisibility="WhileEditing"
-                   TextColor="{StaticResource TextPrimary}" PlaceholderColor="{StaticResource TextMuted}" BackgroundColor="{StaticResource Surface}"
-                   FontFamily="{StaticResource FontBody}" FontSize="14" />
-            <CollectionView x:Name="LocationsList" Grid.Row="3" SelectionMode="None">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="models:LocationRow">
-                        <Border Margin="0,3" Padding="0" BackgroundColor="{StaticResource Surface}" StrokeThickness="1" StrokeShape="RoundRectangle 8"
-                                Stroke="{Binding IsSelected, Converter={StaticResource SelectedStroke}}">
-                            <Grid>
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Padding="14,10">
-                                <!-- cities sit under their country -->
-                                <BoxView WidthRequest="0" HeightRequest="1" Color="Transparent">
-                                    <BoxView.Triggers>
-                                        <DataTrigger TargetType="BoxView" Binding="{Binding IsCity}" Value="True">
-                                            <Setter Property="WidthRequest" Value="16" />
-                                        </DataTrigger>
-                                    </BoxView.Triggers>
-                                </BoxView>
-                                <Label Grid.Column="1" Text="{Binding Title}" FontFamily="{StaticResource FontStrong}" FontSize="15" VerticalOptions="Center"
-                                       LineBreakMode="TailTruncation" MaxLines="1">
-                                    <Label.Triggers>
-                                        <DataTrigger TargetType="Label" Binding="{Binding IsCity}" Value="True">
-                                            <Setter Property="FontFamily" Value="{StaticResource FontBody}" />
-                                            <Setter Property="FontSize" Value="14" />
-                                        </DataTrigger>
-                                    </Label.Triggers>
-                                </Label>
-                                <Label Grid.Column="2" Text="{Binding Detail}" Style="{StaticResource MetaLabel}" VerticalOptions="Center" />
-                            </Grid>
-                            <!-- the whole row is one button: taps, keyboard and screen readers -->
-                            <Button Style="{StaticResource OverlayButton}" Clicked="OnLocationClicked" CommandParameter="{Binding .}"
-                                    SemanticProperties.Description="{Binding Title}" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-                <CollectionView.EmptyView>
-                    <Label x:Name="LocationsEmptyLabel" Text="چیزی با این اسم پیدا نشد." TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" Margin="0,24" />
-                </CollectionView.EmptyView>
-                <!-- only the locations with working servers on this network are listed; the rest behind one button -->
-                <CollectionView.Footer>
-                    <VerticalStackLayout Spacing="8" Padding="0,10,0,16">
-                        <Label x:Name="LocationsStatusLabel" Style="{StaticResource MetaLabel}" HorizontalTextAlignment="Center" LineBreakMode="WordWrap" IsVisible="False" />
-                        <Button x:Name="ShowAllLocationsButton" Style="{StaticResource SecondaryButton}" Clicked="OnShowAllLocationsClicked" HorizontalOptions="Center" IsVisible="False"
-                                ToolTipProperties.Text="مکان‌هایی که روی این اینترنت هنوز سرور سالمی ندارند (یا تست نشده‌اند) را هم نشان می‌دهد" />
-                    </VerticalStackLayout>
-                </CollectionView.Footer>
-            </CollectionView>
-        </Grid>
-
         <!-- ================= Servers: the detailed screen ================= -->
-        <Grid x:Name="ServersView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,*,Auto" RowSpacing="12" Padding="24,16,24,8">
+        <Grid x:Name="ServersView" Grid.Row="2" IsVisible="False" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" RowSpacing="12" Padding="24,16,24,8">
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                 <Button Text="→ بازگشت" Style="{StaticResource SecondaryButton}" Clicked="OnBackToHomeClicked" VerticalOptions="Center"
@@ -252,19 +217,32 @@
                 <Label Grid.Column="1" Text="سرورها" Style="{StaticResource TitleLabel}" VerticalOptions="Center" />
             </Grid>
 
-            <!-- Which list -->
-            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                <Label Text="لیست:" VerticalOptions="Center" TextColor="{StaticResource TextSecondary}" />
-                <Picker x:Name="ListPicker" Grid.Column="1" SelectedIndexChanged="OnListPicked" TextColor="{StaticResource TextPrimary}" BackgroundColor="{StaticResource Surface}"
-                        FontFamily="{StaticResource FontBody}" FontSize="14" SemanticProperties.Description="انتخاب لیست سرورها" />
-            </Grid>
+            <!-- Which list: online, personal, saved lists (chips like the places below; the Android picker looked like a text box) -->
+            <CollectionView x:Name="ListChips" Grid.Row="1" SelectionMode="None" HeightRequest="40" ItemTemplate="{StaticResource ListChip}">
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Horizontal" ItemSpacing="8" />
+                </CollectionView.ItemsLayout>
+            </CollectionView>
+
+            <!-- Where: countries with working servers on this network, then the chosen country's cities (online list only).
+                 Choosing one filters the list and is where Connect goes; a server tapped in the list overrides it. -->
+            <VerticalStackLayout x:Name="LocationBar" Grid.Row="2" Spacing="6">
+                <CollectionView x:Name="CountryChips" SelectionMode="None" HeightRequest="40" ItemTemplate="{StaticResource LocationChip}">
+                    <CollectionView.ItemsLayout>
+                        <LinearItemsLayout Orientation="Horizontal" ItemSpacing="8" />
+                    </CollectionView.ItemsLayout>
+                </CollectionView>
+                <CollectionView x:Name="CityChips" SelectionMode="None" HeightRequest="40" IsVisible="False" ItemTemplate="{StaticResource LocationChip}">
+                    <CollectionView.ItemsLayout>
+                        <LinearItemsLayout Orientation="Horizontal" ItemSpacing="8" />
+                    </CollectionView.ItemsLayout>
+                </CollectionView>
+            </VerticalStackLayout>
 
             <!-- What this list can do; the rarely used ones under "more" -->
-            <FlexLayout x:Name="ActionsBar" Grid.Row="2" Wrap="Wrap" AlignItems="Center">
+            <FlexLayout x:Name="ActionsBar" Grid.Row="3" Wrap="Wrap" AlignItems="Center">
                 <Button x:Name="TestAllButton" Text="تست دوباره" Style="{StaticResource SecondaryButton}" Clicked="OnTestAgainClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="سرورهای این لیست را دوباره روی همین اینترنت تست می‌کند" />
-                <Button x:Name="RefreshButton" Text="دریافت لیست تازه" Style="{StaticResource SecondaryButton}" Clicked="OnUpdateOnlineClicked" Margin="0,0,8,8"
-                        ToolTipProperties.Text="جدیدترین کانفیگ‌های رایگان را دانلود و تست می‌کند (هر ۲ ساعت تازه می‌شوند)" />
                 <Button x:Name="AddConfigButton" Text="افزودن کانفیگ" Style="{StaticResource SecondaryButton}" Clicked="OnAddCustomConfigClicked" Margin="0,0,8,8"
                         ToolTipProperties.Text="لینک کانفیگ (vless / vmess / ss / trojan / hysteria2) یا لینک اشتراک خودتان را به لیست شخصی اضافه می‌کند" />
                 <Button x:Name="ListMoreButton" Text="بیشتر…" Style="{StaticResource SecondaryButton}" Clicked="OnListMoreClicked" Margin="0,0,8,8"
@@ -272,7 +250,7 @@
             </FlexLayout>
 
             <!-- Server list -->
-            <ListView x:Name="ServerListView" Grid.Row="3" IsGroupingEnabled="True" HasUnevenRows="True" SeparatorVisibility="None"
+            <ListView x:Name="ServerListView" Grid.Row="4" IsGroupingEnabled="True" HasUnevenRows="True" SeparatorVisibility="None"
                       BackgroundColor="Transparent" SelectionMode="Single" ItemSelected="OnServerSelected" ItemTemplate="{StaticResource WideRow}">
                 <ListView.GroupHeaderTemplate>
                     <DataTemplate x:DataType="local:ServerGroup">
@@ -284,13 +262,13 @@
             </ListView>
 
             <!-- Empty list -->
-            <VerticalStackLayout x:Name="EmptyState" Grid.Row="3" IsVisible="False" Spacing="8" VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="440">
+            <VerticalStackLayout x:Name="EmptyState" Grid.Row="4" IsVisible="False" Spacing="8" VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="440">
                 <Label x:Name="EmptyTitle" FontFamily="{StaticResource FontStrong}" FontSize="16" HorizontalTextAlignment="Center" />
                 <Label x:Name="EmptyText" TextColor="{StaticResource TextSecondary}" HorizontalTextAlignment="Center" />
             </VerticalStackLayout>
 
             <!-- Connection, without going back to the home screen -->
-            <Border Grid.Row="4" Style="{StaticResource Card}" Padding="14,10">
+            <Border Grid.Row="5" Style="{StaticResource Card}" Padding="14,10">
                 <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                     <BoxView x:Name="MiniDot" WidthRequest="10" HeightRequest="10" CornerRadius="5" Color="{StaticResource TextMuted}" VerticalOptions="Center" />
                     <Label x:Name="MiniStateLabel" Grid.Column="1" Text="وصل نیستید" VerticalOptions="Center" LineBreakMode="TailTruncation" MaxLines="1" />

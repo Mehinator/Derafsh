@@ -187,9 +187,9 @@ namespace Derafsh.Client
                     samples.Sort();
                     int ping = Math.Max(1, samples.Count == 3 ? samples[1] : (samples[0] + samples[1]) / 2);
                     int speed = await MeasureSpeedAsync(port);
-                    // درخواست کوچک جواب می‌ده ولی دانلود نمی‌کنه: ویدیو و سایت‌ها باهاش باز نمی‌شن، پس سالم حساب نمی‌شه
+                    // درخواست کوچک جواب می‌ده ولی (تقریباً) دانلود نمی‌کنه: ویدیو و سایت‌ها باهاش باز نمی‌شن، پس سالم حساب نمی‌شه
                     // (در تست، نصف سرورهایی که پینگ داشتن توی ۳۰ ثانیه هیچی دانلود نکردن)
-                    if (speed == 0) return (NoReply, -1);
+                    if (speed < MinUsefulSpeed) return (NoReply, -1);
                     return (ping, speed);
                 }
                 return (NoReply, -1);
@@ -202,6 +202,10 @@ namespace Derafsh.Client
 
         // سرعت لازم برای ویدیو؛ کمتر از این، ویدیو وسطش می‌ایسته
         public const int VideoSpeed = 150, OkSpeed = 60;
+        // کمتر از این یعنی «کار نمی‌کند»، نه «سالم ولی کند»: سرورهایی که به درخواست کوچک جواب می‌دن ولی دانلود رو بعد از اولین
+        // تیکه متوقف می‌کنن توی تست ۱ تا ۱۰ کیلوبایت بر ثانیه نشون می‌دادن و «سالم» حساب می‌شدن (گزارش کاربر، ۲۲ نوامبر ۲۰۲۶)؛
+        // کندترین سرورهای واقعاً سالم توی تست‌های گوشی ۸۰ به بالا بودن
+        public const int MinUsefulSpeed = 15;
 
         // تست سریع TCP تا سرور، تا برای سرورهای خاموش یا فیلترشده xray بالا نیاد.
         // vmess (لینک base64) و hysteria2 (UDP) و لینک‌هایی که آدرسشون خونده نمی‌شه مستقیم با xray تست می‌شن.
@@ -226,7 +230,7 @@ namespace Derafsh.Client
         {
             if (_isTestingAll) return;
             _isTestingAll = true;
-            TestAllButton.IsEnabled = RefreshButton.IsEnabled = false;
+            TestAllButton.IsEnabled = false;
             try
             {
                 if (_isUpdating)
@@ -246,7 +250,7 @@ namespace Derafsh.Client
             finally
             {
                 _isTestingAll = false;
-                TestAllButton.IsEnabled = RefreshButton.IsEnabled = true;
+                TestAllButton.IsEnabled = true;
             }
         }
 
@@ -368,7 +372,7 @@ namespace Derafsh.Client
                         if (Locations.Matches(config)) AddOnlineRow(config);   // پیدا شده‌ها پایین لیست؛ مرتب‌سازی فقط یه بار، آخر کار
                     }
                     if (gen != _discoverGen) return;
-                    if (LocationsView.IsVisible) RefreshLocationRows();
+                    if (ServersView.IsVisible) RefreshLocationChips(onlyIfNewPlaces: true);
                     if (!_connecting && !isConnected) UpdateHome();
                     if (!_connecting)
                         StatusLabel.Text = $"در حال پیدا کردن سرورهای سالم روی این اینترنت · {Fa(found)} پیدا شد، {Fa(fast)} تا سریع · {Fa(done)} از {Fa(planned)} تست شد";
@@ -385,9 +389,9 @@ namespace Derafsh.Client
                     UpdateOnlineHeader();
                     UpdateEmptyState();
                     UpdateHome();
-                    if (LocationsView.IsVisible) RefreshLocationRows();
+                    if (ServersView.IsVisible) RefreshLocationChips();
                     if (found > 0) _retryRound = 0;
-                    if (_scanAllWhenDone && !allLocations && !_connecting && LocationsView.IsVisible)
+                    if (_scanAllWhenDone && !allLocations && !_connecting && ServersView.IsVisible && _currentList == ListOnline)
                     {
                         _scanAllWhenDone = false;
                         _ = DiscoverAsync(fresh: false, allLocations: true);
@@ -467,7 +471,7 @@ namespace Derafsh.Client
             if (!working.Any())
             {
                 StatusLabel.Text = _currentList == ListOnline
-                    ? $"فعلاً هیچ سروری روی این اینترنت جواب نداد{ListAgeSuffix()}. کمی بعد «دریافت لیست تازه» را بزنید."
+                    ? $"فعلاً هیچ سروری روی این اینترنت جواب نداد{ListAgeSuffix()}."
                     : "هیچ سروری از این لیست روی این اینترنت جواب نداد.";
                 return;
             }

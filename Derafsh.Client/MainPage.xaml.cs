@@ -13,7 +13,7 @@ namespace Derafsh.Client
 {
     // صفحه‌ی اصلی: چند نما روی یک صفحه، هر بار یکی
     //   HomeView: دکمه‌ی گرد اتصال، «تعویض سرور»، و مکان سرور (یه کشور یا شهر، یا سروری که کاربر دستی زده)
-    //   LocationsView: انتخاب کشور یا شهر (MainPage.Locations.cs)
+    //   مکان‌ها (کشور و شهر) بالای لیست آنلاین صفحه‌ی سرورها (MainPage.Locations.cs)
     //   ServersView: لیست‌ها (آنلاین / شخصی / ذخیره‌شده‌ها)، تست، افزودن کانفیگ، انتخاب سرور
     //   SettingsView: «ایرانی‌ها بدون VPN»، «فقط Gemini»، لینک اشتراک، کانال تلگرام
     //   AppsView (اندروید): کدوم برنامه‌ها از VPN استفاده کنن (از تنظیمات)
@@ -55,7 +55,6 @@ namespace Derafsh.Client
         // کدوم لیست توی صفحه‌ی سرورها نمایش داده می‌شه: ListOnline، ListPersonal یا "saved:" + اسم لیست
         private const string ListOnline = "online", ListPersonal = "personal", SavedPrefix = "saved:";
         private string _currentList = ListOnline;
-        private readonly List<string> _pickerKeys = new();
 
         // true: «اتصال» خودش سریع‌ترین سرور سالم رو پیدا می‌کنه؛ false: سروری که کاربر توی لیست زده
         private bool _autoServer = true;
@@ -145,14 +144,14 @@ namespace Derafsh.Client
         }
 #endif
 
-        private void OnOpenServersClicked(object sender, EventArgs e) => ShowView(ServersView);
+        private void OnOpenServersClicked(object sender, EventArgs e) => OpenServers(online: false);
         private void OnBackToHomeClicked(object sender, EventArgs e) => ShowView(HomeView);
         private void OnOpenSettingsClicked(object sender, EventArgs e) => ShowView(SettingsView);
         private void OnSettingsBackClicked(object sender, EventArgs e) => ShowView(HomeView);
 
         private void ShowView(View view)
         {
-            foreach (var v in new View[] { HomeView, LocationsView, ServersView, SettingsView, AppsView }) v.IsVisible = v == view;
+            foreach (var v in new View[] { HomeView, ServersView, SettingsView, AppsView }) v.IsVisible = v == view;
             if (view == HomeView) UpdateHome();
         }
 
@@ -208,39 +207,26 @@ namespace Derafsh.Client
 
         // ---------- لیست‌ها ----------
 
+        // دکمه‌های لیست بالای صفحه‌ی سرورها: «آنلاین»، «شخصی»، و لیست‌های ذخیره‌شده (تازه‌ترها اول)
         private void RefreshListPicker()
         {
-            _pickerKeys.Clear();
-            var titles = new List<string> { "آنلاین — سالم روی همین اینترنت", "شخصی — کانفیگ‌های خودتان" };
-            _pickerKeys.AddRange(new[] { ListOnline, ListPersonal });
-            foreach (var list in ReadSavedLists().OrderByDescending(l => l.Saved))
-            {
-                titles.Add($"لیست {Q(list.Name)}");
-                _pickerKeys.Add(SavedPrefix + list.Name);
-            }
-            if (!_pickerKeys.Contains(_currentList)) _currentList = ListOnline;
-            _pickerUpdating = true;
-            ListPicker.ItemsSource = titles;
-            ListPicker.SelectedIndex = _pickerKeys.IndexOf(_currentList);
-            _pickerUpdating = false;
-            UpdateListActions();
+            var keys = new List<(string key, string text)> { (ListOnline, "آنلاین"), (ListPersonal, "شخصی") };
+            foreach (var list in ReadSavedLists().OrderByDescending(l => l.Saved)) keys.Add((SavedPrefix + list.Name, list.Name));
+            if (keys.All(k => k.key != _currentList)) _currentList = ListOnline;
+            ListChips.ItemsSource = keys.Select(k => new ChipItem { Key = k.key, Text = k.text, IsSelected = k.key == _currentList }).ToList();
+            RefreshLocationChips();   // ردیف مکان‌ها فقط برای لیست آنلاین
         }
-        private bool _pickerUpdating;
 
-        private void OnListPicked(object sender, EventArgs e)
+        private void OnListChipClicked(object sender, EventArgs e)
         {
-            if (_pickerUpdating || ListPicker.SelectedIndex < 0) return;
-            _currentList = _pickerKeys[ListPicker.SelectedIndex];
-            UpdateListActions();
+            if (sender is not Button { CommandParameter: ChipItem chip } || chip.Key == _currentList) return;
+            _currentList = chip.Key;
+            RefreshListPicker();
             LoadConfigs();
+            RefreshLocationChips();   // بعد از LoadConfigs، با شمارش‌های همین لیست
+            StartLocationScan();
             if (_currentList != ListOnline) _ = TestRowsAsync(onlyUntested: true);
             if (_currentList == ListPersonal) _ = RefreshSubscriptionsAsync();
-        }
-
-        // هر لیست فقط دکمه‌هایی رو نشون می‌ده که براش معنی دارن؛ «افزودن کانفیگ» همیشه (به لیست شخصی اضافه می‌کنه)
-        private void UpdateListActions()
-        {
-            RefreshButton.IsVisible = _currentList == ListOnline;
         }
 
         private void LoadConfigs()
@@ -296,8 +282,8 @@ namespace Derafsh.Client
                 ListOnline when _discoveryDone && !_discovering && Locations.Selected.Length > 0 =>
                     ($"در {Locations.Describe(Locations.Selected)} فعلاً سروری روی این اینترنت جواب نداد", "در صفحه‌ی اصلی مکان دیگری انتخاب کنید، یا «تست دوباره» را بزنید."),
                 ListOnline when _discovering || (!_discoveryDone && File.Exists(CloudPath)) => ("در حال تست سرورها روی اینترنت شما…", "سرورهایی که جواب بدهند اینجا می‌آیند، سریع‌ترین بالا."),
-                ListOnline when !File.Exists(CloudPath) => ("هنوز لیستی دانلود نشده", "«دریافت لیست تازه» را بزنید."),
-                ListOnline => ("فعلاً هیچ سروری روی این اینترنت جواب نداد", "«تست دوباره» را بزنید، یا کمی بعد «دریافت لیست تازه»."),
+                ListOnline when !File.Exists(CloudPath) => ("هنوز لیستی دانلود نشده", "از «بیشتر…» «دریافت لیست تازه» را بزنید."),
+                ListOnline => ("فعلاً هیچ سروری روی این اینترنت جواب نداد", "چند دقیقه‌ی دیگر خودکار با لیست تازه دوباره امتحان می‌شود؛ یا «تست دوباره» را بزنید."),
                 _ => ("این لیست خالی است", "یک لیست دیگر انتخاب کنید."),
             };
         }
@@ -312,7 +298,6 @@ namespace Derafsh.Client
             // وسط «تست دوباره» لیست عوض نمی‌شه: نتیجه‌ها به ردیف‌هایی می‌رسید که دیگه نمایش داده نمی‌شدن
             if (_isUpdating || _isTestingAll) return;
             _isUpdating = true;
-            RefreshButton.IsEnabled = false;
             UpdateEmptyState();
             StatusLabel.Text = "در حال دانلود جدیدترین کانفیگ‌ها…";
             bool ok = false;
@@ -322,12 +307,12 @@ namespace Derafsh.Client
                 // اولین اجرا و هیچ آینه‌ای باز نیست: لیستی که همراه خود برنامه اومده
                 if (!ok && !File.Exists(CloudPath)) await UseSeedListAsync();
             }
-            finally { _isUpdating = false; RefreshButton.IsEnabled = true; }
+            finally { _isUpdating = false; }
 
             _listDownloadFailed = !ok;
             if (!File.Exists(CloudPath))
             {
-                StatusLabel.Text = "لیست دانلود نشد. اتصال اینترنت را بررسی کنید و دوباره «دریافت لیست تازه» را بزنید.";
+                StatusLabel.Text = "لیست دانلود نشد. اتصال اینترنت را بررسی کنید و از «بیشتر…» دوباره «دریافت لیست تازه» را بزنید.";
                 return;
             }
             if (!ok) StatusLabel.Text = "لیست تازه دانلود نشد (روی این اینترنت گیت‌هاب و آینه‌هایش بسته‌اند). لیست قبلی تست می‌شود و لیست تازه از داخل اولین سرور سالم گرفته می‌شود.";
@@ -647,8 +632,9 @@ namespace Derafsh.Client
         {
             bool online = _currentList == ListOnline, personal = _currentList == ListPersonal;
             const string SaveList = "ذخیره‌ی سالم‌ها به‌عنوان لیست", ShareWorking = "اشتراک همه‌ی سالم‌ها", DeleteList = "حذف این لیست",
-                         Subscriptions = "لینک‌های اشتراک";
+                         Subscriptions = "لینک‌های اشتراک", Refresh = "دریافت لیست تازه";
             var buttons = new List<string>();
+            if (online) buttons.Add(Refresh);   // کم پیش می‌آد لازم بشه: هر ۲ ساعت تازه می‌شه و وقتی هیچ سروری پیدا نشه خودش می‌گیره
             if (personal) buttons.Add(Subscriptions);
             if (online || personal) buttons.Add(SaveList);
             buttons.Add(ShareWorking);
@@ -659,6 +645,7 @@ namespace Derafsh.Client
                 case ShareWorking: OnShareWorkingClicked(sender, e); break;
                 case DeleteList: OnDeleteSavedListClicked(sender, e); break;
                 case Subscriptions: await ManageSubscriptionsAsync(); break;
+                case Refresh: await UpdateOnlineConfigs(); break;
             }
         }
 

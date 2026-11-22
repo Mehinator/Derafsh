@@ -186,7 +186,7 @@ namespace Derafsh.Client
                 int speed;
                 try { speed = await ConnectionGuard.MeasureSpeedAsync(port, maxSeconds: 5, maxBytes: 200_000); }
                 finally { speedSlots.Release(); }
-                if (speed <= 0) return (0, 0, false);
+                if (speed < MainPage.MinUsefulSpeed) return (0, 0, false);   // جواب می‌ده ولی (تقریباً) دانلود نمی‌کنه: کار نمی‌کنه
                 bool youtube = false;
                 try
                 {

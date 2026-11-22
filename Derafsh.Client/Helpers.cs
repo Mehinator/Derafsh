@@ -40,7 +40,7 @@ namespace Derafsh.Client
     public class PingToTextConverter : IValueConverter
     {
         public object? Convert(object? v, Type t, object? p, CultureInfo c) =>
-            v is int ping ? ping switch { < 0 => "—", >= 9999 => "بی‌پاسخ", _ => $"{ping} ms" } : "—";
+            v is int ping ? ping switch { < 0 => "—", >= 9999 => "کار نمی‌کند", _ => $"{ping} ms" } : "—";   // جواب نداد، یا دانلود نکرد
         public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => null;
     }
 

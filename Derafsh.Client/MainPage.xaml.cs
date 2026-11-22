@@ -771,11 +771,10 @@ namespace Derafsh.Client
         {
             bool manual = !_autoServer && _currentServer != null;
             AutoServerButton.IsVisible = manual;
-            LocationCaptionLabel.Text = manual ? "سروری که خودتان انتخاب کردید" : "مکان سرور";
             string selected = Locations.Selected;
-            LocationTitleLabel.Text = manual ? _currentServer!.City
-                : selected.Length == 0 ? "خودکار، هر کشوری"
-                : $"{Locations.Flag(Locations.Split(selected).cc)} {Locations.Describe(selected)}".Trim();
+            LocationTitleLabel.IsVisible = !manual;   // سرور دستی رو خط بالایی (ConnDetailLabel) همین الان نشون می‌ده
+            LocationTitleLabel.Text = selected.Length == 0 ? "مکان: خودکار، هر کشوری"
+                : $"مکان: {Locations.Flag(Locations.Split(selected).cc)} {Locations.Describe(selected)}".Replace("  ", " ");
             if (!isConnected && !_connecting) SetConnState(ConnState.Disconnected);
         }
 

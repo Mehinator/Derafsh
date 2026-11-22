@@ -14,8 +14,6 @@ namespace Derafsh.Client
         private bool _scanAllWhenDone;        // صفحه وسط یه تست معمولی باز شد: تست همه‌ی مکان‌ها بعد از تموم شدنش
         private string _shownPlaces = "";     // کلیدهای دکمه‌هایی که الان دیده می‌شن؛ تا وسط تست فقط با پیدا شدن جای تازه از نو ساخته بشن
 
-        // «انتخاب مکان» صفحه‌ی اصلی: صفحه‌ی سرورها با لیست آنلاین
-        private void OnOpenLocationsClicked(object sender, EventArgs e) => OpenServers(online: true);
 
         private void OpenServers(bool online)
         {

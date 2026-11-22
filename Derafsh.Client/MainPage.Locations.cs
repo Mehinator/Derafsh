@@ -16,7 +16,6 @@ namespace Derafsh.Client
 
         // «انتخاب مکان» صفحه‌ی اصلی: صفحه‌ی سرورها با لیست آنلاین
         private void OnOpenLocationsClicked(object sender, EventArgs e) => OpenServers(online: true);
-        private void OnOpenLocationsTapped(object sender, TappedEventArgs e) => OpenServers(online: true);
 
         private void OpenServers(bool online)
         {
